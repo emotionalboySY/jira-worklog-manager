@@ -32,7 +32,7 @@ export async function fetchMyIssues() {
   const activeJql = `${myFilter} AND status in ("대기", "준비", "진행중", "검토", "배포대기") ORDER BY updated DESC`
 
   // 2. 완료/보류 이슈: 최근 1개월 내 업데이트된 것만
-  const closedJql = `${myFilter} AND status in ("완료됨", "Closed") AND updated >= -30d ORDER BY updated DESC`
+  const closedJql = `${myFilter} AND status in ("완료됨", "Closed", "보류") AND updated >= -30d ORDER BY updated DESC`
 
   // 병렬 조회
   const [activeIssues, closedIssues] = await Promise.all([
