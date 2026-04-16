@@ -700,7 +700,7 @@ function renderLogDetail() {
           ${logs.map(log => `
             <div class="log-row">
               <span class="log-time-range">${log.startTime} → ${log.endTime}</span>
-              <span class="log-duration">${log.duration}</span>
+              <span class="log-duration">${log.durationMinutes != null ? formatMinutes(log.durationMinutes) : log.duration}</span>
               <div class="log-issue">
                 <span class="issue-key">${log.issueKey}</span>
                 <span class="issue-summary">${log.summary}</span>

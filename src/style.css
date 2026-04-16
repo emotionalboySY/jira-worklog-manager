@@ -264,6 +264,7 @@ body {
   background: var(--accent-bg);
   padding: 2px 8px;
   border-radius: 4px;
+  white-space: nowrap;
 }
 
 .issue-summary {
@@ -1089,7 +1090,8 @@ span.flatpickr-weekday {
   font-variant-numeric: tabular-nums;
   color: var(--text-bright);
   flex-shrink: 0;
-  width: 50px;
+  min-width: 80px;
+  white-space: nowrap;
 }
 
 .log-issue {
