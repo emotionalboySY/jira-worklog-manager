@@ -1278,11 +1278,28 @@ span.flatpickr-weekday {
 }
 
 /* ========== 요약 (대시보드) ========== */
+.summary-week-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.summary-week-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-bright);
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   margin-bottom: 20px;
+}
+
+.summary-grid.two-col {
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .summary-card {

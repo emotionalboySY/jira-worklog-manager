@@ -204,6 +204,7 @@ let logDate = toDateString(new Date()) // 선택된 날짜
 let logViewMode = 'calendar' // 'calendar' | 'list'
 let calendarYear = new Date().getFullYear()
 let calendarMonth = new Date().getMonth() // 0-indexed
+let summaryWeekOffset = 0   // 0=이번 주, -1=지난 주, ...
 let showModal = false
 let showCancelConfirm = null // 취소 확인 대상 issueKey
 let editingWorklog = null    // 수정 중인 워크로그
@@ -801,13 +802,13 @@ function renderLogDetail() {
   `
 }
 
-// 현재 주의 목요일 구하기
-function getCurrentThursday() {
+// 주어진 오프셋의 목요일 구하기 (0=이번 주, -1=지난 주, ...)
+function getThursdayByOffset(offset) {
   const today = new Date()
-  const dayOfWeek = today.getDay() // 0=일, 1=월, ..., 4=목, 6=토
+  const dayOfWeek = today.getDay()
   const diffToThursday = (dayOfWeek < 4) ? dayOfWeek + 3 : dayOfWeek - 4
   const thursday = new Date(today)
-  thursday.setDate(today.getDate() - diffToThursday)
+  thursday.setDate(today.getDate() - diffToThursday + offset * 7)
   return thursday
 }
 
@@ -815,18 +816,16 @@ function getCurrentThursday() {
 function getWeekOfMonth(thursday) {
   const month = thursday.getMonth()
   const year = thursday.getFullYear()
-  // 해당 월의 첫 번째 목요일 찾기
   const firstDay = new Date(year, month, 1)
   const firstDow = firstDay.getDay()
-  const firstThursday = 1 + ((4 - firstDow + 7) % 7) // 첫 번째 목요일의 일(day)
-  // 주차 = (현재 목요일 - 첫 목요일) / 7 + 1
+  const firstThursday = 1 + ((4 - firstDow + 7) % 7)
   return Math.floor((thursday.getDate() - firstThursday) / 7) + 1
 }
 
 // 목요일~수요일 주간 데이터 생성 (실제 worklog 기반)
-function getWeekData() {
+function getWeekData(offset) {
   const today = new Date()
-  const thursday = getCurrentThursday()
+  const thursday = getThursdayByOffset(offset)
   const days = ['일', '월', '화', '수', '목', '금', '토']
   const weekData = []
 
@@ -851,8 +850,7 @@ function getWeekData() {
 // 요약 탭에 필요한 월들의 워크로그 로딩
 function ensureSummaryWorklogs() {
   if (!isLoggedIn() || !issuesLoaded) return
-  const thursday = getCurrentThursday()
-  // 주간 범위가 걸치는 월들 로딩
+  const thursday = getThursdayByOffset(summaryWeekOffset)
   const wednesday = new Date(thursday)
   wednesday.setDate(thursday.getDate() + 6)
   loadWorklogs(thursday.getFullYear(), thursday.getMonth())
@@ -862,10 +860,8 @@ function ensureSummaryWorklogs() {
 }
 
 function renderSummaryTab() {
-  const { weekData, thursday } = getWeekData()
-  const todayStr = toDateString(new Date())
-  const todayMinutes = getLogMinutes(todayStr)
-  const todayLogs = getActiveLogs(todayStr)
+  const isCurrentWeek = summaryWeekOffset === 0
+  const { weekData, thursday } = getWeekData(summaryWeekOffset)
   const totalWeekMinutes = weekData.reduce((sum, d) => sum + d.minutes, 0)
   const workedDays = weekData.filter(d => d.minutes > 0).length
   const avgMinutes = workedDays > 0 ? Math.round(totalWeekMinutes / workedDays) : 0
@@ -873,26 +869,44 @@ function renderSummaryTab() {
   const weekMonth = thursday.getMonth() + 1
   const weekNum = getWeekOfMonth(thursday)
 
-  return `
-    <div class="summary-grid">
+  // 현재 주일 때만 오늘 카드 표시
+  let todayCard = ''
+  if (isCurrentWeek) {
+    const todayStr = toDateString(new Date())
+    const todayMinutes = getLogMinutes(todayStr)
+    const todayLogs = getActiveLogs(todayStr)
+    todayCard = `
       <div class="summary-card">
         <div class="summary-card-label">오늘</div>
         <div class="summary-card-value">${todayMinutes > 0 ? formatMinutes(todayMinutes) : '-'}</div>
         <div class="summary-card-sub">${todayLogs.length > 0 ? `${todayLogs.length}개 작업 기록` : '아직 기록 없음'}</div>
       </div>
+    `
+  }
+
+  return `
+    <div class="summary-week-nav">
+      <button class="btn btn-sm" id="summary-prev">◀</button>
+      <span class="summary-week-title">${weekMonth}월 ${weekNum}주차</span>
+      ${worklogsLoading ? '<span class="calendar-spinner"></span>' : ''}
+      <button class="btn btn-sm ${isCurrentWeek ? 'btn-disabled' : ''}" id="summary-next" ${isCurrentWeek ? 'disabled' : ''}>▶</button>
+      ${!isCurrentWeek ? `<button class="btn btn-primary btn-sm" id="summary-this-week">이번 주</button>` : ''}
+    </div>
+    <div class="summary-grid ${isCurrentWeek ? '' : 'two-col'}">
+      ${todayCard}
       <div class="summary-card">
-        <div class="summary-card-label">이번 주</div>
+        <div class="summary-card-label">${isCurrentWeek ? '이번 주' : '주간 합계'}</div>
         <div class="summary-card-value">${totalWeekMinutes > 0 ? formatMinutes(totalWeekMinutes) : '-'}</div>
-        <div class="summary-card-sub">${workedDays > 0 ? `${workedDays}일 작업 기록` : '아직 기록 없음'}</div>
+        <div class="summary-card-sub">${workedDays > 0 ? `${workedDays}일 작업 기록` : '기록 없음'}</div>
       </div>
       <div class="summary-card">
         <div class="summary-card-label">일 평균</div>
         <div class="summary-card-value">${workedDays > 0 ? formatMinutes(avgMinutes) : '-'}</div>
-        <div class="summary-card-sub">이번 주 기준</div>
+        <div class="summary-card-sub">${isCurrentWeek ? '이번 주 기준' : '해당 주 기준'}</div>
       </div>
     </div>
     <div class="weekly-chart">
-      <div class="weekly-chart-title">금주(${weekMonth}월 ${weekNum}주차) 일별 작업 시간</div>
+      <div class="weekly-chart-title">${isCurrentWeek ? '금주' : ''}(${weekMonth}월 ${weekNum}주차) 일별 작업 시간</div>
       <div class="chart-bars">
         ${weekData.map(d => `
           <div class="chart-bar-col ${d.isFuture ? 'future' : ''}">
@@ -1368,6 +1382,36 @@ function bindEvents() {
     cancelYes.addEventListener('click', () => {
       alert(`(프로토타입) ${showCancelConfirm} 작업 로깅이 취소되었습니다.`)
       showCancelConfirm = null
+      render()
+    })
+  }
+
+  // 요약 탭 주차 네비게이션
+  const summaryPrev = document.getElementById('summary-prev')
+  if (summaryPrev) {
+    summaryPrev.addEventListener('click', () => {
+      summaryWeekOffset--
+      ensureSummaryWorklogs()
+      render()
+    })
+  }
+
+  const summaryNext = document.getElementById('summary-next')
+  if (summaryNext && !summaryNext.disabled) {
+    summaryNext.addEventListener('click', () => {
+      if (summaryWeekOffset < 0) {
+        summaryWeekOffset++
+        ensureSummaryWorklogs()
+        render()
+      }
+    })
+  }
+
+  const summaryThisWeek = document.getElementById('summary-this-week')
+  if (summaryThisWeek) {
+    summaryThisWeek.addEventListener('click', () => {
+      summaryWeekOffset = 0
+      ensureSummaryWorklogs()
       render()
     })
   }
