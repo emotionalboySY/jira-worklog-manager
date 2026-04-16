@@ -772,11 +772,13 @@ function renderLogDetail() {
               <span class="log-time-range">${log.startTime} → ${log.endTime}</span>
               <span class="log-duration">${log.durationMinutes != null ? formatMinutes(log.durationMinutes) : log.duration}</span>
               <div class="log-issue">
-                <span class="issue-key">${log.issueKey}</span>
-                <span class="issue-summary">${log.summary}</span>
+                <div class="log-issue-header">
+                  <span class="issue-key">${log.issueKey}</span>
+                  <span class="issue-summary">${log.summary}</span>
+                  ${log.lunchDeducted > 0 ? `<span class="log-lunch-badge">점심 -${log.lunchDeducted}분</span>` : ''}
+                </div>
+                ${log.comment ? `<span class="log-comment">${log.comment}</span>` : ''}
               </div>
-              ${log.lunchDeducted > 0 ? `<span class="log-lunch-badge">점심 -${log.lunchDeducted}분</span>` : ''}
-              ${log.comment ? `<span class="log-comment">${log.comment}</span>` : ''}
             </div>
           `).join('')}
         </div>

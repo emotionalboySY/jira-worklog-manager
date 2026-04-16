@@ -204,6 +204,7 @@ export async function fetchMyWorklogs(startDate, endDate) {
         const endTime = new Date(started.getTime() + w.timeSpentSeconds * 1000)
 
         const entry = {
+          worklogId: w.id,
           issueKey: issue.key,
           summary: issue.fields.summary,
           startTime: formatTimeHHMM(started),

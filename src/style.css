@@ -1155,12 +1155,17 @@ span.flatpickr-weekday {
 
 .log-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   padding: 10px 14px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   gap: 14px;
+}
+
+.log-row .log-time-range,
+.log-row .log-duration {
+  margin-top: 2px;
 }
 
 .log-time-range {
@@ -1183,10 +1188,23 @@ span.flatpickr-weekday {
 
 .log-issue {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 3px;
   flex: 1;
   min-width: 0;
+}
+
+.log-issue-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.log-issue-header .issue-summary {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .log-comment {
@@ -1195,7 +1213,6 @@ span.flatpickr-weekday {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 200px;
 }
 
 .log-lunch-badge {
