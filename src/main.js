@@ -188,8 +188,26 @@ let worklogsByDate = {}           // { 'YYYY-MM-DD': [{ issueKey, summary, start
 let worklogsLoading = false
 let worklogsLoadedMonths = new Set()  // API 로드 완료된 월 ("YYYY-MM" 형식)
 
+const ISSUES_CACHE_KEY = 'issues_cache'
 const WORKLOG_CACHE_KEY = 'worklog_cache'
 const WORKLOG_CACHE_MAX_MONTHS = 3
+
+// ========== 이슈 캐시 ==========
+function loadIssuesCache() {
+  try {
+    const raw = localStorage.getItem(ISSUES_CACHE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch { return null }
+}
+
+function saveIssuesCache(issues, projects) {
+  try {
+    localStorage.setItem(ISSUES_CACHE_KEY, JSON.stringify({ issues, projects, savedAt: Date.now() }))
+  } catch (e) {
+    console.warn('이슈 캐시 저장 실패:', e)
+  }
+}
 
 // ========== 워크로그 캐시 ==========
 function loadWorklogCache() {
@@ -379,6 +397,29 @@ function formatHoursShort(minutes) {
   if (m === 0) return `${h}시간`
   if (h === 0) return `${m}분`
   return `${h}시간${m}분`
+}
+
+// ========== 토스트 알림 ==========
+function ensureToastContainer() {
+  if (!document.getElementById('toast-container')) {
+    const el = document.createElement('div')
+    el.id = 'toast-container'
+    el.className = 'toast-container'
+    document.body.appendChild(el)
+  }
+  return document.getElementById('toast-container')
+}
+
+function showToast(message, icon = 'ℹ') {
+  const container = ensureToastContainer()
+  const toast = document.createElement('div')
+  toast.className = 'toast'
+  toast.innerHTML = `<span class="toast-icon">${icon}</span><span>${message}</span>`
+  container.appendChild(toast)
+  setTimeout(() => {
+    toast.classList.add('toast-out')
+    toast.addEventListener('animationend', () => toast.remove())
+  }, 3000)
 }
 
 // ========== 렌더링 ==========
@@ -1759,18 +1800,49 @@ function startTimerUpdate() {
 // ========== 데이터 로드 ==========
 async function loadIssues() {
   if (issuesLoading) return
-  issuesLoading = true
-  render()
+
+  const userName = getSavedUser()?.displayName || ''
+
+  // 1) 캐시가 있으면 즉시 표시
+  const cached = loadIssuesCache()
+  if (cached) {
+    realIssues = cached.issues
+    realProjects = cached.projects
+    issuesLoaded = true
+    render()
+  }
+
+  // 2) API에서 최신 데이터 가져오기
+  if (!cached) {
+    issuesLoading = true
+    render()
+  } else {
+    showToast(`${userName}님의 이슈 목록을 업데이트합니다.`, '🔄')
+  }
 
   try {
-    const [issues, projects] = await Promise.all([
+    const [freshIssues, freshProjects] = await Promise.all([
       fetchMyIssues(),
       fetchProjects(),
     ])
 
-    realIssues = issues
-    realProjects = projects
+    // 변경 감지
+    const oldCount = cached?.issues?.length || 0
+    const newCount = freshIssues.length
+    const hasChanged = !cached || JSON.stringify(freshIssues.map(i => i.key).sort()) !== JSON.stringify((cached.issues || []).map(i => i.key).sort())
+
+    realIssues = freshIssues
+    realProjects = freshProjects
     issuesLoaded = true
+    saveIssuesCache(freshIssues, freshProjects)
+
+    if (cached) {
+      if (hasChanged) {
+        showToast(`이슈 목록이 업데이트되었습니다.`, '✓')
+      } else {
+        showToast('이미 최신 이슈 목록입니다.', '✓')
+      }
+    }
   } catch (e) {
     console.error('이슈 로드 실패:', e)
   }
@@ -1788,6 +1860,8 @@ async function loadWorklogs(year, month) {
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
   if (worklogsLoadedMonths.has(monthKey) || worklogsLoading) return
 
+  const userName = getSavedUser()?.displayName || ''
+
   // 1) 캐시가 있으면 즉시 표시 (stale)
   const cached = getCachedMonth(monthKey)
   if (cached) {
@@ -1796,10 +1870,11 @@ async function loadWorklogs(year, month) {
   }
 
   // 2) API에서 최신 데이터 가져오기 (revalidate)
-  // 캐시 없을 때만 로딩 표시 — 캐시 있으면 백그라운드에서 조용히 갱신
   if (!cached) {
     worklogsLoading = true
     render()
+  } else {
+    showToast(`${userName}님의 작업 기록을 업데이트합니다.`, '🔄')
   }
 
   try {
@@ -1809,19 +1884,30 @@ async function loadWorklogs(year, month) {
 
     const freshLogs = await fetchMyWorklogs(startDate, endDate)
 
+    // 변경 감지
+    const oldEntryCount = cached ? Object.values(cached).flat().length : 0
+    const newEntryCount = Object.values(freshLogs).flat().length
+    const hasChanged = !cached || JSON.stringify(cached) !== JSON.stringify(freshLogs)
+
     // 해당 월의 기존 데이터 제거 후 새 데이터 병합
-    const monthPrefix = monthKey
     for (const key of Object.keys(worklogsByDate)) {
-      if (key.startsWith(monthPrefix)) delete worklogsByDate[key]
+      if (key.startsWith(monthKey)) delete worklogsByDate[key]
     }
     mergeLogs(freshLogs)
     worklogsLoadedMonths.add(monthKey)
 
     // 캐시 갱신
     saveWorklogCache(monthKey, freshLogs)
+
+    if (cached) {
+      if (hasChanged) {
+        showToast('작업 기록이 업데이트되었습니다.', '✓')
+      } else {
+        showToast('이미 최신 작업 기록입니다.', '✓')
+      }
+    }
   } catch (e) {
     console.error('작업 로그 로드 실패:', e)
-    // 실패해도 캐시 데이터는 유지됨
   }
 
   worklogsLoading = false
