@@ -487,7 +487,10 @@ function renderIssuesTab() {
   const isSearchMode = searchResults !== null
 
   if (issuesLoading) {
-    return `<div class="no-session">이슈 목록을 불러오는 중...</div>`
+    return `<div class="loading-container">
+      <div class="loading-spinner"></div>
+      <span class="loading-text">이슈 목록을 불러오는 중</span>
+    </div>`
   }
 
   const projectIssues = getProjectIssues()
@@ -692,7 +695,10 @@ function renderLogDetail() {
     <div class="log-detail">
       <div class="log-detail-header">${formatDateKorean(logDate)}</div>
       ${worklogsLoading && logs.length === 0 ? `
-        <div class="no-session">작업 로그를 불러오는 중...</div>
+        <div class="loading-container">
+          <div class="loading-spinner"></div>
+          <span class="loading-text">작업 로그를 불러오는 중</span>
+        </div>
       ` : logs.length === 0 ? `
         <div class="no-session">이 날짜에 기록된 작업 로그가 없습니다.</div>
       ` : `
