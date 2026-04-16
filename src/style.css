@@ -436,6 +436,12 @@ body {
   flex-shrink: 0;
 }
 
+.issue-type-img {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
 .issue-type-icon.task {
   background: var(--accent-bg);
   color: var(--accent);

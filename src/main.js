@@ -3,6 +3,7 @@ import flatpickr from 'flatpickr'
 import 'flatpickr/dist/flatpickr.min.css'
 import { Korean } from 'flatpickr/dist/l10n/ko.js'
 import { login, logout, isLoggedIn, handleOAuthCallback, fetchCurrentUser, getSavedUser, saveUser } from './auth.js'
+import { fetchMyIssues, fetchProjects } from './jira.js'
 
 // ========== 목업 데이터 ==========
 const MOCK_USER = {
@@ -124,6 +125,12 @@ const MOCK_LOGS_BY_DATE = {
   ],
 }
 
+// ========== 실제 데이터 ==========
+let realIssues = []       // Jira에서 가져온 이슈 목록
+let realProjects = []     // Jira에서 가져온 프로젝트 목록
+let issuesLoading = false
+let issuesLoaded = false
+
 // ========== 상태 ==========
 let currentMainTab = 'issues'
 let currentFilterTab = 'all'
@@ -190,6 +197,16 @@ function getTypeLabel(type) {
 
 function getStatusInfo(status) {
   return ISSUE_STATUSES[status] || { label: status, css: 'todo' }
+}
+
+// Jira statusCategory key → CSS 클래스
+function getStatusCss(categoryKey) {
+  const map = {
+    'new': 'todo',
+    'indeterminate': 'in-progress',
+    'done': 'done',
+  }
+  return map[categoryKey] || 'todo'
 }
 
 function getProjectFromKey(issueKey) {
@@ -296,12 +313,19 @@ function renderHeader() {
 }
 
 function renderProjectSelector() {
+  // 이슈에서 실제 사용되는 프로젝트 키 추출
+  const usedProjectKeys = [...new Set(realIssues.map(i => getProjectFromKey(i.key)))]
+  const projectList = realProjects.length > 0
+    ? realProjects.filter(p => usedProjectKeys.includes(p.key))
+    : PROJECTS.filter(p => p.key !== 'ALL')
+
   return `
     <div class="project-selector">
       <span class="project-selector-label">프로젝트</span>
-      ${PROJECTS.map(p => `
+      <button class="project-chip ${currentProject === 'ALL' ? 'active' : ''}" data-project="ALL">전체</button>
+      ${projectList.map(p => `
         <button class="project-chip ${currentProject === p.key ? 'active' : ''}" data-project="${p.key}">
-          ${p.key === 'ALL' ? p.name : `${p.name} (${p.key})`}
+          ${p.name} (${p.key})
         </button>
       `).join('')}
     </div>
@@ -385,8 +409,12 @@ function renderContent() {
   }
 }
 
+function getActiveIssues() {
+  return issuesLoaded ? realIssues : MOCK_ISSUES
+}
+
 function getFilteredIssues() {
-  let issues = MOCK_ISSUES
+  let issues = getActiveIssues()
   if (currentProject !== 'ALL') {
     issues = issues.filter(i => getProjectFromKey(i.key) === currentProject)
   }
@@ -397,8 +425,9 @@ function getFilteredIssues() {
 }
 
 function getProjectIssues() {
-  if (currentProject === 'ALL') return MOCK_ISSUES
-  return MOCK_ISSUES.filter(i => getProjectFromKey(i.key) === currentProject)
+  const issues = getActiveIssues()
+  if (currentProject === 'ALL') return issues
+  return issues.filter(i => getProjectFromKey(i.key) === currentProject)
 }
 
 function renderIssuesTab() {
@@ -411,6 +440,10 @@ function renderIssuesTab() {
   ]
 
   const filtered = getFilteredIssues()
+
+  if (issuesLoading) {
+    return `<div class="no-session">이슈 목록을 불러오는 중...</div>`
+  }
 
   return `
     ${renderProjectSelector()}
@@ -425,17 +458,22 @@ function renderIssuesTab() {
       ${filtered.length === 0 ? `
         <div class="no-session">해당 조건에 맞는 이슈가 없습니다.</div>
       ` : filtered.map(issue => {
-        const statusInfo = getStatusInfo(issue.status)
+        const statusCss = getStatusCss(issue.statusCategory || issue.status)
+        const statusLabel = issue.statusCategory ? issue.status : getStatusInfo(issue.status).label
+        const typeIcon = issue.typeIconUrl
+          ? `<img class="issue-type-img" src="${issue.typeIconUrl}" alt="${issue.type}" title="${issue.type}" />`
+          : `<span class="issue-type-icon ${issue.type}" title="${getTypeLabel(issue.type)}">${getTypeIcon(issue.type)}</span>`
+        const typeLabel = issue.typeIconUrl ? issue.type : getTypeLabel(issue.type)
         return `
         <div class="issue-row" data-issue-key="${issue.key}">
           <div class="issue-left">
-            <span class="issue-type-icon ${issue.type}" title="${getTypeLabel(issue.type)}">${getTypeIcon(issue.type)}</span>
-            <span class="issue-type-label">${getTypeLabel(issue.type)}</span>
+            ${typeIcon}
+            <span class="issue-type-label">${typeLabel}</span>
             <span class="issue-key">${issue.key}</span>
             <span class="issue-summary">${issue.summary}</span>
           </div>
           <div class="issue-right">
-            <span class="issue-status ${statusInfo.css}">${statusInfo.label}</span>
+            <span class="issue-status ${statusCss}">${statusLabel}</span>
             <span class="issue-tag ${issue.role}">
               ${{ assignee: '할당', reporter: '보고', watcher: '워칭' }[issue.role]}
             </span>
@@ -940,6 +978,29 @@ function startTimerUpdate() {
   }, 1000)
 }
 
+// ========== 데이터 로드 ==========
+async function loadIssues() {
+  if (issuesLoading) return
+  issuesLoading = true
+  render()
+
+  try {
+    const [issues, projects] = await Promise.all([
+      fetchMyIssues(),
+      fetchProjects(),
+    ])
+
+    realIssues = issues
+    realProjects = projects
+    issuesLoaded = true
+  } catch (e) {
+    console.error('이슈 로드 실패:', e)
+  }
+
+  issuesLoading = false
+  render()
+}
+
 // ========== 초기화 ==========
 async function init() {
   applyTheme()
@@ -958,6 +1019,11 @@ async function init() {
   }
 
   render()
+
+  // 로그인 상태면 이슈 목록 로드
+  if (isLoggedIn()) {
+    loadIssues()
+  }
 }
 
 init()
