@@ -694,6 +694,7 @@ function renderCalendarView() {
       <div class="calendar-header">
         <button class="btn btn-sm" id="cal-prev">◀</button>
         <span class="calendar-title">${calendarYear}년 ${calendarMonth + 1}월</span>
+        ${worklogsLoading ? '<span class="calendar-spinner"></span>' : ''}
         <button class="btn btn-sm ${isFutureMonth || isCurrentMonth ? 'btn-disabled' : ''}" id="cal-next" ${isFutureMonth || isCurrentMonth ? 'disabled' : ''}>▶</button>
         ${!(isCurrentMonth && logDate === todayStr) ? `<button class="btn btn-primary btn-sm" id="cal-today">오늘</button>` : ''}
       </div>
