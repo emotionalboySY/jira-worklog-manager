@@ -444,6 +444,7 @@ function formatHoursShort(minutes) {
 
 // ========== 컨텍스트 메뉴 ==========
 let activeContextMenu = null
+let contextMenuCloseHandler = null
 
 function getJiraIssueUrl(issueKey) {
   const siteName = localStorage.getItem('jira_site_name')
@@ -453,6 +454,7 @@ function getJiraIssueUrl(issueKey) {
 
 function showContextMenu(e, issueKey, summary) {
   e.preventDefault()
+  e.stopPropagation()
   hideContextMenu()
 
   const menu = document.createElement('div')
@@ -487,10 +489,11 @@ function showContextMenu(e, issueKey, summary) {
     })
   })
 
-  // 메뉴 외부 클릭 시 닫기
+  // 메뉴 외부 클릭/우클릭 시 닫기
+  contextMenuCloseHandler = () => hideContextMenu()
   setTimeout(() => {
-    document.addEventListener('click', hideContextMenu, { once: true })
-    document.addEventListener('contextmenu', hideContextMenu, { once: true })
+    document.addEventListener('click', contextMenuCloseHandler)
+    document.addEventListener('contextmenu', contextMenuCloseHandler)
   }, 0)
 }
 
@@ -498,6 +501,11 @@ function hideContextMenu() {
   if (activeContextMenu) {
     activeContextMenu.remove()
     activeContextMenu = null
+  }
+  if (contextMenuCloseHandler) {
+    document.removeEventListener('click', contextMenuCloseHandler)
+    document.removeEventListener('contextmenu', contextMenuCloseHandler)
+    contextMenuCloseHandler = null
   }
 }
 
