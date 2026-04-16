@@ -332,7 +332,7 @@ function renderHeader() {
   `
 }
 
-function renderProjectSelector() {
+function renderProjectSelector(isSearchMode = false) {
   // 이슈에서 실제 사용되는 프로젝트 키 추출
   const usedProjectKeys = [...new Set(realIssues.map(i => getProjectFromKey(i.key)))]
   const projectList = realProjects.length > 0
@@ -342,9 +342,9 @@ function renderProjectSelector() {
   return `
     <div class="project-selector">
       <span class="project-selector-label">프로젝트</span>
-      <button class="project-chip ${currentProject === 'ALL' ? 'active' : ''}" data-project="ALL">전체</button>
+      <button class="project-chip ${!isSearchMode && currentProject === 'ALL' ? 'active' : ''}" data-project="ALL">전체</button>
       ${projectList.map(p => `
-        <button class="project-chip ${currentProject === p.key ? 'active' : ''}" data-project="${p.key}">
+        <button class="project-chip ${!isSearchMode && currentProject === p.key ? 'active' : ''}" data-project="${p.key}">
           ${p.name} (${p.key})
         </button>
       `).join('')}
@@ -493,16 +493,16 @@ function renderIssuesTab() {
       ${searchQuery ? `<button class="search-clear" id="search-clear">✕</button>` : ''}
       ${searchLoading ? `<span class="search-spinner"></span>` : ''}
     </div>
-    ${!isSearchMode ? `
-      ${renderProjectSelector()}
-      <div class="filter-row">
-        <div class="filter-tabs">
-          ${filters.map(f => `
-            <button class="filter-tab ${currentFilterTab === f.id ? 'active' : ''}" data-filter="${f.id}">
-              ${f.label}<span class="count">${f.count}</span>
-            </button>
-          `).join('')}
-        </div>
+    ${renderProjectSelector(isSearchMode)}
+    <div class="filter-row">
+      <div class="filter-tabs">
+        ${filters.map(f => `
+          <button class="filter-tab ${!isSearchMode && currentFilterTab === f.id ? 'active' : ''}" data-filter="${f.id}">
+            ${f.label}${!isSearchMode ? `<span class="count">${f.count}</span>` : ''}
+          </button>
+        `).join('')}
+      </div>
+      ${!isSearchMode ? `
         <div class="filter-right">
           <label class="closed-toggle">
             <span class="custom-checkbox ${showClosedIssues ? 'checked' : ''}">
@@ -515,10 +515,9 @@ function renderIssuesTab() {
             ${[10, 20, 30, 50].map(n => `<option value="${n}" ${pageSize === n ? 'selected' : ''}>${n}개씩</option>`).join('')}
           </select>
         </div>
-      </div>
-    ` : `
-      <div class="search-result-info">검색 결과 ${filtered.length}건</div>
-    `}
+      ` : ''}
+    </div>
+    ${isSearchMode ? `<div class="search-result-info">검색 결과 ${filtered.length}건</div>` : ''}
     <div class="issue-list">
       ${filtered.length === 0 ? `
         <div class="no-session">해당 조건에 맞는 이슈가 없습니다.</div>
@@ -867,6 +866,9 @@ function bindEvents() {
       currentProject = chip.dataset.project
       currentFilterTab = 'all'
       currentPage = 1
+      // 검색 모드 해제
+      searchQuery = ''
+      searchResults = null
       render()
     })
   })
@@ -884,6 +886,9 @@ function bindEvents() {
     tab.addEventListener('click', () => {
       currentFilterTab = tab.dataset.filter
       currentPage = 1
+      // 검색 모드 해제
+      searchQuery = ''
+      searchResults = null
       render()
     })
   })
