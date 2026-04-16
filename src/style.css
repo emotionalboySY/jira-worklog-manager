@@ -1362,6 +1362,11 @@ span.flatpickr-weekday {
   opacity: 0.3;
 }
 
+.chart-bar-col.weekend .chart-bar-label {
+  color: var(--red);
+  opacity: 0.7;
+}
+
 .chart-bar {
   width: 100%;
   background: var(--accent);

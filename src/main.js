@@ -836,12 +836,14 @@ function getWeekData(offset) {
     const minutes = getLogMinutes(dateStr)
     const isToday = d.toDateString() === today.toDateString()
     const isFuture = d > today
+    const dow = d.getDay()
     weekData.push({
-      day: days[d.getDay()],
+      day: days[dow],
       date: `${String(d.getMonth() + 1).padStart(2, '0')}월 ${String(d.getDate()).padStart(2, '0')}일`,
       minutes: isFuture ? 0 : minutes,
       today: isToday,
       isFuture,
+      weekend: dow === 0 || dow === 6,
     })
   }
   return { weekData, thursday }
@@ -909,7 +911,7 @@ function renderSummaryTab() {
       <div class="weekly-chart-title">${isCurrentWeek ? '금주' : ''}(${weekMonth}월 ${weekNum}주차) 일별 작업 시간</div>
       <div class="chart-bars">
         ${weekData.map(d => `
-          <div class="chart-bar-col ${d.isFuture ? 'future' : ''}">
+          <div class="chart-bar-col ${d.isFuture ? 'future' : ''} ${d.weekend ? 'weekend' : ''}">
             <span class="chart-bar-value">${d.minutes > 0 ? formatMinutes(d.minutes) : '-'}</span>
             <div class="chart-bar ${d.today ? 'today' : ''}" style="height: ${Math.max((d.minutes / 480) * 100, 2)}%"></div>
             <span class="chart-bar-label">${d.date} (${d.day})</span>
