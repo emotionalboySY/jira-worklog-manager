@@ -1267,8 +1267,11 @@ async function loadWorklogs(year, month) {
   }
 
   // 2) API에서 최신 데이터 가져오기 (revalidate)
-  worklogsLoading = true
-  if (!cached) render() // 캐시 없을 때만 로딩 표시
+  // 캐시 없을 때만 로딩 표시 — 캐시 있으면 백그라운드에서 조용히 갱신
+  if (!cached) {
+    worklogsLoading = true
+    render()
+  }
 
   try {
     const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
