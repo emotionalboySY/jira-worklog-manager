@@ -7,7 +7,7 @@ export async function fetchMyIssues() {
   const fields = 'summary,issuetype,status,priority,reporter,assignee,watches'
   const maxResults = 100
 
-  const data = await jiraFetch(`/search?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=${maxResults}`)
+  const data = await jiraFetch(`/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=${maxResults}`)
   if (!data || !data.issues) return []
 
   // 현재 사용자 정보 (역할 판별용)
