@@ -136,7 +136,20 @@ let currentMainTab = 'issues'
 let currentFilterTab = 'all'
 let currentProject = 'ALL'
 let currentPage = 1
+let showClosedIssues = false
 const PAGE_SIZE = 20
+
+// 상태별 정렬 순서 (낮을수록 위에 표시)
+const STATUS_ORDER = {
+  '진행중': 0,
+  '검토': 1,
+  '배포대기': 2,
+  '준비': 3,
+  '대기': 4,
+  '완료됨': 5,
+  'Closed': 6,
+}
+const CLOSED_STATUSES = ['완료됨', 'Closed']
 let logDate = toDateString(new Date()) // 선택된 날짜
 let logViewMode = 'calendar' // 'calendar' | 'list'
 let calendarYear = new Date().getFullYear()
@@ -415,19 +428,34 @@ function getActiveIssues() {
   return issuesLoaded ? realIssues : MOCK_ISSUES
 }
 
+function sortIssues(issues) {
+  return [...issues].sort((a, b) => {
+    const orderA = STATUS_ORDER[a.status] ?? 99
+    const orderB = STATUS_ORDER[b.status] ?? 99
+    return orderA - orderB
+  })
+}
+
+function filterClosedIssues(issues) {
+  if (showClosedIssues) return issues
+  return issues.filter(i => !CLOSED_STATUSES.includes(i.status))
+}
+
 function getFilteredIssues() {
   let issues = getActiveIssues()
+  issues = filterClosedIssues(issues)
   if (currentProject !== 'ALL') {
     issues = issues.filter(i => getProjectFromKey(i.key) === currentProject)
   }
   if (currentFilterTab !== 'all') {
     issues = issues.filter(i => i.role === currentFilterTab)
   }
-  return issues
+  return sortIssues(issues)
 }
 
 function getProjectIssues() {
-  const issues = getActiveIssues()
+  let issues = getActiveIssues()
+  issues = filterClosedIssues(issues)
   if (currentProject === 'ALL') return issues
   return issues.filter(i => getProjectFromKey(i.key) === currentProject)
 }
@@ -456,6 +484,10 @@ function renderIssuesTab() {
         </button>
       `).join('')}
     </div>
+    <label class="closed-toggle">
+      <input type="checkbox" id="show-closed" ${showClosedIssues ? 'checked' : ''} />
+      <span>완료 또는 보류된 일감 보기</span>
+    </label>
     <div class="issue-list">
       ${filtered.length === 0 ? `
         <div class="no-session">해당 조건에 맞는 이슈가 없습니다.</div>
@@ -824,6 +856,16 @@ function bindEvents() {
       render()
     })
   })
+
+  // 완료/보류 토글
+  const showClosedCheckbox = document.getElementById('show-closed')
+  if (showClosedCheckbox) {
+    showClosedCheckbox.addEventListener('change', (e) => {
+      showClosedIssues = e.target.checked
+      currentPage = 1
+      render()
+    })
+  }
 
   // 페이지네이션
   document.querySelectorAll('[data-page]').forEach(btn => {
