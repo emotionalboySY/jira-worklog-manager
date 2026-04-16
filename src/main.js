@@ -139,7 +139,7 @@ let currentPage = 1
 let showClosedIssues = false
 let pageSize = 20
 
-// 상태별 정렬 순서 (낮을수록 위에 표시)
+// 정렬 순서 (낮을수록 위에 표시)
 const STATUS_ORDER = {
   '진행중': 0,
   '검토': 1,
@@ -149,6 +149,8 @@ const STATUS_ORDER = {
   '완료됨': 5,
   'Closed': 6,
 }
+const PROJECT_ORDER = { 'DK': 0, 'DKT': 1, 'DD': 2, 'RM': 3 }
+const ROLE_ORDER = { 'assignee': 0, 'reporter': 1, 'watcher': 2 }
 const CLOSED_STATUSES = ['완료됨', 'Closed']
 let logDate = toDateString(new Date()) // 선택된 날짜
 let logViewMode = 'calendar' // 'calendar' | 'list'
@@ -430,9 +432,14 @@ function getActiveIssues() {
 
 function sortIssues(issues) {
   return [...issues].sort((a, b) => {
-    const orderA = STATUS_ORDER[a.status] ?? 99
-    const orderB = STATUS_ORDER[b.status] ?? 99
-    return orderA - orderB
+    // 1. 상태순
+    const statusDiff = (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99)
+    if (statusDiff !== 0) return statusDiff
+    // 2. 프로젝트순
+    const projDiff = (PROJECT_ORDER[getProjectFromKey(a.key)] ?? 99) - (PROJECT_ORDER[getProjectFromKey(b.key)] ?? 99)
+    if (projDiff !== 0) return projDiff
+    // 3. 역할순
+    return (ROLE_ORDER[a.role] ?? 99) - (ROLE_ORDER[b.role] ?? 99)
   })
 }
 

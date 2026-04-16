@@ -507,6 +507,9 @@ body {
   font-weight: 600;
   color: var(--text-dim);
   white-space: nowrap;
+  width: 42px;
+  flex-shrink: 0;
+  text-align: center;
 }
 
 .issue-row .issue-key {
