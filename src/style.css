@@ -692,6 +692,33 @@ span.flatpickr-weekday {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12) !important;
 }
 
+/* ========== 페이지네이션 ========== */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 16px;
+  padding: 8px 0;
+}
+
+.pagination button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.pagination-dots {
+  padding: 0 4px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.pagination-info {
+  margin-left: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
 /* ========== 뷰 토글 ========== */
 .log-toolbar {
   display: flex;

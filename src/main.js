@@ -135,6 +135,8 @@ let issuesLoaded = false
 let currentMainTab = 'issues'
 let currentFilterTab = 'all'
 let currentProject = 'ALL'
+let currentPage = 1
+const PAGE_SIZE = 20
 let logDate = toDateString(new Date()) // 선택된 날짜
 let logViewMode = 'calendar' // 'calendar' | 'list'
 let calendarYear = new Date().getFullYear()
@@ -457,7 +459,7 @@ function renderIssuesTab() {
     <div class="issue-list">
       ${filtered.length === 0 ? `
         <div class="no-session">해당 조건에 맞는 이슈가 없습니다.</div>
-      ` : filtered.map(issue => {
+      ` : paginateIssues(filtered).map(issue => {
         const statusCss = getStatusCss(issue.statusCategory || issue.status)
         const statusLabel = issue.statusCategory ? issue.status : getStatusInfo(issue.status).label
         const typeIcon = issue.typeIconUrl
@@ -482,6 +484,39 @@ function renderIssuesTab() {
         </div>
         `
       }).join('')}
+    </div>
+    ${renderPagination(filtered.length)}
+  `
+}
+
+function paginateIssues(issues) {
+  const start = (currentPage - 1) * PAGE_SIZE
+  return issues.slice(start, start + PAGE_SIZE)
+}
+
+function renderPagination(totalItems) {
+  const totalPages = Math.ceil(totalItems / PAGE_SIZE)
+  if (totalPages <= 1) return ''
+
+  const pages = []
+  for (let i = 1; i <= totalPages; i++) {
+    // 처음, 마지막, 현재 주변 2페이지만 표시
+    if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+      pages.push(i)
+    } else if (pages[pages.length - 1] !== '...') {
+      pages.push('...')
+    }
+  }
+
+  return `
+    <div class="pagination">
+      <button class="btn btn-sm" data-page="${currentPage - 1}" ${currentPage <= 1 ? 'disabled' : ''}>◀</button>
+      ${pages.map(p => p === '...'
+        ? `<span class="pagination-dots">...</span>`
+        : `<button class="btn btn-sm ${p === currentPage ? 'btn-primary' : ''}" data-page="${p}">${p}</button>`
+      ).join('')}
+      <button class="btn btn-sm" data-page="${currentPage + 1}" ${currentPage >= totalPages ? 'disabled' : ''}>▶</button>
+      <span class="pagination-info">${totalItems}건</span>
     </div>
   `
 }
@@ -768,6 +803,7 @@ function bindEvents() {
     chip.addEventListener('click', () => {
       currentProject = chip.dataset.project
       currentFilterTab = 'all'
+      currentPage = 1
       render()
     })
   })
@@ -784,7 +820,18 @@ function bindEvents() {
   document.querySelectorAll('.filter-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       currentFilterTab = tab.dataset.filter
+      currentPage = 1
       render()
+    })
+  })
+
+  // 페이지네이션
+  document.querySelectorAll('[data-page]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentPage = parseInt(btn.dataset.page)
+      render()
+      // 이슈 목록 상단으로 스크롤
+      document.querySelector('.issue-list')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     })
   })
 

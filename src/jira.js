@@ -1,21 +1,53 @@
 // ========== Jira API 호출 모듈 ==========
 import { jiraFetch } from './auth.js'
 
-// 내 이슈 조회 (할당됨 / 보고자 / 워칭)
-export async function fetchMyIssues() {
-  const jql = 'assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser() ORDER BY updated DESC'
-  const fields = 'summary,issuetype,status,priority,reporter,assignee,watches'
+const FIELDS = 'summary,issuetype,status,priority,reporter,assignee,watches'
+
+// 모든 페이지 가져오기 (페이지네이션 처리)
+async function fetchAllPages(jql) {
+  const allIssues = []
+  let startAt = 0
   const maxResults = 100
 
-  const data = await jiraFetch(`/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=${maxResults}`)
-  if (!data || !data.issues) return []
+  while (true) {
+    const data = await jiraFetch(
+      `/search/jql?jql=${encodeURIComponent(jql)}&fields=${FIELDS}&maxResults=${maxResults}&startAt=${startAt}`
+    )
+    if (!data || !data.issues) break
+
+    allIssues.push(...data.issues)
+
+    if (allIssues.length >= data.total || data.issues.length < maxResults) break
+    startAt += maxResults
+  }
+
+  return allIssues
+}
+
+// 내 이슈 조회 (할당됨 / 보고자 / 워칭)
+export async function fetchMyIssues() {
+  const myFilter = '(assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser())'
+
+  // 1. 활성 상태 이슈: 모두 가져오기
+  const activeJql = `${myFilter} AND status in ("대기", "준비", "진행중", "검토", "배포대기") ORDER BY updated DESC`
+
+  // 2. 완료/보류 이슈: 최근 1개월 내 업데이트된 것만
+  const closedJql = `${myFilter} AND status in ("완료됨", "Closed") AND updated >= -30d ORDER BY updated DESC`
+
+  // 병렬 조회
+  const [activeIssues, closedIssues] = await Promise.all([
+    fetchAllPages(activeJql),
+    fetchAllPages(closedJql),
+  ])
+
+  const allIssues = [...activeIssues, ...closedIssues]
 
   // 현재 사용자 정보 (역할 판별용)
   const userRaw = localStorage.getItem('jira_user')
   const currentUser = userRaw ? JSON.parse(userRaw) : null
   const myAccountId = currentUser?.accountId
 
-  return data.issues.map(issue => {
+  return allIssues.map(issue => {
     const fields = issue.fields
     const role = determineRole(fields, myAccountId)
 
