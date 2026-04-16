@@ -991,9 +991,9 @@ function renderEditWorklogModal() {
     <div class="modal-overlay" id="edit-worklog-overlay">
       <div class="modal">
         <div class="modal-title">작업 로그 수정</div>
-        <div class="modal-info">
-          <span class="modal-info-label">이슈</span>
-          <span class="modal-info-value">${w.issueKey} ${w.summary}</span>
+        <div class="modal-issue-info">
+          <span class="issue-key">${w.issueKey}</span>
+          <span class="modal-issue-summary">${w.summary}</span>
         </div>
         <div class="modal-field">
           <label class="modal-label">시작 시간</label>
