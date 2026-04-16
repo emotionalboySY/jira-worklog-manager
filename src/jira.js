@@ -83,6 +83,53 @@ export async function fetchIssueTypes() {
   }))
 }
 
+// 이슈 키 검색
+export async function searchIssuesByKey(query, projectKeys) {
+  const userRaw = localStorage.getItem('jira_user')
+  const currentUser = userRaw ? JSON.parse(userRaw) : null
+  const myAccountId = currentUser?.accountId
+
+  let jql
+  const isNumeric = /^\d+$/.test(query.trim())
+
+  if (isNumeric) {
+    // 숫자만 입력: 모든 프로젝트에서 검색
+    const keys = projectKeys.map(p => `"${p}-${query.trim()}"`)
+    jql = `key in (${keys.join(',')}) ORDER BY key ASC`
+  } else {
+    // 프로젝트 키 포함 (예: DKT-123, DKT)
+    const q = query.trim().toUpperCase()
+    if (q.includes('-')) {
+      // 정확한 키 또는 부분 매치
+      jql = `key = "${q}" ORDER BY key ASC`
+    } else {
+      // 프로젝트 접두어만 입력 (예: DKT)
+      jql = `project = "${q}" AND (assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser()) ORDER BY updated DESC`
+    }
+  }
+
+  const data = await jiraFetch(
+    `/search/jql?jql=${encodeURIComponent(jql)}&fields=${FIELDS}&maxResults=20`
+  )
+  if (!data || !data.issues) return []
+
+  return data.issues.map(issue => {
+    const fields = issue.fields
+    const role = determineRole(fields, myAccountId)
+    return {
+      key: issue.key,
+      summary: fields.summary,
+      type: fields.issuetype?.name || '',
+      typeIconUrl: fields.issuetype?.iconUrl || '',
+      status: fields.status?.name || '',
+      statusCategory: fields.status?.statusCategory?.key || 'new',
+      priority: fields.priority?.name || '',
+      priorityIconUrl: fields.priority?.iconUrl || '',
+      role,
+    }
+  })
+}
+
 // 프로젝트 목록 조회
 export async function fetchProjects() {
   const data = await jiraFetch('/project/search?maxResults=50&orderBy=name')

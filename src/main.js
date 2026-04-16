@@ -3,7 +3,7 @@ import flatpickr from 'flatpickr'
 import 'flatpickr/dist/flatpickr.min.css'
 import { Korean } from 'flatpickr/dist/l10n/ko.js'
 import { login, logout, isLoggedIn, handleOAuthCallback, fetchCurrentUser, getSavedUser, saveUser } from './auth.js'
-import { fetchMyIssues, fetchProjects } from './jira.js'
+import { fetchMyIssues, fetchProjects, searchIssuesByKey } from './jira.js'
 
 // ========== 목업 데이터 ==========
 const MOCK_USER = {
@@ -138,6 +138,9 @@ let currentProject = 'ALL'
 let currentPage = 1
 let showClosedIssues = false
 let pageSize = 20
+let searchQuery = ''
+let searchResults = null // null=검색모드 아님, []=검색 결과
+let searchLoading = false
 
 // 정렬 순서 (낮을수록 위에 표시)
 const STATUS_ORDER = {
@@ -468,6 +471,12 @@ function getProjectIssues() {
 }
 
 function renderIssuesTab() {
+  const isSearchMode = searchResults !== null
+
+  if (issuesLoading) {
+    return `<div class="no-session">이슈 목록을 불러오는 중...</div>`
+  }
+
   const projectIssues = getProjectIssues()
   const filters = [
     { id: 'all', label: '전체', count: projectIssues.length },
@@ -476,35 +485,40 @@ function renderIssuesTab() {
     { id: 'watcher', label: '워칭', count: projectIssues.filter(i => i.role === 'watcher').length },
   ]
 
-  const filtered = getFilteredIssues()
-
-  if (issuesLoading) {
-    return `<div class="no-session">이슈 목록을 불러오는 중...</div>`
-  }
+  const filtered = isSearchMode ? searchResults : getFilteredIssues()
 
   return `
-    ${renderProjectSelector()}
-    <div class="filter-row">
-      <div class="filter-tabs">
-        ${filters.map(f => `
-          <button class="filter-tab ${currentFilterTab === f.id ? 'active' : ''}" data-filter="${f.id}">
-            ${f.label}<span class="count">${f.count}</span>
-          </button>
-        `).join('')}
-      </div>
-      <div class="filter-right">
-        <label class="closed-toggle">
-          <span class="custom-checkbox ${showClosedIssues ? 'checked' : ''}">
-            <svg viewBox="0 0 12 12" fill="none"><polyline points="2.5 6 5 8.5 9.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </span>
-          <input type="checkbox" id="show-closed" ${showClosedIssues ? 'checked' : ''} />
-          <span>완료/보류 일감 보기</span>
-        </label>
-        <select class="page-size-select" id="page-size">
-          ${[10, 20, 30, 50].map(n => `<option value="${n}" ${pageSize === n ? 'selected' : ''}>${n}개씩</option>`).join('')}
-        </select>
-      </div>
+    <div class="search-bar">
+      <input type="text" class="search-input" id="issue-search" placeholder="이슈 키 검색 (예: 123, DKT-123)" value="${searchQuery}" />
+      ${searchQuery ? `<button class="search-clear" id="search-clear">✕</button>` : ''}
+      ${searchLoading ? `<span class="search-spinner"></span>` : ''}
     </div>
+    ${!isSearchMode ? `
+      ${renderProjectSelector()}
+      <div class="filter-row">
+        <div class="filter-tabs">
+          ${filters.map(f => `
+            <button class="filter-tab ${currentFilterTab === f.id ? 'active' : ''}" data-filter="${f.id}">
+              ${f.label}<span class="count">${f.count}</span>
+            </button>
+          `).join('')}
+        </div>
+        <div class="filter-right">
+          <label class="closed-toggle">
+            <span class="custom-checkbox ${showClosedIssues ? 'checked' : ''}">
+              <svg viewBox="0 0 12 12" fill="none"><polyline points="2.5 6 5 8.5 9.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <input type="checkbox" id="show-closed" ${showClosedIssues ? 'checked' : ''} />
+            <span>완료/보류 일감 보기</span>
+          </label>
+          <select class="page-size-select" id="page-size">
+            ${[10, 20, 30, 50].map(n => `<option value="${n}" ${pageSize === n ? 'selected' : ''}>${n}개씩</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    ` : `
+      <div class="search-result-info">검색 결과 ${filtered.length}건</div>
+    `}
     <div class="issue-list">
       ${filtered.length === 0 ? `
         <div class="no-session">해당 조건에 맞는 이슈가 없습니다.</div>
@@ -534,7 +548,7 @@ function renderIssuesTab() {
         `
       }).join('')}
     </div>
-    ${renderPagination(filtered.length)}
+    ${!isSearchMode ? renderPagination(filtered.length) : ''}
   `
 }
 
@@ -874,6 +888,46 @@ function bindEvents() {
     })
   })
 
+  // 이슈 검색
+  const searchInput = document.getElementById('issue-search')
+  if (searchInput) {
+    let debounceTimer
+    searchInput.addEventListener('input', (e) => {
+      searchQuery = e.target.value
+      clearTimeout(debounceTimer)
+      if (!searchQuery.trim()) {
+        searchResults = null
+        searchLoading = false
+        render()
+        // 렌더 후 포커스 복원
+        document.getElementById('issue-search')?.focus()
+        return
+      }
+      debounceTimer = setTimeout(() => performSearch(), 500)
+    })
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        clearTimeout(debounceTimer)
+        performSearch()
+      }
+      if (e.key === 'Escape') {
+        searchQuery = ''
+        searchResults = null
+        render()
+      }
+    })
+  }
+
+  const searchClearBtn = document.getElementById('search-clear')
+  if (searchClearBtn) {
+    searchClearBtn.addEventListener('click', () => {
+      searchQuery = ''
+      searchResults = null
+      render()
+      document.getElementById('issue-search')?.focus()
+    })
+  }
+
   // 완료/보류 토글
   const showClosedCheckbox = document.getElementById('show-closed')
   if (showClosedCheckbox) {
@@ -1115,6 +1169,29 @@ async function loadIssues() {
 
   issuesLoading = false
   render()
+}
+
+async function performSearch() {
+  if (!searchQuery.trim()) return
+  searchLoading = true
+  render()
+  // 렌더 후 포커스 복원
+  const input = document.getElementById('issue-search')
+  if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length) }
+
+  try {
+    const projectKeys = realProjects.length > 0
+      ? realProjects.map(p => p.key)
+      : ['DK', 'DKT', 'DD', 'RM']
+    searchResults = await searchIssuesByKey(searchQuery.trim(), projectKeys)
+  } catch (e) {
+    console.error('검색 실패:', e)
+    searchResults = []
+  }
+
+  searchLoading = false
+  render()
+  document.getElementById('issue-search')?.focus()
 }
 
 // ========== 초기화 ==========
