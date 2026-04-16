@@ -28,11 +28,11 @@ async function fetchAllPages(jql) {
 export async function fetchMyIssues() {
   const myFilter = '(assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser())'
 
-  // 1. 활성 상태 이슈: 모두 가져오기
-  const activeJql = `${myFilter} AND status in ("대기", "준비", "진행중", "검토", "배포대기") ORDER BY updated DESC`
+  // 1. 활성 상태 이슈: Done 카테고리가 아닌 모든 이슈
+  const activeJql = `${myFilter} AND statusCategory != "Done" ORDER BY updated DESC`
 
-  // 2. 완료/보류 이슈: 최근 1개월 내 업데이트된 것만
-  const closedJql = `${myFilter} AND status in ("완료됨", "Closed", "보류") AND updated >= -30d ORDER BY updated DESC`
+  // 2. 완료/보류 이슈: Done 카테고리 + 최근 1개월 내 업데이트된 것만
+  const closedJql = `${myFilter} AND statusCategory = "Done" AND updated >= -30d ORDER BY updated DESC`
 
   // 병렬 조회
   const [activeIssues, closedIssues] = await Promise.all([

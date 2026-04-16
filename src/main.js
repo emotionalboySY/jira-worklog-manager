@@ -199,7 +199,7 @@ const STATUS_ORDER = {
 }
 const PROJECT_ORDER = { 'DK': 0, 'DKT': 1, 'DD': 2, 'RM': 3 }
 const ROLE_ORDER = { 'assignee': 0, 'reporter': 1, 'watcher': 2 }
-const CLOSED_STATUSES = ['완료됨', 'Closed', '보류']
+const CLOSED_CATEGORY = 'done'  // Jira statusCategory key
 let logDate = toDateString(new Date()) // 선택된 날짜
 let logViewMode = 'calendar' // 'calendar' | 'list'
 let calendarYear = new Date().getFullYear()
@@ -506,7 +506,7 @@ function sortIssues(issues) {
 
 function filterClosedIssues(issues) {
   if (showClosedIssues) return issues
-  return issues.filter(i => !CLOSED_STATUSES.includes(i.status))
+  return issues.filter(i => i.statusCategory !== CLOSED_CATEGORY)
 }
 
 function getFilteredIssues() {
