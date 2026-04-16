@@ -612,6 +612,13 @@ body {
   opacity: 1;
 }
 
+.session-active-badge {
+  color: var(--green) !important;
+  border-color: var(--green) !important;
+  cursor: default !important;
+  opacity: 1 !important;
+}
+
 /* ========== 날짜 네비게이션 ========== */
 .log-date-nav {
   display: flex;
@@ -1461,6 +1468,13 @@ span.flatpickr-weekday {
   font-size: 13px;
   color: var(--text-bright);
   line-height: 1.4;
+}
+
+.modal-section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 6px;
 }
 
 .modal-input,

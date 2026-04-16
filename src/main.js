@@ -22,7 +22,9 @@ const PROJECTS = [
 const LUNCH_START = 12 * 60 // 12:00 (분 단위)
 const LUNCH_END = 13 * 60   // 13:00 (분 단위)
 
-// ========== 세션 관리 (localStorage) ==========
+// ========== 세션 관리 (localStorage, segments 기반) ==========
+// 세션 구조: { issueKey, summary, status, segments: [{ start, end }] }
+// segments: 실제 작업한 구간 목록. end=null이면 현재 진행 중
 const SESSIONS_KEY = 'work_sessions'
 
 function loadSessions() {
@@ -31,10 +33,9 @@ function loadSessions() {
     if (!raw) return []
     return JSON.parse(raw).map(s => ({
       ...s,
-      startedAt: new Date(s.startedAt),
-      interruptions: (s.interruptions || []).map(i => ({
-        start: new Date(i.start),
-        end: i.end ? new Date(i.end) : null,
+      segments: (s.segments || []).map(seg => ({
+        start: new Date(seg.start),
+        end: seg.end ? new Date(seg.end) : null,
       })),
     }))
   } catch { return [] }
@@ -44,16 +45,36 @@ function saveSessions(sessions) {
   localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
 }
 
+// 현재 active 세션의 마지막 segment를 닫음
+function pauseActiveSession(sessions) {
+  const active = sessions.find(s => s.status === 'active')
+  if (active) {
+    active.status = 'paused'
+    const lastSeg = active.segments[active.segments.length - 1]
+    if (lastSeg && !lastSeg.end) lastSeg.end = new Date()
+  }
+}
+
 function addSession(issueKey, summary) {
   const sessions = loadSessions()
-  // 이미 같은 이슈 세션이 있으면 추가하지 않음
-  if (sessions.some(s => s.issueKey === issueKey)) return false
+  const existing = sessions.find(s => s.issueKey === issueKey)
+  if (existing) {
+    // 이미 세션이 있으면 재개
+    if (existing.status === 'paused') {
+      pauseActiveSession(sessions)
+      existing.status = 'active'
+      existing.segments.push({ start: new Date(), end: null })
+    }
+    saveSessions(sessions)
+    return true
+  }
+  // 기존 active 세션 자동 중단
+  pauseActiveSession(sessions)
   sessions.push({
     issueKey,
     summary,
-    startedAt: new Date(),
     status: 'active',
-    interruptions: [],
+    segments: [{ start: new Date(), end: null }],
   })
   saveSessions(sessions)
   return true
@@ -64,7 +85,8 @@ function pauseSession(issueKey) {
   const s = sessions.find(s => s.issueKey === issueKey)
   if (!s || s.status !== 'active') return
   s.status = 'paused'
-  s.interruptions.push({ start: new Date(), end: null })
+  const lastSeg = s.segments[s.segments.length - 1]
+  if (lastSeg && !lastSeg.end) lastSeg.end = new Date()
   saveSessions(sessions)
 }
 
@@ -72,9 +94,10 @@ function resumeSession(issueKey) {
   const sessions = loadSessions()
   const s = sessions.find(s => s.issueKey === issueKey)
   if (!s || s.status !== 'paused') return
+  // 기존 active 세션 자동 중단
+  pauseActiveSession(sessions)
   s.status = 'active'
-  const lastInt = s.interruptions[s.interruptions.length - 1]
-  if (lastInt && !lastInt.end) lastInt.end = new Date()
+  s.segments.push({ start: new Date(), end: null })
   saveSessions(sessions)
 }
 
@@ -83,16 +106,36 @@ function removeSession(issueKey) {
   saveSessions(sessions)
 }
 
+// 세션의 첫 시작 시각
+function getSessionStartedAt(session) {
+  return session.segments.length > 0 ? session.segments[0].start : new Date()
+}
+
+// 세션 총 활성 시간 (분)
 function getSessionElapsedMinutes(session) {
-  const now = new Date()
-  const totalMs = now.getTime() - session.startedAt.getTime()
-  // 중단 시간 합산
-  let pausedMs = 0
-  for (const i of session.interruptions) {
-    const end = i.end || now
-    pausedMs += end.getTime() - i.start.getTime()
+  let totalMs = 0
+  for (const seg of session.segments) {
+    const end = seg.end || new Date()
+    totalMs += end.getTime() - seg.start.getTime()
   }
-  return Math.floor((totalMs - pausedMs) / 60000)
+  return Math.floor(totalMs / 60000)
+}
+
+// 구간별 정보 (종료 모달용)
+function getSegmentDetails(session) {
+  return session.segments.map(seg => {
+    const start = seg.start
+    const end = seg.end || new Date()
+    const durationMinutes = Math.floor((end.getTime() - start.getTime()) / 60000)
+    const lunchMinutes = calcLunchOverlap(start, end)
+    return {
+      start,
+      end,
+      durationMinutes,
+      lunchMinutes,
+      actualMinutes: Math.max(0, durationMinutes - lunchMinutes),
+    }
+  })
 }
 
 const ISSUE_TYPES = {
@@ -517,7 +560,11 @@ function renderActiveSessions() {
     `
   }
 
-  const cards = sessions.map(session => `
+  const cards = sessions.map(session => {
+    const startedAt = getSessionStartedAt(session)
+    const totalMinutes = getSessionElapsedMinutes(session)
+    const segCount = session.segments.length
+    return `
     <div class="session-card ${session.status}">
       <div class="session-info">
         <div class="session-issue">
@@ -528,12 +575,12 @@ function renderActiveSessions() {
           <span class="session-status ${session.status}">
             ${session.status === 'active' ? '● 진행 중' : '⏸ 중단됨'}
           </span>
-          <span>${session.startedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 시작</span>
+          <span>${startedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 시작${segCount > 1 ? ` · ${segCount}구간` : ''}</span>
         </div>
       </div>
       <div class="session-actions">
-        <span class="session-timer" data-start="${session.startedAt.getTime()}" data-status="${session.status}">
-          ${formatElapsed(session.startedAt)}
+        <span class="session-timer" data-segments='${JSON.stringify(session.segments.map(s => ({ start: s.start.getTime(), end: s.end ? s.end.getTime() : null })))}' data-status="${session.status}">
+          ${formatMinutes(totalMinutes)}
         </span>
         ${session.status === 'active' ? `
           <button class="btn btn-sm" data-action="pause" data-key="${session.issueKey}">중단</button>
@@ -546,7 +593,8 @@ function renderActiveSessions() {
         `}
       </div>
     </div>
-  `).join('')
+    `
+  }).join('')
 
   return `
     <div class="active-sessions">
@@ -628,6 +676,8 @@ function getProjectIssues() {
 
 function renderIssuesTab() {
   const isSearchMode = searchResults !== null
+  const sessions = loadSessions()
+  const sessionMap = new Map(sessions.map(s => [s.issueKey, s.status]))
 
   if (issuesLoading) {
     return `<div class="loading-container">
@@ -700,7 +750,12 @@ function renderIssuesTab() {
             <span class="issue-tag ${issue.role}">
               ${{ assignee: '할당', reporter: '보고', watcher: '워칭' }[issue.role]}
             </span>
-            <button class="btn btn-primary btn-sm btn-start" data-action="start" data-key="${issue.key}">시작</button>
+            ${sessionMap.get(issue.key) === 'active'
+              ? `<span class="btn btn-sm btn-start session-active-badge">진행 중</span>`
+              : sessionMap.has(issue.key)
+                ? `<button class="btn btn-sm btn-start" data-action="start" data-key="${issue.key}">재개</button>`
+                : `<button class="btn btn-primary btn-sm btn-start" data-action="start" data-key="${issue.key}">시작</button>`
+            }
           </div>
         </div>
         `
@@ -1025,17 +1080,13 @@ function renderModal() {
   const session = sessions.find(s => s.issueKey === showModal)
   if (!session) return ''
 
-  const now = new Date()
-  const elapsedMinutes = getSessionElapsedMinutes(session)
-  const lunchMinutes = calcLunchOverlap(session.startedAt, now)
-  // 중단 시간
-  let pausedMs = 0
-  for (const i of session.interruptions) {
-    const end = i.end || now
-    pausedMs += end.getTime() - i.start.getTime()
-  }
-  const pausedMinutes = Math.floor(pausedMs / 60000)
-  const actualMinutes = Math.max(0, elapsedMinutes - lunchMinutes)
+  // 진행 중 세션이면 마지막 구간 닫아서 계산
+  const details = getSegmentDetails(session)
+  const totalActual = details.reduce((sum, d) => sum + d.actualMinutes, 0)
+  const totalLunch = details.reduce((sum, d) => sum + d.lunchMinutes, 0)
+  const totalDuration = details.reduce((sum, d) => sum + d.durationMinutes, 0)
+
+  const fmtTime = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 
   return `
     <div class="modal-overlay" id="modal-overlay">
@@ -1045,25 +1096,16 @@ function renderModal() {
           <span class="issue-key">${session.issueKey}</span>
           <span class="modal-issue-summary">${session.summary}</span>
         </div>
-        <div class="modal-info">
-          <span class="modal-info-label">경과 시간 (중단 제외)</span>
-          <span class="modal-info-value">${formatMinutes(elapsedMinutes)}</span>
-        </div>
-        ${pausedMinutes > 0 ? `
-        <div class="modal-info">
-          <span class="modal-info-label">중단 시간</span>
-          <span class="modal-info-value">${formatMinutes(pausedMinutes)}</span>
-        </div>
-        ` : ''}
-        ${lunchMinutes > 0 ? `
-        <div class="modal-info">
-          <span class="modal-info-label">점심시간 차감 (12:00~13:00)</span>
-          <span class="modal-info-value deducted">-${formatMinutes(lunchMinutes)}</span>
-        </div>
-        ` : ''}
-        <div class="modal-info">
-          <span class="modal-info-label">실 작업 시간</span>
-          <span class="modal-info-value">${formatMinutes(actualMinutes)}</span>
+        <div class="modal-section-label">작업 구간 (${details.length}건)</div>
+        ${details.map((seg, i) => `
+          <div class="modal-info">
+            <span class="modal-info-label">${fmtTime(seg.start)} → ${fmtTime(seg.end)}</span>
+            <span class="modal-info-value">${formatMinutes(seg.durationMinutes)}${seg.lunchMinutes > 0 ? ` <span class="deducted">(-${formatMinutes(seg.lunchMinutes)} 점심)</span>` : ''}</span>
+          </div>
+        `).join('')}
+        <div class="modal-info" style="border-top: 1px solid var(--border); margin-top: 4px; padding-top: 12px;">
+          <span class="modal-info-label">실 작업 시간 합계</span>
+          <span class="modal-info-value">${formatMinutes(totalActual)}</span>
         </div>
         <div class="modal-field">
           <label class="modal-label">작업 내용 (코멘트)</label>
@@ -1470,8 +1512,9 @@ function bindEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
       const key = btn.dataset.key
-      const issues = getActiveIssues()
-      const issue = issues.find(i => i.key === key)
+      // 이슈 목록 또는 검색 결과에서 찾기
+      const allIssues = [...getActiveIssues(), ...(searchResults || [])]
+      const issue = allIssues.find(i => i.key === key)
       if (issue) {
         addSession(key, issue.summary)
         render()
@@ -1535,25 +1578,34 @@ function bindEvents() {
       const session = sessions.find(s => s.issueKey === showModal)
       if (!session) return
 
-      const now = new Date()
-      const actualMinutes = getSessionElapsedMinutes(session)
-      const lunchMinutes = calcLunchOverlap(session.startedAt, now)
-      const timeSpentSeconds = Math.max(0, actualMinutes - lunchMinutes) * 60
+      const details = getSegmentDetails(session)
       const comment = document.getElementById('finish-comment')?.value || ''
 
       // 타임존 오프셋
-      const offset = now.getTimezoneOffset()
+      const offset = new Date().getTimezoneOffset()
       const sign = offset <= 0 ? '+' : '-'
       const absOff = Math.abs(offset)
       const tzStr = `${sign}${String(Math.floor(absOff / 60)).padStart(2, '0')}:${String(absOff % 60).padStart(2, '0')}`
-      const started = `${toDateString(session.startedAt)}T${String(session.startedAt.getHours()).padStart(2, '0')}:${String(session.startedAt.getMinutes()).padStart(2, '0')}:00.000${tzStr}`
 
       try {
-        await createWorklog(session.issueKey, { started, timeSpentSeconds, comment })
+        // 구간별로 worklog 생성
+        for (const seg of details) {
+          if (seg.actualMinutes <= 0) continue
+          const started = `${toDateString(seg.start)}T${String(seg.start.getHours()).padStart(2, '0')}:${String(seg.start.getMinutes()).padStart(2, '0')}:00.000${tzStr}`
+          await createWorklog(session.issueKey, {
+            started,
+            timeSpentSeconds: seg.actualMinutes * 60,
+            comment,
+          })
+        }
         removeSession(session.issueKey)
         showModal = null
-        // 해당 월 캐시 무효화
-        invalidateWorklogMonth(toDateString(session.startedAt))
+        // 관련된 모든 월 캐시 무효화
+        const months = new Set(details.map(d => `${d.start.getFullYear()}-${d.start.getMonth()}`))
+        for (const m of months) {
+          const [y, mo] = m.split('-')
+          invalidateWorklogMonth(toDateString(details[0].start))
+        }
         render()
       } catch (e) {
         console.error('Jira worklog 기록 실패:', e)
@@ -1789,9 +1841,17 @@ function startTimerUpdate() {
   if (timerInterval) clearInterval(timerInterval)
   timerInterval = setInterval(() => {
     document.querySelectorAll('.session-timer').forEach(el => {
-      if (el.dataset.status === 'active') {
-        const start = new Date(parseInt(el.dataset.start))
-        el.textContent = formatElapsed(start)
+      if (el.dataset.status === 'active' && el.dataset.segments) {
+        try {
+          const segments = JSON.parse(el.dataset.segments)
+          let totalMs = 0
+          for (const seg of segments) {
+            const end = seg.end || Date.now()
+            totalMs += end - seg.start
+          }
+          const totalMinutes = Math.floor(totalMs / 60000)
+          el.textContent = formatMinutes(totalMinutes)
+        } catch {}
       }
     })
   }, 1000)
