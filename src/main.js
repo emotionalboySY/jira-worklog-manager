@@ -137,7 +137,7 @@ let currentFilterTab = 'all'
 let currentProject = 'ALL'
 let currentPage = 1
 let showClosedIssues = false
-const PAGE_SIZE = 20
+let pageSize = 20
 
 // 상태별 정렬 순서 (낮을수록 위에 표시)
 const STATUS_ORDER = {
@@ -485,13 +485,18 @@ function renderIssuesTab() {
           </button>
         `).join('')}
       </div>
-      <label class="closed-toggle">
-        <span class="custom-checkbox ${showClosedIssues ? 'checked' : ''}">
-          <svg viewBox="0 0 12 12" fill="none"><polyline points="2.5 6 5 8.5 9.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </span>
-        <input type="checkbox" id="show-closed" ${showClosedIssues ? 'checked' : ''} />
-        <span>완료/보류 일감 보기</span>
-      </label>
+      <div class="filter-right">
+        <label class="closed-toggle">
+          <span class="custom-checkbox ${showClosedIssues ? 'checked' : ''}">
+            <svg viewBox="0 0 12 12" fill="none"><polyline points="2.5 6 5 8.5 9.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <input type="checkbox" id="show-closed" ${showClosedIssues ? 'checked' : ''} />
+          <span>완료/보류 일감 보기</span>
+        </label>
+        <select class="page-size-select" id="page-size">
+          ${[10, 20, 30, 50].map(n => `<option value="${n}" ${pageSize === n ? 'selected' : ''}>${n}개씩</option>`).join('')}
+        </select>
+      </div>
     </div>
     <div class="issue-list">
       ${filtered.length === 0 ? `
@@ -527,12 +532,12 @@ function renderIssuesTab() {
 }
 
 function paginateIssues(issues) {
-  const start = (currentPage - 1) * PAGE_SIZE
-  return issues.slice(start, start + PAGE_SIZE)
+  const start = (currentPage - 1) * pageSize
+  return issues.slice(start, start + pageSize)
 }
 
 function renderPagination(totalItems) {
-  const totalPages = Math.ceil(totalItems / PAGE_SIZE)
+  const totalPages = Math.ceil(totalItems / pageSize)
   if (totalPages <= 1) return ''
 
   const pages = []
@@ -867,6 +872,16 @@ function bindEvents() {
   if (showClosedCheckbox) {
     showClosedCheckbox.addEventListener('change', (e) => {
       showClosedIssues = e.target.checked
+      currentPage = 1
+      render()
+    })
+  }
+
+  // 페이지 사이즈
+  const pageSizeSelect = document.getElementById('page-size')
+  if (pageSizeSelect) {
+    pageSizeSelect.addEventListener('change', (e) => {
+      pageSize = parseInt(e.target.value)
       currentPage = 1
       render()
     })
