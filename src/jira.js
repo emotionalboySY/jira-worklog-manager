@@ -254,6 +254,13 @@ export async function deleteWorklog(issueKey, worklogId) {
   return jiraFetch(`/issue/${issueKey}/worklog/${worklogId}`, { method: 'DELETE' })
 }
 
+// 작업 로그 생성
+export async function createWorklog(issueKey, { started, timeSpentSeconds, comment }) {
+  const body = { started, timeSpentSeconds }
+  if (comment) body.comment = textToAdf(comment)
+  return jiraFetch(`/issue/${issueKey}/worklog`, { method: 'POST', body })
+}
+
 // 프로젝트 목록 조회
 export async function fetchProjects() {
   const data = await jiraFetch('/project/search?maxResults=50&orderBy=name')

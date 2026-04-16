@@ -3,7 +3,7 @@ import flatpickr from 'flatpickr'
 import 'flatpickr/dist/flatpickr.min.css'
 import { Korean } from 'flatpickr/dist/l10n/ko.js'
 import { login, logout, isLoggedIn, handleOAuthCallback, fetchCurrentUser, getSavedUser, saveUser } from './auth.js'
-import { fetchMyIssues, fetchProjects, searchIssuesByKey, fetchMyWorklogs, updateWorklog, deleteWorklog } from './jira.js'
+import { fetchMyIssues, fetchProjects, searchIssuesByKey, fetchMyWorklogs, updateWorklog, deleteWorklog, createWorklog } from './jira.js'
 
 // ========== 목업 데이터 ==========
 const MOCK_USER = {
@@ -22,26 +22,78 @@ const PROJECTS = [
 const LUNCH_START = 12 * 60 // 12:00 (분 단위)
 const LUNCH_END = 13 * 60   // 13:00 (분 단위)
 
-const MOCK_SESSIONS = [
-  {
-    issueKey: 'DKT-926',
-    summary: '[문제은행] 신규활동추가 - 아콘과 대화하기',
-    type: 'task',
-    startedAt: new Date(Date.now() - 83 * 60 * 1000),
+// ========== 세션 관리 (localStorage) ==========
+const SESSIONS_KEY = 'work_sessions'
+
+function loadSessions() {
+  try {
+    const raw = localStorage.getItem(SESSIONS_KEY)
+    if (!raw) return []
+    return JSON.parse(raw).map(s => ({
+      ...s,
+      startedAt: new Date(s.startedAt),
+      interruptions: (s.interruptions || []).map(i => ({
+        start: new Date(i.start),
+        end: i.end ? new Date(i.end) : null,
+      })),
+    }))
+  } catch { return [] }
+}
+
+function saveSessions(sessions) {
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
+}
+
+function addSession(issueKey, summary) {
+  const sessions = loadSessions()
+  // 이미 같은 이슈 세션이 있으면 추가하지 않음
+  if (sessions.some(s => s.issueKey === issueKey)) return false
+  sessions.push({
+    issueKey,
+    summary,
+    startedAt: new Date(),
     status: 'active',
     interruptions: [],
-  },
-  {
-    issueKey: 'DKT-100',
-    summary: '[수업관리자] 학습 리포트 UI 개선',
-    type: 'story',
-    startedAt: new Date(Date.now() - 165 * 60 * 1000),
-    status: 'paused',
-    interruptions: [
-      { start: new Date(Date.now() - 83 * 60 * 1000), end: null },
-    ],
-  },
-]
+  })
+  saveSessions(sessions)
+  return true
+}
+
+function pauseSession(issueKey) {
+  const sessions = loadSessions()
+  const s = sessions.find(s => s.issueKey === issueKey)
+  if (!s || s.status !== 'active') return
+  s.status = 'paused'
+  s.interruptions.push({ start: new Date(), end: null })
+  saveSessions(sessions)
+}
+
+function resumeSession(issueKey) {
+  const sessions = loadSessions()
+  const s = sessions.find(s => s.issueKey === issueKey)
+  if (!s || s.status !== 'paused') return
+  s.status = 'active'
+  const lastInt = s.interruptions[s.interruptions.length - 1]
+  if (lastInt && !lastInt.end) lastInt.end = new Date()
+  saveSessions(sessions)
+}
+
+function removeSession(issueKey) {
+  const sessions = loadSessions().filter(s => s.issueKey !== issueKey)
+  saveSessions(sessions)
+}
+
+function getSessionElapsedMinutes(session) {
+  const now = new Date()
+  const totalMs = now.getTime() - session.startedAt.getTime()
+  // 중단 시간 합산
+  let pausedMs = 0
+  for (const i of session.interruptions) {
+    const end = i.end || now
+    pausedMs += end.getTime() - i.start.getTime()
+  }
+  return Math.floor((totalMs - pausedMs) / 60000)
+}
 
 const ISSUE_TYPES = {
   task:      { icon: '✓', label: '작업' },
@@ -205,10 +257,11 @@ let logViewMode = 'calendar' // 'calendar' | 'list'
 let calendarYear = new Date().getFullYear()
 let calendarMonth = new Date().getMonth() // 0-indexed
 let summaryWeekOffset = 0   // 0=이번 주, -1=지난 주, ...
-let showModal = false
+let showModal = null             // 종료 모달 대상 issueKey
 let showCancelConfirm = null // 취소 확인 대상 issueKey
 let editingWorklog = null    // 수정 중인 워크로그
 let deletingWorklog = null   // 삭제 확인 중인 워크로그
+let showManualLog = false    // 수동 작업 기록 모달
 let theme = localStorage.getItem('theme') || 'dark'
 
 // ========== 테마 초기화 ==========
@@ -351,6 +404,7 @@ function render() {
     ${showCancelConfirm ? renderCancelConfirm() : ''}
     ${editingWorklog ? renderEditWorklogModal() : ''}
     ${deletingWorklog ? renderDeleteWorklogConfirm() : ''}
+    ${showManualLog ? renderManualLogModal() : ''}
   `
   bindEvents()
   startTimerUpdate()
@@ -411,16 +465,18 @@ function renderProjectSelector(isSearchMode = false) {
 }
 
 function renderActiveSessions() {
-  if (MOCK_SESSIONS.length === 0) {
+  const sessions = loadSessions()
+
+  if (sessions.length === 0) {
     return `
       <div class="active-sessions">
-        <div class="section-title">현재 작업</div>
+        <div class="section-title-row"><span class="section-title">현재 작업</span><button class="btn btn-sm" id="btn-manual-log">+ 수동 기록</button></div>
         <div class="no-session">진행 중인 작업이 없습니다. 아래 이슈 목록에서 작업을 시작하세요.</div>
       </div>
     `
   }
 
-  const cards = MOCK_SESSIONS.map(session => `
+  const cards = sessions.map(session => `
     <div class="session-card ${session.status}">
       <div class="session-info">
         <div class="session-issue">
@@ -439,11 +495,12 @@ function renderActiveSessions() {
           ${formatElapsed(session.startedAt)}
         </span>
         ${session.status === 'active' ? `
+          <button class="btn btn-sm" data-action="pause" data-key="${session.issueKey}">중단</button>
           <button class="btn btn-primary btn-sm" data-action="finish" data-key="${session.issueKey}">종료</button>
           <button class="btn btn-danger btn-sm" data-action="cancel" data-key="${session.issueKey}">취소</button>
         ` : `
-          <button class="btn btn-primary btn-sm" data-action="finish" data-key="${session.issueKey}">종료</button>
           <button class="btn btn-sm" data-action="resume" data-key="${session.issueKey}">재개</button>
+          <button class="btn btn-primary btn-sm" data-action="finish" data-key="${session.issueKey}">종료</button>
           <button class="btn btn-danger btn-sm" data-action="cancel" data-key="${session.issueKey}">취소</button>
         `}
       </div>
@@ -452,7 +509,7 @@ function renderActiveSessions() {
 
   return `
     <div class="active-sessions">
-      <div class="section-title">현재 작업</div>
+      <div class="section-title-row"><span class="section-title">현재 작업</span><button class="btn btn-sm" id="btn-manual-log">+ 수동 기록</button></div>
       ${cards}
     </div>
   `
@@ -923,28 +980,40 @@ function renderSummaryTab() {
 }
 
 function renderModal() {
-  // 목업: DKT-926 세션의 종료 모달
-  const session = MOCK_SESSIONS[0]
-  const now = new Date()
-  const elapsedMs = now.getTime() - session.startedAt.getTime()
-  const elapsedMinutes = Math.floor(elapsedMs / 60000)
+  const sessions = loadSessions()
+  const session = sessions.find(s => s.issueKey === showModal)
+  if (!session) return ''
 
-  // 점심시간 자동 계산
+  const now = new Date()
+  const elapsedMinutes = getSessionElapsedMinutes(session)
   const lunchMinutes = calcLunchOverlap(session.startedAt, now)
-  const actualMinutes = elapsedMinutes - lunchMinutes
+  // 중단 시간
+  let pausedMs = 0
+  for (const i of session.interruptions) {
+    const end = i.end || now
+    pausedMs += end.getTime() - i.start.getTime()
+  }
+  const pausedMinutes = Math.floor(pausedMs / 60000)
+  const actualMinutes = Math.max(0, elapsedMinutes - lunchMinutes)
 
   return `
     <div class="modal-overlay" id="modal-overlay">
       <div class="modal">
-        <div class="modal-title">작업 종료 — ${session.issueKey}</div>
+        <div class="modal-title">작업 종료</div>
+        <div class="modal-issue-info">
+          <span class="issue-key">${session.issueKey}</span>
+          <span class="modal-issue-summary">${session.summary}</span>
+        </div>
         <div class="modal-info">
-          <span class="modal-info-label">경과 시간</span>
+          <span class="modal-info-label">경과 시간 (중단 제외)</span>
           <span class="modal-info-value">${formatMinutes(elapsedMinutes)}</span>
         </div>
+        ${pausedMinutes > 0 ? `
         <div class="modal-info">
           <span class="modal-info-label">중단 시간</span>
-          <span class="modal-info-value">0분</span>
+          <span class="modal-info-value">${formatMinutes(pausedMinutes)}</span>
         </div>
+        ` : ''}
         ${lunchMinutes > 0 ? `
         <div class="modal-info">
           <span class="modal-info-label">점심시간 차감 (12:00~13:00)</span>
@@ -957,7 +1026,7 @@ function renderModal() {
         </div>
         <div class="modal-field">
           <label class="modal-label">작업 내용 (코멘트)</label>
-          <textarea class="modal-textarea" placeholder="작업 내용을 입력하세요..."></textarea>
+          <textarea class="modal-textarea" id="finish-comment" placeholder="작업 내용을 입력하세요..."></textarea>
         </div>
         <div class="modal-actions">
           <button class="btn" id="modal-cancel">취소</button>
@@ -1036,6 +1105,47 @@ function renderDeleteWorklogConfirm() {
         <div class="modal-actions">
           <button class="btn" id="delete-worklog-no">취소</button>
           <button class="btn btn-danger" id="delete-worklog-yes">삭제</button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function renderManualLogModal() {
+  const todayStr = toDateString(new Date())
+  const nowTime = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`
+  return `
+    <div class="modal-overlay" id="manual-log-overlay">
+      <div class="modal">
+        <div class="modal-title">수동 작업 기록</div>
+        <div class="modal-field">
+          <label class="modal-label">이슈 키</label>
+          <input type="text" class="modal-input" id="manual-issue-key" placeholder="예: DKT-123" />
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">작업 날짜</label>
+          <input type="date" class="modal-input" id="manual-date" value="${todayStr}" max="${todayStr}" />
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">시작 시간</label>
+          <input type="time" class="modal-input" id="manual-start-time" value="${nowTime}" />
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">소요 시간</label>
+          <div class="duration-inputs">
+            <input type="number" class="modal-input duration-input" id="manual-duration-hours" value="1" min="0" max="23" />
+            <span class="duration-label">시간</span>
+            <input type="number" class="modal-input duration-input" id="manual-duration-mins" value="0" min="0" max="59" />
+            <span class="duration-label">분</span>
+          </div>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">작업 내용</label>
+          <textarea class="modal-textarea" id="manual-comment" placeholder="작업 내용을 입력하세요..."></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="manual-log-cancel">취소</button>
+          <button class="btn btn-primary" id="manual-log-submit">Jira에 기록</button>
         </div>
       </div>
     </div>
@@ -1314,11 +1424,43 @@ function bindEvents() {
     })
   }
 
-  // 작업 종료 버튼
+  // 이슈 목록에서 작업 시작
+  document.querySelectorAll('[data-action="start"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const key = btn.dataset.key
+      const issues = getActiveIssues()
+      const issue = issues.find(i => i.key === key)
+      if (issue) {
+        addSession(key, issue.summary)
+        render()
+      }
+    })
+  })
+
+  // 세션 중단
+  document.querySelectorAll('[data-action="pause"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      pauseSession(btn.dataset.key)
+      render()
+    })
+  })
+
+  // 세션 재개
+  document.querySelectorAll('[data-action="resume"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      resumeSession(btn.dataset.key)
+      render()
+    })
+  })
+
+  // 작업 종료 버튼 → 종료 모달
   document.querySelectorAll('[data-action="finish"]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
-      showModal = true
+      showModal = btn.dataset.key
       render()
     })
   })
@@ -1336,27 +1478,46 @@ function bindEvents() {
   const overlay = document.getElementById('modal-overlay')
   if (overlay) {
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) {
-        showModal = false
-        render()
-      }
+      if (e.target === overlay) { showModal = null; render() }
     })
   }
 
   const modalCancel = document.getElementById('modal-cancel')
   if (modalCancel) {
-    modalCancel.addEventListener('click', () => {
-      showModal = false
-      render()
-    })
+    modalCancel.addEventListener('click', () => { showModal = null; render() })
   }
 
   const modalSubmit = document.getElementById('modal-submit')
   if (modalSubmit) {
-    modalSubmit.addEventListener('click', () => {
-      showModal = false
-      alert('(프로토타입) Jira에 worklog가 기록되었습니다.')
-      render()
+    modalSubmit.addEventListener('click', async () => {
+      const sessions = loadSessions()
+      const session = sessions.find(s => s.issueKey === showModal)
+      if (!session) return
+
+      const now = new Date()
+      const actualMinutes = getSessionElapsedMinutes(session)
+      const lunchMinutes = calcLunchOverlap(session.startedAt, now)
+      const timeSpentSeconds = Math.max(0, actualMinutes - lunchMinutes) * 60
+      const comment = document.getElementById('finish-comment')?.value || ''
+
+      // 타임존 오프셋
+      const offset = now.getTimezoneOffset()
+      const sign = offset <= 0 ? '+' : '-'
+      const absOff = Math.abs(offset)
+      const tzStr = `${sign}${String(Math.floor(absOff / 60)).padStart(2, '0')}:${String(absOff % 60).padStart(2, '0')}`
+      const started = `${toDateString(session.startedAt)}T${String(session.startedAt.getHours()).padStart(2, '0')}:${String(session.startedAt.getMinutes()).padStart(2, '0')}:00.000${tzStr}`
+
+      try {
+        await createWorklog(session.issueKey, { started, timeSpentSeconds, comment })
+        removeSession(session.issueKey)
+        showModal = null
+        // 해당 월 캐시 무효화
+        invalidateWorklogMonth(toDateString(session.startedAt))
+        render()
+      } catch (e) {
+        console.error('Jira worklog 기록 실패:', e)
+        alert('Jira에 worklog 기록에 실패했습니다.')
+      }
     })
   }
 
@@ -1364,27 +1525,73 @@ function bindEvents() {
   const cancelOverlay = document.getElementById('cancel-overlay')
   if (cancelOverlay) {
     cancelOverlay.addEventListener('click', (e) => {
-      if (e.target === cancelOverlay) {
-        showCancelConfirm = null
-        render()
-      }
+      if (e.target === cancelOverlay) { showCancelConfirm = null; render() }
     })
   }
 
   const cancelNo = document.getElementById('cancel-confirm-no')
   if (cancelNo) {
-    cancelNo.addEventListener('click', () => {
-      showCancelConfirm = null
-      render()
-    })
+    cancelNo.addEventListener('click', () => { showCancelConfirm = null; render() })
   }
 
   const cancelYes = document.getElementById('cancel-confirm-yes')
   if (cancelYes) {
     cancelYes.addEventListener('click', () => {
-      alert(`(프로토타입) ${showCancelConfirm} 작업 로깅이 취소되었습니다.`)
+      removeSession(showCancelConfirm)
       showCancelConfirm = null
       render()
+    })
+  }
+
+  // 수동 기록 버튼
+  const manualLogBtn = document.getElementById('btn-manual-log')
+  if (manualLogBtn) {
+    manualLogBtn.addEventListener('click', () => { showManualLog = true; render() })
+  }
+
+  // 수동 기록 모달
+  const manualOverlay = document.getElementById('manual-log-overlay')
+  if (manualOverlay) {
+    manualOverlay.addEventListener('click', (e) => {
+      if (e.target === manualOverlay) { showManualLog = false; render() }
+    })
+  }
+
+  const manualCancel = document.getElementById('manual-log-cancel')
+  if (manualCancel) {
+    manualCancel.addEventListener('click', () => { showManualLog = false; render() })
+  }
+
+  const manualSubmit = document.getElementById('manual-log-submit')
+  if (manualSubmit) {
+    manualSubmit.addEventListener('click', async () => {
+      const issueKey = document.getElementById('manual-issue-key').value.trim().toUpperCase()
+      const date = document.getElementById('manual-date').value
+      const startTime = document.getElementById('manual-start-time').value
+      const hours = parseInt(document.getElementById('manual-duration-hours').value) || 0
+      const mins = parseInt(document.getElementById('manual-duration-mins').value) || 0
+      const comment = document.getElementById('manual-comment').value
+      const totalSeconds = (hours * 60 + mins) * 60
+
+      if (!issueKey) { alert('이슈 키를 입력해주세요.'); return }
+      if (!date || !startTime) { alert('날짜와 시작 시간을 입력해주세요.'); return }
+      if (totalSeconds <= 0) { alert('소요 시간을 입력해주세요.'); return }
+
+      const offset = new Date().getTimezoneOffset()
+      const sign = offset <= 0 ? '+' : '-'
+      const absOff = Math.abs(offset)
+      const tzStr = `${sign}${String(Math.floor(absOff / 60)).padStart(2, '0')}:${String(absOff % 60).padStart(2, '0')}`
+      const started = `${date}T${startTime}:00.000${tzStr}`
+
+      try {
+        await createWorklog(issueKey, { started, timeSpentSeconds: totalSeconds, comment })
+        showManualLog = false
+        invalidateWorklogMonth(date)
+        render()
+      } catch (e) {
+        console.error('수동 작업 기록 실패:', e)
+        alert('작업 기록에 실패했습니다. 이슈 키를 확인해주세요.')
+      }
     })
   }
 
