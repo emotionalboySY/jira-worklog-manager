@@ -838,7 +838,7 @@ function getWeekData(offset) {
     const isFuture = d > today
     weekData.push({
       day: days[d.getDay()],
-      date: `${d.getMonth() + 1}/${d.getDate()}`,
+      date: `${String(d.getMonth() + 1).padStart(2, '0')}월 ${String(d.getDate()).padStart(2, '0')}일`,
       minutes: isFuture ? 0 : minutes,
       today: isToday,
       isFuture,
@@ -912,7 +912,7 @@ function renderSummaryTab() {
           <div class="chart-bar-col ${d.isFuture ? 'future' : ''}">
             <span class="chart-bar-value">${d.minutes > 0 ? formatMinutes(d.minutes) : '-'}</span>
             <div class="chart-bar ${d.today ? 'today' : ''}" style="height: ${Math.max((d.minutes / 480) * 100, 2)}%"></div>
-            <span class="chart-bar-label">${d.day} ${d.date}</span>
+            <span class="chart-bar-label">${d.date} (${d.day})</span>
           </div>
         `).join('')}
       </div>
