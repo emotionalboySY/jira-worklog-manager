@@ -130,6 +130,102 @@ export async function searchIssuesByKey(query, projectKeys) {
   })
 }
 
+// ========== 작업 로그(worklog) 조회 ==========
+
+// ADF(Atlassian Document Format)에서 텍스트 추출
+function extractPlainText(adfDoc) {
+  if (!adfDoc || !adfDoc.content) return ''
+  let text = ''
+  function walk(nodes) {
+    for (const node of nodes) {
+      if (node.type === 'text') text += node.text
+      if (node.content) walk(node.content)
+    }
+  }
+  walk(adfDoc.content)
+  return text
+}
+
+function formatTimeHHMM(date) {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function formatDurationStr(minutes) {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h === 0) return `${m}m`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}m`
+}
+
+function toLocalDateStr(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+// 내 작업 로그 조회 (날짜 범위: "YYYY-MM-DD")
+export async function fetchMyWorklogs(startDate, endDate) {
+  const userRaw = localStorage.getItem('jira_user')
+  const currentUser = userRaw ? JSON.parse(userRaw) : null
+  const myAccountId = currentUser?.accountId
+  if (!myAccountId) return {}
+
+  // 1. 해당 기간에 내가 worklog를 남긴 이슈 검색
+  const jql = `worklogAuthor = currentUser() AND worklogDate >= "${startDate}" AND worklogDate <= "${endDate}" ORDER BY updated DESC`
+  const issues = await fetchAllPages(jql)
+
+  // 2. 각 이슈의 worklog 조회 (병렬)
+  const rangeStart = new Date(startDate + 'T00:00:00')
+  const rangeEnd = new Date(endDate + 'T23:59:59.999')
+  // startedAfter/Before는 exclusive이므로 1ms 조정
+  const startMs = rangeStart.getTime() - 1
+  const endMs = rangeEnd.getTime() + 1
+
+  const worklogsByDate = {}
+
+  await Promise.all(issues.map(async (issue) => {
+    const data = await jiraFetch(
+      `/issue/${issue.key}/worklog?startedAfter=${startMs}&startedBefore=${endMs}`
+    )
+    if (!data || !data.worklogs) return
+
+    data.worklogs
+      .filter(w => {
+        if (w.author?.accountId !== myAccountId) return false
+        const started = new Date(w.started)
+        return started >= rangeStart && started <= rangeEnd
+      })
+      .forEach(w => {
+        const started = new Date(w.started)
+        const dateStr = toLocalDateStr(started)
+        const timeSpentMinutes = Math.round(w.timeSpentSeconds / 60)
+        const endTime = new Date(started.getTime() + w.timeSpentSeconds * 1000)
+
+        const entry = {
+          issueKey: issue.key,
+          summary: issue.fields.summary,
+          startTime: formatTimeHHMM(started),
+          endTime: formatTimeHHMM(endTime),
+          durationMinutes: timeSpentMinutes,
+          duration: formatDurationStr(timeSpentMinutes),
+          comment: extractPlainText(w.comment),
+        }
+
+        if (!worklogsByDate[dateStr]) worklogsByDate[dateStr] = []
+        worklogsByDate[dateStr].push(entry)
+      })
+  }))
+
+  // 각 날짜별 시작시간순 정렬
+  for (const date in worklogsByDate) {
+    worklogsByDate[date].sort((a, b) => a.startTime.localeCompare(b.startTime))
+  }
+
+  return worklogsByDate
+}
+
 // 프로젝트 목록 조회
 export async function fetchProjects() {
   const data = await jiraFetch('/project/search?maxResults=50&orderBy=name')

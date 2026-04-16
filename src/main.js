@@ -3,7 +3,7 @@ import flatpickr from 'flatpickr'
 import 'flatpickr/dist/flatpickr.min.css'
 import { Korean } from 'flatpickr/dist/l10n/ko.js'
 import { login, logout, isLoggedIn, handleOAuthCallback, fetchCurrentUser, getSavedUser, saveUser } from './auth.js'
-import { fetchMyIssues, fetchProjects, searchIssuesByKey } from './jira.js'
+import { fetchMyIssues, fetchProjects, searchIssuesByKey, fetchMyWorklogs } from './jira.js'
 
 // ========== 목업 데이터 ==========
 const MOCK_USER = {
@@ -131,6 +131,11 @@ let realProjects = []     // Jira에서 가져온 프로젝트 목록
 let issuesLoading = false
 let issuesLoaded = false
 
+// 작업 로그 데이터
+let worklogsByDate = {}           // { 'YYYY-MM-DD': [{ issueKey, summary, startTime, endTime, duration, durationMinutes, comment }] }
+let worklogsLoading = false
+let worklogsLoadedMonths = new Set()  // 로드 완료된 월 ("YYYY-MM" 형식)
+
 // ========== 상태 ==========
 let currentMainTab = 'issues'
 let currentFilterTab = 'all'
@@ -250,9 +255,17 @@ function formatMinutes(totalMinutes) {
   return `${h}시간 ${m}분`
 }
 
+function getActiveLogs(dateStr) {
+  if (issuesLoaded) {
+    return worklogsByDate[dateStr] || []
+  }
+  return MOCK_LOGS_BY_DATE[dateStr] || []
+}
+
 function getLogMinutes(dateStr) {
-  const logs = MOCK_LOGS_BY_DATE[dateStr] || []
+  const logs = getActiveLogs(dateStr)
   return logs.reduce((sum, log) => {
+    if (log.durationMinutes != null) return sum + log.durationMinutes
     const parts = log.duration.match(/(\d+)h|(\d+)m/g) || []
     let mins = 0
     parts.forEach(p => {
@@ -672,13 +685,15 @@ function renderListView() {
 }
 
 function renderLogDetail() {
-  const logs = MOCK_LOGS_BY_DATE[logDate] || []
+  const logs = getActiveLogs(logDate)
   const totalMinutes = getLogMinutes(logDate)
 
   return `
     <div class="log-detail">
       <div class="log-detail-header">${formatDateKorean(logDate)}</div>
-      ${logs.length === 0 ? `
+      ${worklogsLoading && logs.length === 0 ? `
+        <div class="no-session">작업 로그를 불러오는 중...</div>
+      ` : logs.length === 0 ? `
         <div class="no-session">이 날짜에 기록된 작업 로그가 없습니다.</div>
       ` : `
         <div class="log-list">
@@ -691,7 +706,7 @@ function renderLogDetail() {
                 <span class="issue-summary">${log.summary}</span>
               </div>
               ${log.lunchDeducted > 0 ? `<span class="log-lunch-badge">점심 -${log.lunchDeducted}분</span>` : ''}
-              <span class="log-comment">${log.comment}</span>
+              ${log.comment ? `<span class="log-comment">${log.comment}</span>` : ''}
             </div>
           `).join('')}
         </div>
@@ -877,6 +892,9 @@ function bindEvents() {
   document.querySelectorAll('.main-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       currentMainTab = tab.dataset.mainTab
+      if (tab.dataset.mainTab === 'logs' && isLoggedIn() && issuesLoaded) {
+        loadWorklogs(calendarYear, calendarMonth)
+      }
       render()
     })
   })
@@ -977,6 +995,7 @@ function bindEvents() {
     calPrev.addEventListener('click', () => {
       calendarMonth--
       if (calendarMonth < 0) { calendarMonth = 11; calendarYear-- }
+      if (isLoggedIn() && issuesLoaded) loadWorklogs(calendarYear, calendarMonth)
       render()
     })
   }
@@ -991,6 +1010,7 @@ function bindEvents() {
       if (nextYear < now.getFullYear() || (nextYear === now.getFullYear() && nm <= now.getMonth())) {
         calendarMonth = nm
         calendarYear = nextYear
+        if (isLoggedIn() && issuesLoaded) loadWorklogs(calendarYear, calendarMonth)
         render()
       }
     })
@@ -1003,6 +1023,7 @@ function bindEvents() {
       calendarYear = now.getFullYear()
       calendarMonth = now.getMonth()
       logDate = toDateString(now)
+      if (isLoggedIn() && issuesLoaded) loadWorklogs(calendarYear, calendarMonth)
       render()
     })
   }
@@ -1020,6 +1041,8 @@ function bindEvents() {
   if (logPrev) {
     logPrev.addEventListener('click', () => {
       logDate = shiftDate(logDate, -1)
+      const d = new Date(logDate + 'T00:00:00')
+      if (isLoggedIn() && issuesLoaded) loadWorklogs(d.getFullYear(), d.getMonth())
       render()
     })
   }
@@ -1030,6 +1053,8 @@ function bindEvents() {
       const next = shiftDate(logDate, 1)
       if (next <= toDateString(new Date())) {
         logDate = next
+        const d = new Date(logDate + 'T00:00:00')
+        if (isLoggedIn() && issuesLoaded) loadWorklogs(d.getFullYear(), d.getMonth())
         render()
       }
     })
@@ -1039,6 +1064,8 @@ function bindEvents() {
   if (logToday) {
     logToday.addEventListener('click', () => {
       logDate = toDateString(new Date())
+      const d = new Date(logDate + 'T00:00:00')
+      if (isLoggedIn() && issuesLoaded) loadWorklogs(d.getFullYear(), d.getMonth())
       render()
     })
   }
@@ -1173,6 +1200,34 @@ async function loadIssues() {
   }
 
   issuesLoading = false
+  render()
+
+  // 로그 탭이 활성 상태이면 worklog도 로드
+  if (issuesLoaded && currentMainTab === 'logs') {
+    loadWorklogs(calendarYear, calendarMonth)
+  }
+}
+
+async function loadWorklogs(year, month) {
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
+  if (worklogsLoadedMonths.has(monthKey) || worklogsLoading) return
+
+  worklogsLoading = true
+  render()
+
+  try {
+    const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
+    const lastDay = new Date(year, month + 1, 0).getDate()
+    const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+
+    const logs = await fetchMyWorklogs(startDate, endDate)
+    Object.assign(worklogsByDate, logs)
+    worklogsLoadedMonths.add(monthKey)
+  } catch (e) {
+    console.error('작업 로그 로드 실패:', e)
+  }
+
+  worklogsLoading = false
   render()
 }
 
