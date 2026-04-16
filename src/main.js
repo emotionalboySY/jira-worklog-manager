@@ -477,17 +477,22 @@ function renderIssuesTab() {
 
   return `
     ${renderProjectSelector()}
-    <div class="filter-tabs">
-      ${filters.map(f => `
-        <button class="filter-tab ${currentFilterTab === f.id ? 'active' : ''}" data-filter="${f.id}">
-          ${f.label}<span class="count">${f.count}</span>
-        </button>
-      `).join('')}
+    <div class="filter-row">
+      <div class="filter-tabs">
+        ${filters.map(f => `
+          <button class="filter-tab ${currentFilterTab === f.id ? 'active' : ''}" data-filter="${f.id}">
+            ${f.label}<span class="count">${f.count}</span>
+          </button>
+        `).join('')}
+      </div>
+      <label class="closed-toggle">
+        <span class="custom-checkbox ${showClosedIssues ? 'checked' : ''}">
+          <svg viewBox="0 0 12 12" fill="none"><polyline points="2.5 6 5 8.5 9.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <input type="checkbox" id="show-closed" ${showClosedIssues ? 'checked' : ''} />
+        <span>완료/보류 일감 보기</span>
+      </label>
     </div>
-    <label class="closed-toggle">
-      <input type="checkbox" id="show-closed" ${showClosedIssues ? 'checked' : ''} />
-      <span>완료 또는 보류된 일감 보기</span>
-    </label>
     <div class="issue-list">
       ${filtered.length === 0 ? `
         <div class="no-session">해당 조건에 맞는 이슈가 없습니다.</div>
