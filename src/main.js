@@ -134,7 +134,47 @@ let issuesLoaded = false
 // 작업 로그 데이터
 let worklogsByDate = {}           // { 'YYYY-MM-DD': [{ issueKey, summary, startTime, endTime, duration, durationMinutes, comment }] }
 let worklogsLoading = false
-let worklogsLoadedMonths = new Set()  // 로드 완료된 월 ("YYYY-MM" 형식)
+let worklogsLoadedMonths = new Set()  // API 로드 완료된 월 ("YYYY-MM" 형식)
+
+const WORKLOG_CACHE_KEY = 'worklog_cache'
+const WORKLOG_CACHE_MAX_MONTHS = 3
+
+// ========== 워크로그 캐시 ==========
+function loadWorklogCache() {
+  try {
+    const raw = localStorage.getItem(WORKLOG_CACHE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch { return null }
+}
+
+function saveWorklogCache(monthKey, logs) {
+  const cache = loadWorklogCache() || { months: {} }
+  // 해당 월 데이터 저장
+  cache.months[monthKey] = { data: logs, savedAt: Date.now() }
+  // 최근 N개월만 유지 — 오래된 월 삭제
+  const keys = Object.keys(cache.months).sort()
+  while (keys.length > WORKLOG_CACHE_MAX_MONTHS) {
+    delete cache.months[keys.shift()]
+  }
+  try {
+    localStorage.setItem(WORKLOG_CACHE_KEY, JSON.stringify(cache))
+  } catch (e) {
+    console.warn('워크로그 캐시 저장 실패:', e)
+  }
+}
+
+function getCachedMonth(monthKey) {
+  const cache = loadWorklogCache()
+  return cache?.months?.[monthKey]?.data || null
+}
+
+// 캐시 데이터를 worklogsByDate에 병합
+function mergeLogs(logs) {
+  for (const [date, entries] of Object.entries(logs)) {
+    worklogsByDate[date] = entries
+  }
+}
 
 // ========== 상태 ==========
 let currentMainTab = 'issues'
@@ -1218,19 +1258,37 @@ async function loadWorklogs(year, month) {
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
   if (worklogsLoadedMonths.has(monthKey) || worklogsLoading) return
 
+  // 1) 캐시가 있으면 즉시 표시 (stale)
+  const cached = getCachedMonth(monthKey)
+  if (cached) {
+    mergeLogs(cached)
+    render()
+  }
+
+  // 2) API에서 최신 데이터 가져오기 (revalidate)
   worklogsLoading = true
-  render()
+  if (!cached) render() // 캐시 없을 때만 로딩 표시
 
   try {
     const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
     const lastDay = new Date(year, month + 1, 0).getDate()
     const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-    const logs = await fetchMyWorklogs(startDate, endDate)
-    Object.assign(worklogsByDate, logs)
+    const freshLogs = await fetchMyWorklogs(startDate, endDate)
+
+    // 해당 월의 기존 데이터 제거 후 새 데이터 병합
+    const monthPrefix = monthKey
+    for (const key of Object.keys(worklogsByDate)) {
+      if (key.startsWith(monthPrefix)) delete worklogsByDate[key]
+    }
+    mergeLogs(freshLogs)
     worklogsLoadedMonths.add(monthKey)
+
+    // 캐시 갱신
+    saveWorklogCache(monthKey, freshLogs)
   } catch (e) {
     console.error('작업 로그 로드 실패:', e)
+    // 실패해도 캐시 데이터는 유지됨
   }
 
   worklogsLoading = false
