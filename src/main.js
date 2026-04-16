@@ -3,7 +3,7 @@ import flatpickr from 'flatpickr'
 import 'flatpickr/dist/flatpickr.min.css'
 import { Korean } from 'flatpickr/dist/l10n/ko.js'
 import { login, logout, isLoggedIn, handleOAuthCallback, fetchCurrentUser, getSavedUser, saveUser } from './auth.js'
-import { fetchMyIssues, fetchProjects, searchIssuesByKey, fetchMyWorklogs } from './jira.js'
+import { fetchMyIssues, fetchProjects, searchIssuesByKey, fetchMyWorklogs, updateWorklog, deleteWorklog } from './jira.js'
 
 // ========== 목업 데이터 ==========
 const MOCK_USER = {
@@ -206,6 +206,8 @@ let calendarYear = new Date().getFullYear()
 let calendarMonth = new Date().getMonth() // 0-indexed
 let showModal = false
 let showCancelConfirm = null // 취소 확인 대상 issueKey
+let editingWorklog = null    // 수정 중인 워크로그
+let deletingWorklog = null   // 삭제 확인 중인 워크로그
 let theme = localStorage.getItem('theme') || 'dark'
 
 // ========== 테마 초기화 ==========
@@ -346,6 +348,8 @@ function render() {
     ${renderContent()}
     ${showModal ? renderModal() : ''}
     ${showCancelConfirm ? renderCancelConfirm() : ''}
+    ${editingWorklog ? renderEditWorklogModal() : ''}
+    ${deletingWorklog ? renderDeleteWorklogConfirm() : ''}
   `
   bindEvents()
   startTimerUpdate()
@@ -767,7 +771,7 @@ function renderLogDetail() {
         <div class="no-session">이 날짜에 기록된 작업 로그가 없습니다.</div>
       ` : `
         <div class="log-list">
-          ${logs.map(log => `
+          ${logs.map((log, idx) => `
             <div class="log-row">
               <span class="log-time-range">${log.startTime} → ${log.endTime}</span>
               <span class="log-duration">${log.durationMinutes != null ? formatMinutes(log.durationMinutes) : log.duration}</span>
@@ -779,6 +783,12 @@ function renderLogDetail() {
                 </div>
                 ${log.comment ? `<span class="log-comment">${log.comment}</span>` : ''}
               </div>
+              ${log.worklogId ? `
+                <div class="log-actions">
+                  <button class="btn btn-sm" data-action="edit-log" data-idx="${idx}">수정</button>
+                  <button class="btn btn-sm btn-danger" data-action="delete-log" data-idx="${idx}">삭제</button>
+                </div>
+              ` : ''}
             </div>
           `).join('')}
         </div>
@@ -928,6 +938,78 @@ function renderCancelConfirm() {
       </div>
     </div>
   `
+}
+
+function renderEditWorklogModal() {
+  if (!editingWorklog) return ''
+  const w = editingWorklog
+  return `
+    <div class="modal-overlay" id="edit-worklog-overlay">
+      <div class="modal">
+        <div class="modal-title">작업 로그 수정</div>
+        <div class="modal-info">
+          <span class="modal-info-label">이슈</span>
+          <span class="modal-info-value">${w.issueKey} ${w.summary}</span>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">시작 시간</label>
+          <input type="time" class="modal-input" id="edit-start-time" value="${w.startTime}" />
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">소요 시간</label>
+          <div class="duration-inputs">
+            <input type="number" class="modal-input duration-input" id="edit-duration-hours" value="${w.durationHours}" min="0" max="23" />
+            <span class="duration-label">시간</span>
+            <input type="number" class="modal-input duration-input" id="edit-duration-mins" value="${w.durationMins}" min="0" max="59" />
+            <span class="duration-label">분</span>
+          </div>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">작업 내용</label>
+          <textarea class="modal-textarea" id="edit-comment">${w.comment || ''}</textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="edit-worklog-cancel">취소</button>
+          <button class="btn btn-primary" id="edit-worklog-submit">저장</button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function renderDeleteWorklogConfirm() {
+  if (!deletingWorklog) return ''
+  return `
+    <div class="modal-overlay" id="delete-worklog-overlay">
+      <div class="modal">
+        <div class="modal-title">작업 로그 삭제</div>
+        <p style="color: var(--text); margin-bottom: 20px;">
+          <strong style="color: var(--text-bright);">${deletingWorklog.issueKey}</strong>의 작업 로그를 삭제하시겠습니까?<br>
+          <span style="color: var(--text-dim); font-size: 12px;">삭제된 작업 로그는 복구할 수 없습니다.</span>
+        </p>
+        <div class="modal-actions">
+          <button class="btn" id="delete-worklog-no">취소</button>
+          <button class="btn btn-danger" id="delete-worklog-yes">삭제</button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function invalidateWorklogMonth(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00')
+  const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  worklogsLoadedMonths.delete(monthKey)
+  for (const key of Object.keys(worklogsByDate)) {
+    if (key.startsWith(monthKey)) delete worklogsByDate[key]
+  }
+  // localStorage 캐시도 제거
+  const cache = loadWorklogCache()
+  if (cache?.months?.[monthKey]) {
+    delete cache.months[monthKey]
+    try { localStorage.setItem(WORKLOG_CACHE_KEY, JSON.stringify(cache)) } catch {}
+  }
+  loadWorklogs(d.getFullYear(), d.getMonth())
 }
 
 // ========== 이벤트 바인딩 ==========
@@ -1254,6 +1336,118 @@ function bindEvents() {
       alert(`(프로토타입) ${showCancelConfirm} 작업 로깅이 취소되었습니다.`)
       showCancelConfirm = null
       render()
+    })
+  }
+
+  // 작업 로그 수정 버튼
+  document.querySelectorAll('[data-action="edit-log"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const idx = parseInt(btn.dataset.idx)
+      const logs = getActiveLogs(logDate)
+      const log = logs[idx]
+      if (!log?.worklogId) return
+      editingWorklog = {
+        worklogId: log.worklogId,
+        issueKey: log.issueKey,
+        summary: log.summary,
+        startTime: log.startTime,
+        durationHours: Math.floor(log.durationMinutes / 60),
+        durationMins: log.durationMinutes % 60,
+        comment: log.comment || '',
+        date: logDate,
+      }
+      render()
+    })
+  })
+
+  // 작업 로그 삭제 버튼
+  document.querySelectorAll('[data-action="delete-log"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const idx = parseInt(btn.dataset.idx)
+      const logs = getActiveLogs(logDate)
+      const log = logs[idx]
+      if (!log?.worklogId) return
+      deletingWorklog = {
+        worklogId: log.worklogId,
+        issueKey: log.issueKey,
+        summary: log.summary,
+      }
+      render()
+    })
+  })
+
+  // 수정 모달
+  const editOverlay = document.getElementById('edit-worklog-overlay')
+  if (editOverlay) {
+    editOverlay.addEventListener('click', (e) => {
+      if (e.target === editOverlay) { editingWorklog = null; render() }
+    })
+  }
+
+  const editCancel = document.getElementById('edit-worklog-cancel')
+  if (editCancel) {
+    editCancel.addEventListener('click', () => { editingWorklog = null; render() })
+  }
+
+  const editSubmit = document.getElementById('edit-worklog-submit')
+  if (editSubmit) {
+    editSubmit.addEventListener('click', async () => {
+      const startTime = document.getElementById('edit-start-time').value
+      const hours = parseInt(document.getElementById('edit-duration-hours').value) || 0
+      const mins = parseInt(document.getElementById('edit-duration-mins').value) || 0
+      const comment = document.getElementById('edit-comment').value
+      const totalSeconds = (hours * 60 + mins) * 60
+
+      if (totalSeconds <= 0) { alert('소요 시간을 입력해주세요.'); return }
+
+      const offset = new Date().getTimezoneOffset()
+      const sign = offset <= 0 ? '+' : '-'
+      const absOff = Math.abs(offset)
+      const tzStr = `${sign}${String(Math.floor(absOff / 60)).padStart(2, '0')}:${String(absOff % 60).padStart(2, '0')}`
+      const started = `${editingWorklog.date}T${startTime}:00.000${tzStr}`
+
+      try {
+        await updateWorklog(editingWorklog.issueKey, editingWorklog.worklogId, {
+          started,
+          timeSpentSeconds: totalSeconds,
+          comment,
+        })
+        const savedDate = editingWorklog.date
+        editingWorklog = null
+        invalidateWorklogMonth(savedDate)
+      } catch (e) {
+        console.error('작업 로그 수정 실패:', e)
+        alert('작업 로그 수정에 실패했습니다.')
+      }
+    })
+  }
+
+  // 삭제 확인 모달
+  const deleteOverlay = document.getElementById('delete-worklog-overlay')
+  if (deleteOverlay) {
+    deleteOverlay.addEventListener('click', (e) => {
+      if (e.target === deleteOverlay) { deletingWorklog = null; render() }
+    })
+  }
+
+  const deleteNo = document.getElementById('delete-worklog-no')
+  if (deleteNo) {
+    deleteNo.addEventListener('click', () => { deletingWorklog = null; render() })
+  }
+
+  const deleteYes = document.getElementById('delete-worklog-yes')
+  if (deleteYes) {
+    deleteYes.addEventListener('click', async () => {
+      try {
+        await deleteWorklog(deletingWorklog.issueKey, deletingWorklog.worklogId)
+        deletingWorklog = null
+        invalidateWorklogMonth(logDate)
+      } catch (e) {
+        console.error('작업 로그 삭제 실패:', e)
+        alert('작업 로그 삭제에 실패했습니다.')
+      }
     })
   }
 }

@@ -1225,6 +1225,36 @@ span.flatpickr-weekday {
   flex-shrink: 0;
 }
 
+.log-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.log-row:hover .log-actions {
+  opacity: 1;
+}
+
+/* ========== 소요 시간 입력 ========== */
+.duration-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.duration-input {
+  width: 64px;
+  text-align: center;
+}
+
+.duration-label {
+  font-size: 13px;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
 .log-summary {
   margin-top: 16px;
   padding: 14px 18px;

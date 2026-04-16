@@ -227,6 +227,33 @@ export async function fetchMyWorklogs(startDate, endDate) {
   return worklogsByDate
 }
 
+// 텍스트를 ADF(Atlassian Document Format)로 변환
+function textToAdf(text) {
+  if (!text) return { type: 'doc', version: 1, content: [] }
+  return {
+    type: 'doc',
+    version: 1,
+    content: [{
+      type: 'paragraph',
+      content: [{ type: 'text', text }],
+    }],
+  }
+}
+
+// 작업 로그 수정
+export async function updateWorklog(issueKey, worklogId, { started, timeSpentSeconds, comment }) {
+  const body = {}
+  if (started) body.started = started
+  if (timeSpentSeconds) body.timeSpentSeconds = timeSpentSeconds
+  if (comment != null) body.comment = textToAdf(comment)
+  return jiraFetch(`/issue/${issueKey}/worklog/${worklogId}`, { method: 'PUT', body })
+}
+
+// 작업 로그 삭제
+export async function deleteWorklog(issueKey, worklogId) {
+  return jiraFetch(`/issue/${issueKey}/worklog/${worklogId}`, { method: 'DELETE' })
+}
+
 // 프로젝트 목록 조회
 export async function fetchProjects() {
   const data = await jiraFetch('/project/search?maxResults=50&orderBy=name')
