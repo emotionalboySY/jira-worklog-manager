@@ -693,7 +693,30 @@ function renderCalendarView() {
     <div class="calendar">
       <div class="calendar-header">
         <button class="btn btn-sm" id="cal-prev">◀</button>
-        <span class="calendar-title">${calendarYear}년 ${calendarMonth + 1}월</span>
+        <div class="calendar-selectors">
+          <select class="calendar-select" id="cal-year">
+            ${(() => {
+              const nowY = new Date().getFullYear()
+              let opts = ''
+              for (let y = nowY - 2; y <= nowY; y++) {
+                opts += `<option value="${y}" ${y === calendarYear ? 'selected' : ''}>${y}년</option>`
+              }
+              return opts
+            })()}
+          </select>
+          <select class="calendar-select" id="cal-month">
+            ${(() => {
+              const nowY = new Date().getFullYear()
+              const nowM = new Date().getMonth()
+              let opts = ''
+              for (let m = 0; m < 12; m++) {
+                const disabled = calendarYear === nowY && m > nowM
+                opts += `<option value="${m}" ${m === calendarMonth ? 'selected' : ''} ${disabled ? 'disabled' : ''}>${m + 1}월</option>`
+              }
+              return opts
+            })()}
+          </select>
+        </div>
         ${worklogsLoading ? '<span class="calendar-spinner"></span>' : ''}
         <button class="btn btn-sm ${isFutureMonth || isCurrentMonth ? 'btn-disabled' : ''}" id="cal-next" ${isFutureMonth || isCurrentMonth ? 'disabled' : ''}>▶</button>
         ${!(isCurrentMonth && logDate === todayStr) ? `<button class="btn btn-primary btn-sm" id="cal-today">오늘</button>` : ''}
@@ -1035,6 +1058,30 @@ function bindEvents() {
       render()
     })
   })
+
+  // 달력 년/월 직접 선택
+  const calYearSelect = document.getElementById('cal-year')
+  if (calYearSelect) {
+    calYearSelect.addEventListener('change', (e) => {
+      calendarYear = parseInt(e.target.value)
+      // 미래 월 보정
+      const now = new Date()
+      if (calendarYear === now.getFullYear() && calendarMonth > now.getMonth()) {
+        calendarMonth = now.getMonth()
+      }
+      if (isLoggedIn() && issuesLoaded) loadWorklogs(calendarYear, calendarMonth)
+      render()
+    })
+  }
+
+  const calMonthSelect = document.getElementById('cal-month')
+  if (calMonthSelect) {
+    calMonthSelect.addEventListener('change', (e) => {
+      calendarMonth = parseInt(e.target.value)
+      if (isLoggedIn() && issuesLoaded) loadWorklogs(calendarYear, calendarMonth)
+      render()
+    })
+  }
 
   // 달력 월 네비게이션
   const calPrev = document.getElementById('cal-prev')

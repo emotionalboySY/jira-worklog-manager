@@ -985,6 +985,52 @@ span.flatpickr-weekday {
   margin-bottom: 16px;
 }
 
+.calendar-selectors {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.calendar-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 4px 22px 4px 10px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--text-bright);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+}
+
+.calendar-select:hover {
+  border-color: var(--border);
+  background-color: var(--bg-hover);
+}
+
+.calendar-select:focus {
+  border-color: var(--accent);
+}
+
+.calendar-select option {
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.calendar-select option:disabled {
+  color: var(--text-dim);
+  opacity: 0.5;
+}
+
 .calendar-spinner {
   width: 16px;
   height: 16px;
