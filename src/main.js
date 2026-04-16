@@ -801,73 +801,103 @@ function renderLogDetail() {
   `
 }
 
-function formatHoursKorean(hours) {
-  const h = Math.floor(hours)
-  const m = Math.round((hours - h) * 60)
-  if (h === 0) return `${m}분`
-  if (m === 0) return `${h}시간`
-  return `${h}시간 ${m}분`
-}
-
-// 목요일~수요일 주간 데이터 생성
-function getWeekData() {
+// 현재 주의 목요일 구하기
+function getCurrentThursday() {
   const today = new Date()
   const dayOfWeek = today.getDay() // 0=일, 1=월, ..., 4=목, 6=토
-  // 현재 주의 목요일 찾기: 목=4
   const diffToThursday = (dayOfWeek < 4) ? dayOfWeek + 3 : dayOfWeek - 4
   const thursday = new Date(today)
   thursday.setDate(today.getDate() - diffToThursday)
+  return thursday
+}
 
+// 목요일 기준 주차 계산: 해당 월의 첫 번째 목요일 포함 주 = 1주차
+function getWeekOfMonth(thursday) {
+  const month = thursday.getMonth()
+  const year = thursday.getFullYear()
+  // 해당 월의 첫 번째 목요일 찾기
+  const firstDay = new Date(year, month, 1)
+  const firstDow = firstDay.getDay()
+  const firstThursday = 1 + ((4 - firstDow + 7) % 7) // 첫 번째 목요일의 일(day)
+  // 주차 = (현재 목요일 - 첫 목요일) / 7 + 1
+  return Math.floor((thursday.getDate() - firstThursday) / 7) + 1
+}
+
+// 목요일~수요일 주간 데이터 생성 (실제 worklog 기반)
+function getWeekData() {
+  const today = new Date()
+  const thursday = getCurrentThursday()
   const days = ['일', '월', '화', '수', '목', '금', '토']
   const weekData = []
-  // 목업 시간 데이터
-  const mockHours = [3.95, 0, 0, 0, 0, 0, 0]
 
   for (let i = 0; i < 7; i++) {
     const d = new Date(thursday)
     d.setDate(thursday.getDate() + i)
+    const dateStr = toDateString(d)
+    const minutes = getLogMinutes(dateStr)
     const isToday = d.toDateString() === today.toDateString()
+    const isFuture = d > today
     weekData.push({
       day: days[d.getDay()],
       date: `${d.getMonth() + 1}/${d.getDate()}`,
-      hours: mockHours[i],
+      minutes: isFuture ? 0 : minutes,
       today: isToday,
+      isFuture,
     })
   }
-  return weekData
+  return { weekData, thursday }
+}
+
+// 요약 탭에 필요한 월들의 워크로그 로딩
+function ensureSummaryWorklogs() {
+  if (!isLoggedIn() || !issuesLoaded) return
+  const thursday = getCurrentThursday()
+  // 주간 범위가 걸치는 월들 로딩
+  const wednesday = new Date(thursday)
+  wednesday.setDate(thursday.getDate() + 6)
+  loadWorklogs(thursday.getFullYear(), thursday.getMonth())
+  if (wednesday.getMonth() !== thursday.getMonth()) {
+    loadWorklogs(wednesday.getFullYear(), wednesday.getMonth())
+  }
 }
 
 function renderSummaryTab() {
-  const weekData = getWeekData()
-  const totalWeekHours = weekData.reduce((sum, d) => sum + d.hours, 0)
-  const workedDays = weekData.filter(d => d.hours > 0).length
-  const avgHours = workedDays > 0 ? totalWeekHours / workedDays : 0
+  const { weekData, thursday } = getWeekData()
+  const todayStr = toDateString(new Date())
+  const todayMinutes = getLogMinutes(todayStr)
+  const todayLogs = getActiveLogs(todayStr)
+  const totalWeekMinutes = weekData.reduce((sum, d) => sum + d.minutes, 0)
+  const workedDays = weekData.filter(d => d.minutes > 0).length
+  const avgMinutes = workedDays > 0 ? Math.round(totalWeekMinutes / workedDays) : 0
+
+  const weekMonth = thursday.getMonth() + 1
+  const weekNum = getWeekOfMonth(thursday)
 
   return `
     <div class="summary-grid">
       <div class="summary-card">
         <div class="summary-card-label">오늘</div>
-        <div class="summary-card-value">${formatHoursKorean(3.95)}</div>
-        <div class="summary-card-sub">3개 작업 진행함</div>
+        <div class="summary-card-value">${todayMinutes > 0 ? formatMinutes(todayMinutes) : '-'}</div>
+        <div class="summary-card-sub">${todayLogs.length > 0 ? `${todayLogs.length}개 작업 기록` : '아직 기록 없음'}</div>
       </div>
       <div class="summary-card">
         <div class="summary-card-label">이번 주</div>
-        <div class="summary-card-value">${formatHoursKorean(totalWeekHours)}</div>
-        <div class="summary-card-sub">${workedDays > 0 ? `${workedDays}일 작업 진행함` : '아직 기록 없음'}</div>
+        <div class="summary-card-value">${totalWeekMinutes > 0 ? formatMinutes(totalWeekMinutes) : '-'}</div>
+        <div class="summary-card-sub">${workedDays > 0 ? `${workedDays}일 작업 기록` : '아직 기록 없음'}</div>
       </div>
       <div class="summary-card">
         <div class="summary-card-label">일 평균</div>
-        <div class="summary-card-value">${workedDays > 0 ? formatHoursKorean(avgHours) : '-'}</div>
+        <div class="summary-card-value">${workedDays > 0 ? formatMinutes(avgMinutes) : '-'}</div>
         <div class="summary-card-sub">이번 주 기준</div>
       </div>
     </div>
     <div class="weekly-chart">
-      <div class="weekly-chart-title">이번 주 일별 작업 시간 (목~수)</div>
+      <div class="weekly-chart-title">금주(${weekMonth}월 ${weekNum}주차) 일별 작업 시간</div>
       <div class="chart-bars">
         ${weekData.map(d => `
-          <div class="chart-bar-col">
-            <span class="chart-bar-value">${d.hours > 0 ? formatHoursKorean(d.hours) : '-'}</span>
-            <div class="chart-bar ${d.today ? 'today' : ''}" style="height: ${Math.max((d.hours / 10) * 100, 2)}%"></div>
+          <div class="chart-bar-col ${d.isFuture ? 'future' : ''}">
+            <span class="chart-bar-value">${d.minutes > 0 ? formatMinutes(d.minutes) : '-'}</span>
+            <div class="chart-bar ${d.today ? 'today' : ''}" style="height: ${Math.max((d.minutes / 480) * 100, 2)}%"></div>
             <span class="chart-bar-label">${d.day} ${d.date}</span>
           </div>
         `).join('')}
@@ -1048,6 +1078,9 @@ function bindEvents() {
       currentMainTab = tab.dataset.mainTab
       if (tab.dataset.mainTab === 'logs' && isLoggedIn() && issuesLoaded) {
         loadWorklogs(calendarYear, calendarMonth)
+      }
+      if (tab.dataset.mainTab === 'summary') {
+        ensureSummaryWorklogs()
       }
       render()
     })
