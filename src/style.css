@@ -1609,6 +1609,32 @@ span.flatpickr-weekday {
   to { opacity: 0; transform: translateY(12px); }
 }
 
+/* ========== 컨텍스트 메뉴 ========== */
+.context-menu {
+  position: fixed;
+  z-index: 300;
+  min-width: 200px;
+  padding: 4px 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  animation: toast-in 0.12s ease-out;
+}
+
+.context-menu-item {
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.context-menu-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-bright);
+}
+
 /* ========== 반응형 ========== */
 @media (max-width: 640px) {
   .session-card {

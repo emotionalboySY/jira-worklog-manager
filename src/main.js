@@ -442,6 +442,65 @@ function formatHoursShort(minutes) {
   return `${h}시간${m}분`
 }
 
+// ========== 컨텍스트 메뉴 ==========
+let activeContextMenu = null
+
+function getJiraIssueUrl(issueKey) {
+  const siteName = localStorage.getItem('jira_site_name')
+  if (!siteName) return null
+  return `https://${siteName}.atlassian.net/browse/${issueKey}`
+}
+
+function showContextMenu(e, issueKey, summary) {
+  e.preventDefault()
+  hideContextMenu()
+
+  const menu = document.createElement('div')
+  menu.className = 'context-menu'
+  menu.innerHTML = `
+    <div class="context-menu-item" data-ctx="key">이슈 키(${issueKey}) 복사</div>
+    <div class="context-menu-item" data-ctx="summary">이슈 요약 복사</div>
+    <div class="context-menu-item" data-ctx="link">이슈 링크 복사</div>
+  `
+
+  document.body.appendChild(menu)
+
+  // 화면 밖으로 나가지 않도록 위치 조정
+  const rect = menu.getBoundingClientRect()
+  const x = Math.min(e.clientX, window.innerWidth - rect.width - 8)
+  const y = Math.min(e.clientY, window.innerHeight - rect.height - 8)
+  menu.style.left = `${x}px`
+  menu.style.top = `${y}px`
+  activeContextMenu = menu
+
+  menu.querySelectorAll('.context-menu-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const action = item.dataset.ctx
+      let text = ''
+      if (action === 'key') text = issueKey
+      else if (action === 'summary') text = summary
+      else if (action === 'link') text = getJiraIssueUrl(issueKey) || issueKey
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('클립보드에 복사되었습니다.', '✓')
+      })
+      hideContextMenu()
+    })
+  })
+
+  // 메뉴 외부 클릭 시 닫기
+  setTimeout(() => {
+    document.addEventListener('click', hideContextMenu, { once: true })
+    document.addEventListener('contextmenu', hideContextMenu, { once: true })
+  }, 0)
+}
+
+function hideContextMenu() {
+  if (activeContextMenu) {
+    activeContextMenu.remove()
+    activeContextMenu = null
+  }
+}
+
 // ========== 토스트 알림 ==========
 function ensureToastContainer() {
   if (!document.getElementById('toast-container')) {
@@ -738,7 +797,7 @@ function renderIssuesTab() {
           : `<span class="issue-type-icon ${issue.type}" title="${getTypeLabel(issue.type)}">${getTypeIcon(issue.type)}</span>`
         const typeLabel = issue.typeIconUrl ? issue.type : getTypeLabel(issue.type)
         return `
-        <div class="issue-row" data-issue-key="${issue.key}">
+        <div class="issue-row" data-issue-key="${issue.key}" data-issue-summary="${issue.summary.replace(/"/g, '&quot;')}">
           <div class="issue-left">
             ${typeIcon}
             <span class="issue-type-label">${typeLabel}</span>
@@ -1506,6 +1565,15 @@ function bindEvents() {
       },
     })
   }
+
+  // 이슈 행 우클릭 → 컨텍스트 메뉴
+  document.querySelectorAll('.issue-row[data-issue-key]').forEach(row => {
+    row.addEventListener('contextmenu', (e) => {
+      const key = row.dataset.issueKey
+      const summary = row.dataset.issueSummary
+      if (key) showContextMenu(e, key, summary)
+    })
+  })
 
   // 이슈 목록에서 작업 시작
   document.querySelectorAll('[data-action="start"]').forEach(btn => {
