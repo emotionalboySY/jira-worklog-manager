@@ -2520,7 +2520,7 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 /* ========== 설정 FAB 버튼 ========== */
 .settings-fab {
   position: fixed;
-  right: 20px;
+  left: 20px;
   bottom: 20px;
   z-index: 140;
   width: 48px;
