@@ -634,6 +634,9 @@ a.issue-key-link:hover {
 .btn-start {
   opacity: 0;
   transition: opacity 0.15s;
+  min-width: 64px;
+  text-align: center;
+  justify-content: center;
 }
 
 .issue-row:hover .btn-start {
@@ -811,6 +814,11 @@ a.issue-key-link:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.favorite-item-info .issue-key,
+.favorite-item-info .issue-key-link {
+  align-self: flex-start;
 }
 
 .favorite-summary {
