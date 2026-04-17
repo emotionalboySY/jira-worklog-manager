@@ -106,6 +106,44 @@ function removeSession(issueKey) {
   saveSessions(sessions)
 }
 
+// ========== 연반차 (localStorage) ==========
+// type: 'full' (종일 연차) | 'am' (오전 반차) | 'pm' (오후 반차) | null
+const DAY_OFFS_KEY = 'day_offs'
+
+function loadDayOffs() {
+  try {
+    const raw = localStorage.getItem(DAY_OFFS_KEY)
+    if (!raw) return {}
+    const obj = JSON.parse(raw)
+    return obj && typeof obj === 'object' ? obj : {}
+  } catch { return {} }
+}
+
+function getDayOff(dateStr) {
+  return loadDayOffs()[dateStr] || null
+}
+
+function setDayOff(dateStr, type) {
+  const m = loadDayOffs()
+  if (!type || type === 'none') delete m[dateStr]
+  else m[dateStr] = type
+  try { localStorage.setItem(DAY_OFFS_KEY, JSON.stringify(m)) } catch {}
+}
+
+// 연반차 상태를 근무 시간(분)으로 환산: 연차 8시간, 반차 4시간
+function getDayOffMinutes(type) {
+  if (type === 'full') return 480
+  if (type === 'am' || type === 'pm') return 240
+  return 0
+}
+
+function getDayOffLabel(type) {
+  if (type === 'full') return '연차'
+  if (type === 'am') return '오전 반차'
+  if (type === 'pm') return '오후 반차'
+  return ''
+}
+
 // ========== 즐겨찾는 이슈 (localStorage) ==========
 const FAVORITES_KEY = 'favorite_issues'
 
@@ -1058,12 +1096,16 @@ function renderCalendarView() {
   // 해당 월 날짜 셀
   for (let d = 1; d <= lastDay.getDate(); d++) {
     const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-    const minutes = getLogMinutes(dateStr)
+    const workedMinutes = getLogMinutes(dateStr)
+    const dayOffType = getDayOff(dateStr)
+    const dayOffMinutes = getDayOffMinutes(dayOffType)
+    const minutes = workedMinutes + dayOffMinutes
     const isFuture = dateStr > todayStr
     cells.push({
       day: d,
       dateStr,
       minutes,
+      dayOffType,
       isToday: dateStr === todayStr,
       isSelected: dateStr === logDate,
       isFuture,
@@ -1108,9 +1150,11 @@ function renderCalendarView() {
         ${cells.map(cell => {
           if (cell.empty) return `<div class="calendar-cell empty"></div>`
           const level = cell.isFuture ? 0 : cell.minutes <= 0 ? 0 : cell.minutes < 180 ? 1 : cell.minutes < 360 ? 2 : 3
+          const dayOffClass = cell.dayOffType ? `day-off day-off-${cell.dayOffType}` : ''
           return `
-            <div class="calendar-cell ${cell.isToday ? 'today' : ''} ${cell.isSelected ? 'selected' : ''} ${cell.isFuture ? 'future' : ''} level-${level}"
-                 ${!cell.isFuture ? `data-cal-date="${cell.dateStr}"` : ''}>
+            <div class="calendar-cell ${cell.isToday ? 'today' : ''} ${cell.isSelected ? 'selected' : ''} ${cell.isFuture ? 'future' : ''} level-${level} ${dayOffClass}"
+                 ${!cell.isFuture ? `data-cal-date="${cell.dateStr}"` : ''}
+                 ${cell.dayOffType ? `title="${getDayOffLabel(cell.dayOffType)}"` : ''}>
               <span class="calendar-day">${cell.day}</span>
               ${cell.minutes > 0 ? `<span class="calendar-hours">${formatHoursShort(cell.minutes)}</span>` : ''}
             </div>
@@ -1133,45 +1177,74 @@ function renderDateNav() {
   `
 }
 
+function renderDayOffToggle() {
+  const current = getDayOff(logDate)
+  const options = [
+    { value: 'none', label: '없음' },
+    { value: 'full', label: '연차' },
+    { value: 'am', label: '오전 반차' },
+    { value: 'pm', label: '오후 반차' },
+  ]
+  return `
+    <div class="day-off-toggle">
+      <span class="day-off-label">연반차</span>
+      <div class="day-off-options">
+        ${options.map(o => `
+          <button class="day-off-btn ${(current || 'none') === o.value ? 'active' : ''}" data-day-off="${o.value}">${o.label}</button>
+        `).join('')}
+      </div>
+    </div>
+  `
+}
+
 function renderLogDetail() {
   const logs = getActiveLogs(logDate)
-  const totalMinutes = getLogMinutes(logDate)
+  const workedMinutes = getLogMinutes(logDate)
+  const dayOffType = getDayOff(logDate)
+  const dayOffMinutes = getDayOffMinutes(dayOffType)
+  const totalMinutes = workedMinutes + dayOffMinutes
 
   return `
     <div class="log-detail">
+      ${renderDayOffToggle()}
       ${worklogsLoading && logs.length === 0 ? `
         <div class="loading-container">
           <div class="loading-spinner"></div>
           <span class="loading-text">작업 로그를 불러오는 중</span>
         </div>
-      ` : logs.length === 0 ? `
+      ` : logs.length === 0 && !dayOffType ? `
         <div class="no-session">이 날짜에 기록된 작업 로그가 없습니다.</div>
       ` : `
-        <div class="log-list">
-          ${logs.map((log, idx) => `
-            <div class="log-row" data-issue-key="${log.issueKey}" data-issue-summary="${(log.summary || '').replace(/"/g, '&quot;')}">
-              <span class="log-time-range">${log.startTime} → ${log.endTime}</span>
-              <span class="log-duration">${log.durationMinutes != null ? formatMinutes(log.durationMinutes) : log.duration}</span>
-              <div class="log-issue">
-                <div class="log-issue-header">
-                  ${renderIssueKeyLink(log.issueKey)}
-                  <span class="issue-summary">${log.summary}</span>
-                  ${log.lunchDeducted > 0 ? `<span class="log-lunch-badge">점심 -${log.lunchDeducted}분</span>` : ''}
+        ${logs.length > 0 ? `
+          <div class="log-list">
+            ${logs.map((log, idx) => `
+              <div class="log-row" data-issue-key="${log.issueKey}" data-issue-summary="${(log.summary || '').replace(/"/g, '&quot;')}">
+                <span class="log-time-range">${log.startTime} → ${log.endTime}</span>
+                <span class="log-duration">${log.durationMinutes != null ? formatMinutes(log.durationMinutes) : log.duration}</span>
+                <div class="log-issue">
+                  <div class="log-issue-header">
+                    ${renderIssueKeyLink(log.issueKey)}
+                    <span class="issue-summary">${log.summary}</span>
+                    ${log.lunchDeducted > 0 ? `<span class="log-lunch-badge">점심 -${log.lunchDeducted}분</span>` : ''}
+                  </div>
+                  ${log.comment ? `<span class="log-comment">${log.comment}</span>` : ''}
                 </div>
-                ${log.comment ? `<span class="log-comment">${log.comment}</span>` : ''}
+                ${log.worklogId ? `
+                  <div class="log-actions">
+                    <button class="btn btn-sm" data-action="edit-log" data-idx="${idx}">수정</button>
+                    <button class="btn btn-sm btn-danger" data-action="delete-log" data-idx="${idx}">삭제</button>
+                  </div>
+                ` : ''}
               </div>
-              ${log.worklogId ? `
-                <div class="log-actions">
-                  <button class="btn btn-sm" data-action="edit-log" data-idx="${idx}">수정</button>
-                  <button class="btn btn-sm btn-danger" data-action="delete-log" data-idx="${idx}">삭제</button>
-                </div>
-              ` : ''}
-            </div>
-          `).join('')}
-        </div>
+            `).join('')}
+          </div>
+        ` : ''}
         <div class="log-summary">
-          <span class="log-summary-label">총 작업 시간</span>
-          <span class="log-summary-value">${formatMinutes(totalMinutes)}</span>
+          <span class="log-summary-label">총 근무 시간</span>
+          <span class="log-summary-value">
+            ${formatMinutes(totalMinutes)}
+            ${dayOffType ? `<span class="log-summary-meta">작업 ${formatMinutes(workedMinutes)} + ${getDayOffLabel(dayOffType)} ${formatMinutes(dayOffMinutes)}</span>` : ''}
+          </span>
         </div>
       `}
     </div>
@@ -1209,7 +1282,10 @@ function getWeekData(offset) {
     const d = new Date(thursday)
     d.setDate(thursday.getDate() + i)
     const dateStr = toDateString(d)
-    const minutes = getLogMinutes(dateStr)
+    const workedMinutes = getLogMinutes(dateStr)
+    const dayOffType = getDayOff(dateStr)
+    const dayOffMinutes = getDayOffMinutes(dayOffType)
+    const minutes = workedMinutes + dayOffMinutes
     const isToday = d.toDateString() === today.toDateString()
     const isFuture = d > today
     const dow = d.getDay()
@@ -1217,6 +1293,9 @@ function getWeekData(offset) {
       day: days[dow],
       date: `${String(d.getMonth() + 1).padStart(2, '0')}월 ${String(d.getDate()).padStart(2, '0')}일`,
       minutes: isFuture ? 0 : minutes,
+      workedMinutes: isFuture ? 0 : workedMinutes,
+      dayOffType: isFuture ? null : dayOffType,
+      dayOffMinutes: isFuture ? 0 : dayOffMinutes,
       today: isToday,
       isFuture,
       weekend: dow === 0 || dow === 6,
@@ -1885,6 +1964,15 @@ function bindEvents() {
       render()
       // 이슈 목록 상단으로 스크롤
       document.querySelector('.issue-list')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+  })
+
+  // 연반차 토글
+  document.querySelectorAll('[data-day-off]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const value = btn.dataset.dayOff
+      setDayOff(logDate, value === 'none' ? null : value)
+      render()
     })
   })
 

@@ -1954,6 +1954,102 @@ span.flatpickr-weekday {
   background: var(--border);
 }
 
+/* ========== 연반차 토글 ========== */
+.day-off-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+}
+
+.day-off-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.day-off-options {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.day-off-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.day-off-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-bright);
+}
+
+.day-off-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.log-summary-meta {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+/* ========== 달력: 연반차 시각화 ========== */
+.calendar-cell.day-off {
+  /* position 이미 relative */
+}
+
+.calendar-cell.day-off::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  background: rgba(99, 102, 241, 0.18);
+  border-radius: inherit;
+  z-index: 0;
+}
+
+.calendar-cell.day-off-full::before {
+  left: 0;
+  right: 0;
+}
+
+.calendar-cell.day-off-am::before {
+  left: 0;
+  width: 50%;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.calendar-cell.day-off-pm::before {
+  right: 0;
+  width: 50%;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+/* 셀 내용이 배경 위로 올라오도록 */
+.calendar-cell > * {
+  position: relative;
+  z-index: 1;
+}
+
 /* ========== 이슈 키 자동완성 드롭다운 ========== */
 .autocomplete-wrapper {
   position: relative;
