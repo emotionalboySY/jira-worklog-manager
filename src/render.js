@@ -88,7 +88,21 @@ export function render(options = {}) {
     const spec = SECTIONS[name]
     if (!spec) continue
     const container = document.getElementById(spec.id)
-    if (container) container.innerHTML = spec.render()
+    if (!container) continue
+
+    // 설정 모달 스크롤 위치 보존
+    let settingsScroll = null
+    if (name === 'modals') {
+      const modal = container.querySelector('.modal-settings')
+      if (modal) settingsScroll = modal.scrollTop
+    }
+
+    container.innerHTML = spec.render()
+
+    if (settingsScroll !== null) {
+      const modal = container.querySelector('.modal-settings')
+      if (modal) modal.scrollTop = settingsScroll
+    }
   }
 
   // 이벤트 재바인딩: on() 헬퍼가 이미 바인드된 element는 자동 스킵하므로

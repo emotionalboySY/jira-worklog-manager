@@ -185,20 +185,6 @@ export function bindEvents() {
     })
   }
 
-  // 순서 변경 ▲▼
-  document.querySelectorAll('[data-order-move]').forEach(btn => {
-    on(btn, 'click', () => {
-      const dir = btn.dataset.orderMove
-      const kind = btn.dataset.kind
-      const idx = parseInt(btn.dataset.idx, 10)
-      const arr = kind === 'status' ? state.settingsDraft.statusOrder : state.settingsDraft.projectOrder
-      const target = dir === 'up' ? idx - 1 : idx + 1
-      if (target < 0 || target >= arr.length) return
-      ;[arr[idx], arr[target]] = [arr[target], arr[idx]]
-      render()
-    })
-  })
-
   // 프로젝트 색상 변경 (input type=color의 change 이벤트)
   document.querySelectorAll('[data-project-color]').forEach(input => {
     on(input, 'change', (e) => {
@@ -208,7 +194,71 @@ export function bindEvents() {
       state.settingsDraft.projectColors[projectKey] = colors
       // 즉시 미리보기 CSS 변수 업데이트 (저장 전에도 시각 확인 가능)
       applyPreferences(state.settingsDraft)
-      render()
+      render({ sections: ['modals'] })
+    })
+  })
+
+  // 드래그 앤 드롭 순서 변경
+  document.querySelectorAll('.settings-drag-handle').forEach(handle => {
+    on(handle, 'mousedown', () => {
+      const item = handle.closest('.settings-order-item')
+      if (item) item.setAttribute('draggable', 'true')
+    })
+  })
+
+  document.querySelectorAll('.settings-order-item').forEach(item => {
+    on(item, 'dragstart', (e) => {
+      if (!item.getAttribute('draggable')) { e.preventDefault(); return }
+      const kind = item.dataset.kind
+      const idx = parseInt(item.dataset.idx, 10)
+      state._dragState = { kind, idx }
+      item.classList.add('dragging')
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', '')
+    })
+
+    on(item, 'dragover', (e) => {
+      if (!state._dragState || state._dragState.kind !== item.dataset.kind) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      const rect = item.getBoundingClientRect()
+      const midY = rect.top + rect.height / 2
+      item.closest('.settings-order-list')?.querySelectorAll('.settings-order-item').forEach(el => {
+        el.classList.remove('drag-over-top', 'drag-over-bottom')
+      })
+      item.classList.add(e.clientY < midY ? 'drag-over-top' : 'drag-over-bottom')
+    })
+
+    on(item, 'dragleave', () => {
+      item.classList.remove('drag-over-top', 'drag-over-bottom')
+    })
+
+    on(item, 'drop', (e) => {
+      e.preventDefault()
+      if (!state._dragState || state._dragState.kind !== item.dataset.kind) return
+      const fromIdx = state._dragState.idx
+      const targetIdx = parseInt(item.dataset.idx, 10)
+      const rect = item.getBoundingClientRect()
+      const dropAfter = e.clientY >= rect.top + rect.height / 2
+      let insertIdx = dropAfter ? targetIdx + 1 : targetIdx
+      if (insertIdx === fromIdx || insertIdx === fromIdx + 1) return
+      const arr = state._dragState.kind === 'status'
+        ? state.settingsDraft.statusOrder
+        : state.settingsDraft.projectOrder
+      const [moved] = arr.splice(fromIdx, 1)
+      if (fromIdx < insertIdx) insertIdx--
+      arr.splice(insertIdx, 0, moved)
+      state._dragState = null
+      render({ sections: ['modals'] })
+    })
+
+    on(item, 'dragend', () => {
+      item.removeAttribute('draggable')
+      item.classList.remove('dragging')
+      document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
+        el.classList.remove('drag-over-top', 'drag-over-bottom')
+      })
+      state._dragState = null
     })
   })
 

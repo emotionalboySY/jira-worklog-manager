@@ -2633,6 +2633,16 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   padding: 8px 10px;
   background: var(--bg-card);
   border-radius: 4px;
+  transition: opacity 0.15s;
+}
+.settings-order-item.dragging {
+  opacity: 0.4;
+}
+.settings-order-item.drag-over-top {
+  box-shadow: 0 -2px 0 0 var(--accent);
+}
+.settings-order-item.drag-over-bottom {
+  box-shadow: 0 2px 0 0 var(--accent);
 }
 
 .settings-order-index {
@@ -2670,15 +2680,21 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 .settings-color-input::-webkit-color-swatch-wrapper { padding: 2px; }
 .settings-color-input::-webkit-color-swatch { border: none; border-radius: 3px; }
 
-.settings-order-actions {
+.settings-drag-handle {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  cursor: grab;
+  color: var(--text-dim);
+  padding: 2px;
+  border-radius: 3px;
+  flex-shrink: 0;
 }
-
-.settings-order-actions .btn {
-  min-width: 28px;
-  padding: 2px 6px;
-  font-size: 11px;
+.settings-drag-handle:hover {
+  color: var(--text-bright);
+  background: var(--bg-hover);
+}
+.settings-drag-handle:active {
+  cursor: grabbing;
 }
 
 .settings-note {

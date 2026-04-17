@@ -19,12 +19,11 @@ export function renderSettingsModal() {
 
   const statusItems = draft.statusOrder.map((s, i) => `
     <div class="settings-order-item" data-kind="status" data-idx="${i}">
+      <span class="settings-drag-handle" title="드래그하여 순서 변경">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="4" width="18" height="2.5" rx="1"/><rect x="3" y="10.75" width="18" height="2.5" rx="1"/><rect x="3" y="17.5" width="18" height="2.5" rx="1"/></svg>
+      </span>
       <span class="settings-order-index">${i + 1}</span>
       <span class="settings-order-label">${s}</span>
-      <div class="settings-order-actions">
-        <button class="btn btn-sm ${i === 0 ? 'btn-disabled' : ''}" data-order-move="up" data-kind="status" data-idx="${i}" ${i === 0 ? 'disabled' : ''}>▲</button>
-        <button class="btn btn-sm ${i === draft.statusOrder.length - 1 ? 'btn-disabled' : ''}" data-order-move="down" data-kind="status" data-idx="${i}" ${i === draft.statusOrder.length - 1 ? 'disabled' : ''}>▼</button>
-      </div>
     </div>
   `).join('')
 
@@ -32,14 +31,13 @@ export function renderSettingsModal() {
     const color = draft.projectColors[p]?.bar || DEFAULT_PROJECT_COLORS[p]?.bar || '#6366f1'
     return `
       <div class="settings-order-item" data-kind="project" data-idx="${i}">
+        <span class="settings-drag-handle" title="드래그하여 순서 변경">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="4" width="18" height="2.5" rx="1"/><rect x="3" y="10.75" width="18" height="2.5" rx="1"/><rect x="3" y="17.5" width="18" height="2.5" rx="1"/></svg>
+        </span>
         <span class="settings-order-index">${i + 1}</span>
         <span class="settings-project-swatch" style="background: ${color}"></span>
         <span class="settings-order-label">${p}</span>
         <input type="color" class="settings-color-input" data-project-color="${p}" value="${color}" title="${p} 대표 색상 변경" />
-        <div class="settings-order-actions">
-          <button class="btn btn-sm ${i === 0 ? 'btn-disabled' : ''}" data-order-move="up" data-kind="project" data-idx="${i}" ${i === 0 ? 'disabled' : ''}>▲</button>
-          <button class="btn btn-sm ${i === draft.projectOrder.length - 1 ? 'btn-disabled' : ''}" data-order-move="down" data-kind="project" data-idx="${i}" ${i === draft.projectOrder.length - 1 ? 'disabled' : ''}>▼</button>
-        </div>
       </div>
     `
   }).join('')
