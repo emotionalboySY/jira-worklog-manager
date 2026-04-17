@@ -44,6 +44,14 @@ export function formatElapsed(startedAt) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
+// Jira worklog API의 started 필드용 타임존 문자열 (+0900 형식, 콜론 없음)
+export function getJiraTzOffset() {
+  const offset = new Date().getTimezoneOffset()
+  const sign = offset <= 0 ? '+' : '-'
+  const abs = Math.abs(offset)
+  return `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}${String(abs % 60).padStart(2, '0')}`
+}
+
 // 점심시간 자동 계산: 작업 시간이 12:00~13:00과 겹치는 분 수 반환
 export function calcLunchOverlap(startDate, endDate) {
   const startMinutes = startDate.getHours() * 60 + startDate.getMinutes()

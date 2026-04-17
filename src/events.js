@@ -30,6 +30,7 @@ import {
   formatMinutes,
   getActiveIssues,
   getActiveLogs,
+  getJiraTzOffset,
 } from './utils.js'
 import { toggleTheme, showToast, showContextMenu, applyPreferences } from './ui.js'
 import {
@@ -674,11 +675,7 @@ export function bindEvents() {
       }
       const comment = document.getElementById('finish-comment')?.value || ''
 
-      // 타임존 오프셋
-      const offset = new Date().getTimezoneOffset()
-      const sign = offset <= 0 ? '+' : '-'
-      const absOff = Math.abs(offset)
-      const tzStr = `${sign}${String(Math.floor(absOff / 60)).padStart(2, '0')}:${String(absOff % 60).padStart(2, '0')}`
+      const tzStr = getJiraTzOffset()
 
       // 버튼 스피너 + 중복 클릭 차단
       const originalLabel = modalSubmit.innerHTML
@@ -952,11 +949,7 @@ export function bindEvents() {
       const dur = computeDurationFromTimes(startTime, endTime)
       if (!dur.valid) { alert(dur.message); return }
 
-      const offset = new Date().getTimezoneOffset()
-      const sign = offset <= 0 ? '+' : '-'
-      const absOff = Math.abs(offset)
-      const tzStr = `${sign}${String(Math.floor(absOff / 60)).padStart(2, '0')}:${String(absOff % 60).padStart(2, '0')}`
-      const started = `${date}T${startTime}:00.000${tzStr}`
+      const started = `${date}T${startTime}:00.000${getJiraTzOffset()}`
 
       // 제출 중: 버튼을 스피너로 전환 + 중복 클릭 방지
       const originalLabel = manualSubmit.innerHTML
@@ -1114,11 +1107,7 @@ export function bindEvents() {
       const dur = computeDurationFromTimes(startTime, endTime)
       if (!dur.valid) { alert(dur.message); return }
 
-      const offset = new Date().getTimezoneOffset()
-      const sign = offset <= 0 ? '+' : '-'
-      const absOff = Math.abs(offset)
-      const tzStr = `${sign}${String(Math.floor(absOff / 60)).padStart(2, '0')}:${String(absOff % 60).padStart(2, '0')}`
-      const started = `${state.editingWorklog.date}T${startTime}:00.000${tzStr}`
+      const started = `${state.editingWorklog.date}T${startTime}:00.000${getJiraTzOffset()}`
 
       const originalLabel = editSubmit.innerHTML
       editSubmit.disabled = true
