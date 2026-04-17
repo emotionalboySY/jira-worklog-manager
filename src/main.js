@@ -106,6 +106,37 @@ function removeSession(issueKey) {
   saveSessions(sessions)
 }
 
+// ========== 즐겨찾는 이슈 (localStorage) ==========
+const FAVORITES_KEY = 'favorite_issues'
+
+function loadFavorites() {
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY)
+    if (!raw) return []
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr : []
+  } catch { return [] }
+}
+
+function saveFavorites(list) {
+  try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(list)) } catch {}
+}
+
+function isFavorite(issueKey) {
+  return loadFavorites().some(f => f.issueKey === issueKey)
+}
+
+function toggleFavorite(issueKey, summary) {
+  const list = loadFavorites()
+  const idx = list.findIndex(f => f.issueKey === issueKey)
+  if (idx >= 0) {
+    list.splice(idx, 1)
+  } else {
+    list.push({ issueKey, summary })
+  }
+  saveFavorites(list)
+}
+
 // 세션의 첫 시작 시각
 function getSessionStartedAt(session) {
   return session.segments.length > 0 ? session.segments[0].start : new Date()
@@ -328,6 +359,7 @@ let deletingWorklog = null   // 삭제 확인 중인 워크로그
 let showManualLog = null     // 수동 작업 기록 모달 state: null | { issueKey, summary }
 let manualIssueCheck = null  // 이슈 키 검증 결과: null | { status: 'checking'|'ok'|'error', key, summary, message }
 let theme = localStorage.getItem('theme') || 'dark'
+let favoritesPanelCollapsed = (localStorage.getItem('favorites_collapsed') === '1')
 
 // ========== 테마 초기화 ==========
 function applyTheme() {
@@ -571,6 +603,7 @@ function render() {
     ${renderActiveSessions()}
     ${renderTabs()}
     ${renderContent()}
+    ${renderFavoritesPanel()}
     ${showModal ? renderModal() : ''}
     ${showCancelConfirm ? renderCancelConfirm() : ''}
     ${editingWorklog ? renderEditWorklogModal() : ''}
@@ -631,6 +664,63 @@ function renderProjectSelector(isSearchMode = false) {
           ${p.name} (${p.key})
         </button>
       `).join('')}
+    </div>
+  `
+}
+
+// 플로팅 즐겨찾기 패널 (우측 고정)
+function renderFavoritesPanel() {
+  const favorites = loadFavorites()
+  const sessions = loadSessions()
+  const sessionMap = new Map(sessions.map(s => [s.issueKey, s.status]))
+
+  if (favoritesPanelCollapsed) {
+    return `
+      <div class="favorites-panel collapsed">
+        <button class="favorites-toggle" id="favorites-toggle" title="즐겨찾는 이슈 펼치기">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>
+          ${favorites.length > 0 ? `<span class="favorites-count">${favorites.length}</span>` : ''}
+        </button>
+      </div>
+    `
+  }
+
+  const body = favorites.length === 0
+    ? `<div class="favorites-empty">별표를 눌러 자주 작업하는 이슈를<br>즐겨찾기에 추가하세요.</div>`
+    : favorites.map(fav => {
+        const status = sessionMap.get(fav.issueKey)
+        const btn = status === 'active'
+          ? `<span class="btn btn-sm btn-start session-active-badge">진행 중</span>`
+          : status === 'paused'
+            ? `<button class="btn btn-sm" data-action="fav-start" data-key="${fav.issueKey}" data-summary="${(fav.summary || '').replace(/"/g, '&quot;')}">재개</button>`
+            : `<button class="btn btn-primary btn-sm" data-action="fav-start" data-key="${fav.issueKey}" data-summary="${(fav.summary || '').replace(/"/g, '&quot;')}">시작</button>`
+        return `
+          <div class="favorite-item" data-issue-key="${fav.issueKey}" data-issue-summary="${(fav.summary || '').replace(/"/g, '&quot;')}">
+            <div class="favorite-item-info">
+              ${renderIssueKeyLink(fav.issueKey)}
+              <span class="favorite-summary" title="${(fav.summary || '').replace(/"/g, '&quot;')}">${fav.summary || ''}</span>
+            </div>
+            <div class="favorite-item-actions">
+              ${btn}
+              <button class="btn-star-remove" data-action="fav-remove" data-key="${fav.issueKey}" title="즐겨찾기 해제">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>
+              </button>
+            </div>
+          </div>
+        `
+      }).join('')
+
+  return `
+    <div class="favorites-panel expanded">
+      <div class="favorites-header">
+        <div class="favorites-title">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>
+          <span>즐겨찾는 이슈</span>
+          ${favorites.length > 0 ? `<span class="favorites-count-inline">${favorites.length}</span>` : ''}
+        </div>
+        <button class="favorites-collapse-btn" id="favorites-toggle" title="접기">▸</button>
+      </div>
+      <div class="favorites-body">${body}</div>
     </div>
   `
 }
@@ -842,6 +932,9 @@ function renderIssuesTab() {
             <span class="issue-summary">${issue.summary}</span>
           </div>
           <div class="issue-right">
+            <button class="btn-star ${isFavorite(issue.key) ? 'is-favorite' : ''}" data-action="toggle-favorite" data-key="${issue.key}" title="${isFavorite(issue.key) ? '즐겨찾기 해제' : '즐겨찾기 추가'}">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="${isFavorite(issue.key) ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>
+            </button>
             <span class="issue-status ${statusCss}">${statusLabel}</span>
             <span class="issue-tag ${issue.role}">
               ${{ assignee: '할당', reporter: '보고', watcher: '워칭' }[issue.role]}
@@ -1765,6 +1858,58 @@ function bindEvents() {
 
   // 작업 로그 상세 행 우클릭 → 컨텍스트 메뉴 (이슈 행과 동일)
   document.querySelectorAll('.log-row[data-issue-key]').forEach(row => {
+    row.addEventListener('contextmenu', (e) => {
+      const key = row.dataset.issueKey
+      const summary = row.dataset.issueSummary
+      if (key) showContextMenu(e, key, summary)
+    })
+  })
+
+  // 즐겨찾기 별표 토글
+  document.querySelectorAll('[data-action="toggle-favorite"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const key = btn.dataset.key
+      const pool = [...getActiveIssues(), ...(searchResults || [])]
+      const issue = pool.find(i => i.key === key)
+      toggleFavorite(key, issue?.summary || '')
+      render()
+    })
+  })
+
+  // 플로팅 패널 펼치기/접기
+  const favToggle = document.getElementById('favorites-toggle')
+  if (favToggle) {
+    favToggle.addEventListener('click', () => {
+      favoritesPanelCollapsed = !favoritesPanelCollapsed
+      localStorage.setItem('favorites_collapsed', favoritesPanelCollapsed ? '1' : '0')
+      render()
+    })
+  }
+
+  // 즐겨찾기 패널의 시작 버튼
+  document.querySelectorAll('[data-action="fav-start"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const key = btn.dataset.key
+      const summary = btn.dataset.summary || ''
+      addSession(key, summary)
+      render()
+    })
+  })
+
+  // 즐겨찾기 해제 (패널 내부)
+  document.querySelectorAll('[data-action="fav-remove"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const key = btn.dataset.key
+      toggleFavorite(key, '')
+      render()
+    })
+  })
+
+  // 즐겨찾기 항목 우클릭 → 컨텍스트 메뉴
+  document.querySelectorAll('.favorite-item[data-issue-key]').forEach(row => {
     row.addEventListener('contextmenu', (e) => {
       const key = row.dataset.issueKey
       const summary = row.dataset.issueSummary
