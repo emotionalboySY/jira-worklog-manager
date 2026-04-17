@@ -21,17 +21,21 @@ export function render() {
   }
   const app = document.querySelector('#app')
 
+  // 현재 탭을 body 클래스로 노출해 탭별 레이아웃 제어 (이슈 탭 내부 스크롤 등)
+  document.body.classList.remove('tab-issues', 'tab-logs', 'tab-summary', 'logged-out')
   if (!isLoggedIn()) {
+    document.body.classList.add('logged-out')
     app.innerHTML = renderLoginScreen()
     bindLoginEvents()
     return
   }
+  document.body.classList.add(`tab-${state.currentMainTab}`)
 
   app.innerHTML = `
     ${renderHeader()}
     ${renderActiveSessions()}
     ${renderTabs()}
-    ${renderContent()}
+    <div class="tab-content">${renderContent()}</div>
     ${renderFavoritesPanel()}
     ${state.showModal ? renderModal() : ''}
     ${state.showCancelConfirm ? renderCancelConfirm() : ''}

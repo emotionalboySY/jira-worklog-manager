@@ -94,6 +94,53 @@ textarea {
   padding: 0 20px 80px;
 }
 
+/* ===== 이슈 탭: 페이지 자체 스크롤 제거, 이슈 리스트만 내부 스크롤 ===== */
+body.tab-issues {
+  height: 100vh;
+  overflow: hidden;
+}
+
+body.tab-issues #app {
+  height: 100vh;
+  padding-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 상단 고정 영역 */
+body.tab-issues .header,
+body.tab-issues .active-sessions,
+body.tab-issues .tabs-container {
+  flex-shrink: 0;
+}
+
+/* 탭 content: 남은 공간 채우고 내부에서 flex column */
+body.tab-issues .tab-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 20px;
+}
+
+/* 이슈 탭 내부 고정 요소들 */
+body.tab-issues .tab-content > .search-bar,
+body.tab-issues .tab-content > .project-selector,
+body.tab-issues .tab-content > .filter-row,
+body.tab-issues .tab-content > .search-result-info,
+body.tab-issues .tab-content > .pagination {
+  flex-shrink: 0;
+}
+
+/* 이슈 목록만 스크롤 (flex-grow + overflow) */
+body.tab-issues .tab-content > .issue-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* ========== 헤더 ========== */
 .header {
   display: flex;
