@@ -58,6 +58,20 @@ import {
 import { ensureSummaryWorklogs } from './views/summary.js'
 import { render } from './render.js'
 
+// 오버레이 배경 클릭 시에만 모달을 닫도록 바인딩.
+// mousedown 시작점이 오버레이 자체일 때만 닫아, 모달 내부에서 시작된
+// 드래그(예: textarea 텍스트 선택)가 바깥에서 끝나도 닫히지 않게 한다.
+function bindOverlayClose(overlay, onClose) {
+  if (!overlay) return
+  let mouseDownOnOverlay = false
+  overlay.addEventListener('mousedown', (e) => {
+    mouseDownOnOverlay = e.target === overlay
+  })
+  overlay.addEventListener('click', (e) => {
+    if (mouseDownOnOverlay && e.target === overlay) onClose()
+  })
+}
+
 // ========== 설정 모달 헬퍼 ==========
 function closeSettings() {
   // 저장 전이라면 실제 적용된 prefs(state.userPrefs)로 CSS 변수 되돌림 (미리보기 롤백)
@@ -118,12 +132,7 @@ export function bindEvents() {
   }
 
   // 설정 모달: 오버레이 클릭 / 취소
-  const settingsOverlay = document.getElementById('settings-overlay')
-  if (settingsOverlay) {
-    settingsOverlay.addEventListener('click', (e) => {
-      if (e.target === settingsOverlay) closeSettings()
-    })
-  }
+  bindOverlayClose(document.getElementById('settings-overlay'), closeSettings)
   const settingsCancel = document.getElementById('settings-cancel')
   if (settingsCancel) settingsCancel.addEventListener('click', closeSettings)
 
@@ -770,12 +779,11 @@ export function bindEvents() {
   }
 
   // 수동 기록 모달
-  const manualOverlay = document.getElementById('manual-log-overlay')
-  if (manualOverlay) {
-    manualOverlay.addEventListener('click', (e) => {
-      if (e.target === manualOverlay) { state.showManualLog = null; state.manualIssueCheck = null; render() }
-    })
-  }
+  bindOverlayClose(document.getElementById('manual-log-overlay'), () => {
+    state.showManualLog = null
+    state.manualIssueCheck = null
+    render()
+  })
 
   const manualCancel = document.getElementById('manual-log-cancel')
   if (manualCancel) {
@@ -1072,12 +1080,10 @@ export function bindEvents() {
   })
 
   // 수정 모달
-  const editOverlay = document.getElementById('edit-worklog-overlay')
-  if (editOverlay) {
-    editOverlay.addEventListener('click', (e) => {
-      if (e.target === editOverlay) { state.editingWorklog = null; render() }
-    })
-  }
+  bindOverlayClose(document.getElementById('edit-worklog-overlay'), () => {
+    state.editingWorklog = null
+    render()
+  })
 
   const editCancel = document.getElementById('edit-worklog-cancel')
   if (editCancel) {
@@ -1154,12 +1160,10 @@ export function bindEvents() {
   }
 
   // 삭제 확인 모달
-  const deleteOverlay = document.getElementById('delete-worklog-overlay')
-  if (deleteOverlay) {
-    deleteOverlay.addEventListener('click', (e) => {
-      if (e.target === deleteOverlay) { state.deletingWorklog = null; render() }
-    })
-  }
+  bindOverlayClose(document.getElementById('delete-worklog-overlay'), () => {
+    state.deletingWorklog = null
+    render()
+  })
 
   const deleteNo = document.getElementById('delete-worklog-no')
   if (deleteNo) {
