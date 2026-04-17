@@ -58,17 +58,20 @@ import {
 import { ensureSummaryWorklogs } from './views/summary.js'
 import { render } from './render.js'
 
-// 오버레이 배경 클릭 시에만 모달을 닫도록 바인딩.
-// mousedown 시작점이 오버레이 자체일 때만 닫아, 모달 내부에서 시작된
-// 드래그(예: textarea 텍스트 선택)가 바깥에서 끝나도 닫히지 않게 한다.
+// 오버레이 배경 클릭 시에만 모달 닫기.
+// click 이벤트는 mousedown/mouseup의 공통 조상을 target으로 삼아 꼬이기 쉬우므로
+// mousedown이 오버레이 자신에서 시작된 경우에만 document의 mouseup을 감시해 닫는다.
+// 모달 내부 요소(textarea 등)에서 드래그가 시작되면 mousedown 리스너가 일찍 return해
+// 어디서 mouseup돼도 모달이 닫히지 않는다.
 function bindOverlayClose(overlay, onClose) {
   if (!overlay) return
-  let mouseDownOnOverlay = false
   overlay.addEventListener('mousedown', (e) => {
-    mouseDownOnOverlay = e.target === overlay
-  })
-  overlay.addEventListener('click', (e) => {
-    if (mouseDownOnOverlay && e.target === overlay) onClose()
+    if (e.target !== overlay) return
+    const onMouseUp = (upEvent) => {
+      document.removeEventListener('mouseup', onMouseUp)
+      if (upEvent.target === overlay) onClose()
+    }
+    document.addEventListener('mouseup', onMouseUp)
   })
 }
 
