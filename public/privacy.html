@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>개인정보 처리방침 · Jira 작업 로그 매니저</title>
+    <style>
+      body {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 48px 24px 80px;
+        font-family: 'Pretendard', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        font-size: 15px;
+        line-height: 1.7;
+        color: #1f2937;
+        background: #ffffff;
+      }
+      h1 { font-size: 24px; margin-bottom: 8px; }
+      h2 { font-size: 17px; margin-top: 28px; margin-bottom: 8px; }
+      p, li { color: #374151; }
+      ul { padding-left: 20px; }
+      li { margin-bottom: 4px; }
+      .meta { color: #6b7280; font-size: 13px; }
+      a { color: #4f46e5; }
+      code {
+        background: #f3f4f6;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>개인정보 처리방침</h1>
+    <p class="meta">최종 수정: 2026-04-17 · Jira 작업 로그 매니저</p>
+
+    <h2>1. 개요</h2>
+    <p>
+      Jira 작업 로그 매니저(이하 "본 서비스")는 Atlassian Jira Cloud 계정으로 로그인한 사용자가
+      자신의 이슈와 작업 로그를 확인하고 관리할 수 있도록 돕는 개인 도구입니다. 본 서비스는
+      사용자가 직접 입력하거나 Atlassian으로부터 조회한 데이터를 사용자의 브라우저 내에서만 처리합니다.
+    </p>
+
+    <h2>2. 수집하는 정보</h2>
+    <ul>
+      <li>Atlassian 사용자 정보: <code>accountId</code>, 표시 이름, 이메일 주소</li>
+      <li>Atlassian OAuth 2.0 액세스 토큰 및 리프레시 토큰</li>
+      <li>Atlassian 사이트 정보: <code>cloudId</code>, 사이트 이름</li>
+      <li>Jira 이슈 목록(키, 요약, 상태, 담당자 등 Atlassian API 응답 일부)</li>
+      <li>사용자가 조회한 기간의 Jira 작업 로그(worklog) 내용</li>
+      <li>사용자가 본 서비스 내에서 생성한 로컬 데이터: 세션 타이머, 즐겨찾는 이슈, 연차/반차 표시</li>
+    </ul>
+
+    <h2>3. 저장 위치 및 보존 기간</h2>
+    <ul>
+      <li>
+        위 정보는 전부 <strong>사용자 본인의 브라우저 로컬 스토리지(localStorage)</strong>에만 저장됩니다.
+        본 서비스는 별도 데이터베이스나 서버 저장소를 운영하지 않으며, 제공자(운영자) 측에 사용자 데이터를
+        전송하거나 누적하지 않습니다.
+      </li>
+      <li>
+        Vercel에 배포된 서버리스 함수는 Atlassian API 프록시 및 OAuth 토큰 교환 중계 역할만 수행하며,
+        요청/응답 본문을 별도로 저장하지 않습니다.
+      </li>
+      <li>
+        이슈 목록 및 최근 3개월치 작업 로그는 성능을 위해 브라우저 localStorage에 캐시되며,
+        사용자가 로그아웃하거나 브라우저 데이터를 삭제하면 모두 제거됩니다.
+      </li>
+    </ul>
+
+    <h2>4. 제3자 제공 및 공유</h2>
+    <p>
+      본 서비스는 사용자 데이터를 제3자에게 제공하거나 판매하지 않습니다. 사용자의 브라우저와
+      Atlassian Cloud API 간의 통신만 발생합니다(Vercel 서버리스 함수가 중계).
+    </p>
+
+    <h2>5. 이용자의 권리</h2>
+    <ul>
+      <li>로그아웃 버튼을 눌러 저장된 토큰과 사용자 정보를 즉시 삭제할 수 있습니다.</li>
+      <li>브라우저의 localStorage 삭제로 캐시된 이슈/워크로그/설정을 제거할 수 있습니다.</li>
+      <li>Atlassian 계정 설정에서 본 서비스에 부여한 OAuth 권한을 언제든 철회할 수 있습니다.</li>
+    </ul>
+
+    <h2>6. 보안</h2>
+    <p>
+      OAuth 토큰은 사용자 브라우저에만 보관되며, API 호출 시 Authorization 헤더로만 전달됩니다.
+      Vercel 프록시를 통한 통신은 모두 HTTPS로 이루어집니다.
+    </p>
+
+    <h2>7. 문의</h2>
+    <p>
+      개인정보 처리와 관련된 문의는 다음 이메일로 연락해 주세요:
+      <a href="mailto:gs.k.bear17.dk@dokdo.app">gs.k.bear17.dk@dokdo.app</a>
+    </p>
+  </body>
+</html>
