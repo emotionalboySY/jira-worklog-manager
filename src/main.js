@@ -1169,7 +1169,7 @@ function renderDateNav() {
     <div class="log-date-nav">
       <button class="btn btn-sm" id="log-prev">◀</button>
       <input type="text" class="log-date-picker-input" id="log-date-picker" readonly />
-      <button class="btn btn-sm" id="log-next" ${logDate >= todayStr ? 'disabled' : ''}>▶</button>
+      <button class="btn btn-sm ${logDate >= todayStr ? 'btn-disabled' : ''}" id="log-next" ${logDate >= todayStr ? 'disabled' : ''}>▶</button>
       ${logDate !== todayStr ? `<button class="btn btn-primary btn-sm" id="log-today">오늘</button>` : ''}
     </div>
   `
