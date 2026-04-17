@@ -1352,7 +1352,9 @@ function renderSummaryTab() {
         ${weekData.map(d => `
           <div class="chart-bar-col ${d.isFuture ? 'future' : ''} ${d.weekend ? 'weekend' : ''}">
             <span class="chart-bar-value">${d.minutes > 0 ? formatMinutes(d.minutes) : '-'}</span>
-            <div class="chart-bar ${d.today ? 'today' : ''}" style="height: ${Math.max((d.minutes / 480) * 100, 2)}%"></div>
+            <div class="chart-bar-track">
+              <div class="chart-bar ${d.today ? 'today' : ''}" style="height: ${Math.max(Math.min((d.minutes / 480) * 100, 100), d.minutes > 0 ? 2 : 0)}%"></div>
+            </div>
             <span class="chart-bar-label">${d.date} (${d.day})</span>
           </div>
         `).join('')}
