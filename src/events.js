@@ -58,6 +58,17 @@ import {
 import { ensureSummaryWorklogs } from './views/summary.js'
 import { render } from './render.js'
 
+// 중복 바인딩 방지 헬퍼.
+// 부분 렌더링 도입 후 bindEvents가 여러 번 호출돼도 동일 element에 같은 이벤트는 한 번만 바인드.
+// element가 새로 생성되면 내부 프로퍼티가 없으므로 다시 바인드된다.
+function on(el, event, handler, options) {
+  if (!el) return
+  const key = `__bound_${event}`
+  if (el[key]) return
+  el[key] = true
+  el.addEventListener(event, handler, options)
+}
+
 // ESC 키로 가장 위(나중에 열린) 모달 닫기.
 // 오버레이 바깥 클릭 닫기는 textarea 드래그 선택이 밖에서 끝날 때 오탐하므로 제거.
 // 취소/X 버튼과 ESC로만 닫는다.
@@ -65,17 +76,18 @@ let globalKeyListenerRegistered = false
 
 function handleGlobalKeydown(e) {
   if (e.key !== 'Escape') return
+  const modalsOnly = { sections: ['modals'] }
   if (state.showSettings) { closeSettings(); return }
-  if (state.deletingWorklog) { state.deletingWorklog = null; render(); return }
-  if (state.editingWorklog) { state.editingWorklog = null; render(); return }
+  if (state.deletingWorklog) { state.deletingWorklog = null; render(modalsOnly); return }
+  if (state.editingWorklog) { state.editingWorklog = null; render(modalsOnly); return }
   if (state.showManualLog) {
     state.showManualLog = null
     state.manualIssueCheck = null
-    render()
+    render(modalsOnly)
     return
   }
-  if (state.showCancelConfirm) { state.showCancelConfirm = null; render(); return }
-  if (state.showModal) { state.showModal = null; render(); return }
+  if (state.showCancelConfirm) { state.showCancelConfirm = null; render(modalsOnly); return }
+  if (state.showModal) { state.showModal = null; render(modalsOnly); return }
 }
 
 // ========== 설정 모달 헬퍼 ==========
@@ -84,7 +96,7 @@ function closeSettings() {
   applyPreferences(state.userPrefs)
   state.showSettings = false
   state.settingsDraft = null
-  render()
+  render({ sections: ['modals'] })
 }
 
 function hexToRgb(hex) {
@@ -113,20 +125,20 @@ function deriveProjectColors(hex) {
 export function bindEvents() {
   // 전역 ESC 키 리스너 (모달 닫기) — bindEvents는 render마다 호출되므로 한 번만 등록
   if (!globalKeyListenerRegistered) {
-    document.addEventListener('keydown', handleGlobalKeydown)
+    on(document, 'keydown', handleGlobalKeydown)
     globalKeyListenerRegistered = true
   }
 
   // 테마 토글
   const themeBtn = document.getElementById('btn-theme')
   if (themeBtn) {
-    themeBtn.addEventListener('click', toggleTheme)
+    on(themeBtn, 'click', toggleTheme)
   }
 
   // 로그아웃
   const logoutBtn = document.getElementById('btn-logout')
   if (logoutBtn) {
-    logoutBtn.addEventListener('click', () => {
+    on(logoutBtn, 'click', () => {
       logout()
       render()
     })
@@ -135,22 +147,22 @@ export function bindEvents() {
   // 설정 FAB 열기
   const settingsFab = document.getElementById('btn-open-settings')
   if (settingsFab) {
-    settingsFab.addEventListener('click', () => {
+    on(settingsFab, 'click', () => {
       // 현재 저장된 prefs를 draft로 복제
       state.settingsDraft = JSON.parse(JSON.stringify(state.userPrefs))
       state.showSettings = true
-      render()
+      render({ sections: ['modals'] })
     })
   }
 
   // 설정 모달은 ESC 또는 취소 버튼으로만 닫힘
   const settingsCancel = document.getElementById('settings-cancel')
-  if (settingsCancel) settingsCancel.addEventListener('click', closeSettings)
+  if (settingsCancel) on(settingsCancel, 'click', closeSettings)
 
   // 설정 모달: 기본값 재설정
   const settingsReset = document.getElementById('settings-reset')
   if (settingsReset) {
-    settingsReset.addEventListener('click', () => {
+    on(settingsReset, 'click', () => {
       const d = resetPreferences()
       applyPreferences(d)
       state.settingsDraft = JSON.parse(JSON.stringify(d))
@@ -162,7 +174,7 @@ export function bindEvents() {
   // 설정 모달: 저장
   const settingsSave = document.getElementById('settings-save')
   if (settingsSave) {
-    settingsSave.addEventListener('click', () => {
+    on(settingsSave, 'click', () => {
       if (!state.settingsDraft) return
       savePreferences(state.settingsDraft)
       applyPreferences(state.settingsDraft)
@@ -175,7 +187,7 @@ export function bindEvents() {
 
   // 순서 변경 ▲▼
   document.querySelectorAll('[data-order-move]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    on(btn, 'click', () => {
       const dir = btn.dataset.orderMove
       const kind = btn.dataset.kind
       const idx = parseInt(btn.dataset.idx, 10)
@@ -189,7 +201,7 @@ export function bindEvents() {
 
   // 프로젝트 색상 변경 (input type=color의 change 이벤트)
   document.querySelectorAll('[data-project-color]').forEach(input => {
-    input.addEventListener('change', (e) => {
+    on(input, 'change', (e) => {
       const projectKey = input.dataset.projectColor
       const hex = e.target.value
       const colors = deriveProjectColors(hex)
@@ -203,18 +215,18 @@ export function bindEvents() {
   // 이슈 목록 새로고침
   const refreshIssuesBtn = document.getElementById('btn-refresh-issues')
   if (refreshIssuesBtn) {
-    refreshIssuesBtn.addEventListener('click', () => refreshIssues())
+    on(refreshIssuesBtn, 'click', () => refreshIssues())
   }
 
   // 작업 로그 새로고침
   const refreshWorklogsBtn = document.getElementById('btn-refresh-worklogs')
   if (refreshWorklogsBtn) {
-    refreshWorklogsBtn.addEventListener('click', () => refreshWorklogs())
+    on(refreshWorklogsBtn, 'click', () => refreshWorklogs())
   }
 
   // 프로젝트 선택
   document.querySelectorAll('.project-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
+    on(chip, 'click', () => {
       state.currentProject = chip.dataset.project
       state.currentFilterTab = 'all'
       state.currentPage = 1
@@ -227,7 +239,7 @@ export function bindEvents() {
 
   // 메인 탭
   document.querySelectorAll('.main-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
+    on(tab, 'click', () => {
       state.currentMainTab = tab.dataset.mainTab
       if (tab.dataset.mainTab === 'logs' && isLoggedIn() && state.issuesLoaded) {
         loadWorklogs(state.calendarYear, state.calendarMonth)
@@ -241,7 +253,7 @@ export function bindEvents() {
 
   // 필터 탭
   document.querySelectorAll('.filter-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
+    on(tab, 'click', () => {
       state.currentFilterTab = tab.dataset.filter
       state.currentPage = 1
       // 검색 모드 해제
@@ -255,7 +267,7 @@ export function bindEvents() {
   const searchInput = document.getElementById('issue-search')
   if (searchInput) {
     let debounceTimer
-    searchInput.addEventListener('input', (e) => {
+    on(searchInput, 'input', (e) => {
       state.searchQuery = e.target.value
       clearTimeout(debounceTimer)
       if (!state.searchQuery.trim()) {
@@ -268,7 +280,7 @@ export function bindEvents() {
       }
       debounceTimer = setTimeout(() => performSearch(), 500)
     })
-    searchInput.addEventListener('keydown', (e) => {
+    on(searchInput, 'keydown', (e) => {
       if (e.key === 'Enter') {
         clearTimeout(debounceTimer)
         performSearch()
@@ -283,7 +295,7 @@ export function bindEvents() {
 
   const searchClearBtn = document.getElementById('search-clear')
   if (searchClearBtn) {
-    searchClearBtn.addEventListener('click', () => {
+    on(searchClearBtn, 'click', () => {
       state.searchQuery = ''
       state.searchResults = null
       render()
@@ -294,7 +306,7 @@ export function bindEvents() {
   // 완료/보류 토글
   const showClosedCheckbox = document.getElementById('show-closed')
   if (showClosedCheckbox) {
-    showClosedCheckbox.addEventListener('change', (e) => {
+    on(showClosedCheckbox, 'change', (e) => {
       state.showClosedIssues = e.target.checked
       state.currentPage = 1
       render()
@@ -304,7 +316,7 @@ export function bindEvents() {
   // 현재 스프린트만 보기 토글
   const showSprintOnlyCheckbox = document.getElementById('show-sprint-only')
   if (showSprintOnlyCheckbox) {
-    showSprintOnlyCheckbox.addEventListener('change', async (e) => {
+    on(showSprintOnlyCheckbox, 'change', async (e) => {
       state.showSprintOnly = e.target.checked
       state.currentPage = 1
       if (state.showSprintOnly && state.activeSprintKeys === null) {
@@ -327,7 +339,7 @@ export function bindEvents() {
   // 페이지 사이즈
   const pageSizeSelect = document.getElementById('page-size')
   if (pageSizeSelect) {
-    pageSizeSelect.addEventListener('change', (e) => {
+    on(pageSizeSelect, 'change', (e) => {
       state.pageSize = parseInt(e.target.value)
       state.currentPage = 1
       render()
@@ -336,7 +348,7 @@ export function bindEvents() {
 
   // 페이지네이션
   document.querySelectorAll('[data-page]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    on(btn, 'click', () => {
       state.currentPage = parseInt(btn.dataset.page)
       render()
       // 이슈 목록 상단으로 스크롤
@@ -346,7 +358,7 @@ export function bindEvents() {
 
   // 연반차 토글
   document.querySelectorAll('[data-day-off]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    on(btn, 'click', () => {
       const value = btn.dataset.dayOff
       setDayOff(state.logDate, value === 'none' ? null : value)
       render()
@@ -356,7 +368,7 @@ export function bindEvents() {
   // 달력 열기/닫기 토글
   const calendarToggleBtn = document.getElementById('btn-calendar-toggle')
   if (calendarToggleBtn) {
-    calendarToggleBtn.addEventListener('click', () => {
+    on(calendarToggleBtn, 'click', () => {
       state.calendarOpen = !state.calendarOpen
       localStorage.setItem('log_calendar_open', state.calendarOpen ? '1' : '0')
       render()
@@ -366,7 +378,7 @@ export function bindEvents() {
   // 달력 년/월 직접 선택
   const calYearSelect = document.getElementById('cal-year')
   if (calYearSelect) {
-    calYearSelect.addEventListener('change', (e) => {
+    on(calYearSelect, 'change', (e) => {
       state.calendarYear = parseInt(e.target.value)
       // 미래 월 보정
       const now = new Date()
@@ -380,7 +392,7 @@ export function bindEvents() {
 
   const calMonthSelect = document.getElementById('cal-month')
   if (calMonthSelect) {
-    calMonthSelect.addEventListener('change', (e) => {
+    on(calMonthSelect, 'change', (e) => {
       state.calendarMonth = parseInt(e.target.value)
       if (isLoggedIn() && state.issuesLoaded) loadWorklogs(state.calendarYear, state.calendarMonth)
       render()
@@ -390,7 +402,7 @@ export function bindEvents() {
   // 달력 월 네비게이션
   const calPrev = document.getElementById('cal-prev')
   if (calPrev) {
-    calPrev.addEventListener('click', () => {
+    on(calPrev, 'click', () => {
       state.calendarMonth--
       if (state.calendarMonth < 0) { state.calendarMonth = 11; state.calendarYear-- }
       if (isLoggedIn() && state.issuesLoaded) loadWorklogs(state.calendarYear, state.calendarMonth)
@@ -400,7 +412,7 @@ export function bindEvents() {
 
   const calNext = document.getElementById('cal-next')
   if (calNext && !calNext.disabled) {
-    calNext.addEventListener('click', () => {
+    on(calNext, 'click', () => {
       const now = new Date()
       const nextMonth = state.calendarMonth + 1
       const nextYear = nextMonth > 11 ? state.calendarYear + 1 : state.calendarYear
@@ -416,7 +428,7 @@ export function bindEvents() {
 
   const calToday = document.getElementById('cal-today')
   if (calToday) {
-    calToday.addEventListener('click', () => {
+    on(calToday, 'click', () => {
       const now = new Date()
       state.calendarYear = now.getFullYear()
       state.calendarMonth = now.getMonth()
@@ -428,7 +440,7 @@ export function bindEvents() {
 
   // 달력 날짜 클릭
   document.querySelectorAll('[data-cal-date]').forEach(cell => {
-    cell.addEventListener('click', () => {
+    on(cell, 'click', () => {
       state.logDate = cell.dataset.calDate
       render()
     })
@@ -437,7 +449,7 @@ export function bindEvents() {
   // 목록 뷰 날짜 네비게이션
   const logPrev = document.getElementById('log-prev')
   if (logPrev) {
-    logPrev.addEventListener('click', () => {
+    on(logPrev, 'click', () => {
       state.logDate = shiftDate(state.logDate, -1)
       const d = new Date(state.logDate + 'T00:00:00')
       if (isLoggedIn() && state.issuesLoaded) loadWorklogs(d.getFullYear(), d.getMonth())
@@ -447,7 +459,7 @@ export function bindEvents() {
 
   const logNext = document.getElementById('log-next')
   if (logNext && !logNext.disabled) {
-    logNext.addEventListener('click', () => {
+    on(logNext, 'click', () => {
       const next = shiftDate(state.logDate, 1)
       if (next <= toDateString(new Date())) {
         state.logDate = next
@@ -460,7 +472,7 @@ export function bindEvents() {
 
   const logToday = document.getElementById('log-today')
   if (logToday) {
-    logToday.addEventListener('click', () => {
+    on(logToday, 'click', () => {
       state.logDate = toDateString(new Date())
       const d = new Date(state.logDate + 'T00:00:00')
       if (isLoggedIn() && state.issuesLoaded) loadWorklogs(d.getFullYear(), d.getMonth())
@@ -487,7 +499,7 @@ export function bindEvents() {
 
   // 이슈 행 우클릭 → 컨텍스트 메뉴
   document.querySelectorAll('.issue-row[data-issue-key]').forEach(row => {
-    row.addEventListener('contextmenu', (e) => {
+    on(row, 'contextmenu', (e) => {
       const key = row.dataset.issueKey
       const summary = row.dataset.issueSummary
       if (key) showContextMenu(e, key, summary)
@@ -496,7 +508,7 @@ export function bindEvents() {
 
   // 작업 로그 상세 행 우클릭 → 컨텍스트 메뉴 (이슈 행과 동일)
   document.querySelectorAll('.log-row[data-issue-key]').forEach(row => {
-    row.addEventListener('contextmenu', (e) => {
+    on(row, 'contextmenu', (e) => {
       const key = row.dataset.issueKey
       const summary = row.dataset.issueSummary
       if (key) showContextMenu(e, key, summary)
@@ -505,7 +517,7 @@ export function bindEvents() {
 
   // 즐겨찾기 별표 토글
   document.querySelectorAll('[data-action="toggle-favorite"]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    on(btn, 'click', (e) => {
       e.stopPropagation()
       const key = btn.dataset.key
       const pool = [...getActiveIssues(), ...(state.searchResults || [])]
@@ -518,16 +530,16 @@ export function bindEvents() {
   // 플로팅 패널 펼치기/접기
   const favToggle = document.getElementById('favorites-toggle')
   if (favToggle) {
-    favToggle.addEventListener('click', () => {
+    on(favToggle, 'click', () => {
       state.favoritesPanelCollapsed = !state.favoritesPanelCollapsed
       localStorage.setItem('favorites_collapsed', state.favoritesPanelCollapsed ? '1' : '0')
-      render()
+      render({ sections: ['favorites'] })
     })
   }
 
   // 즐겨찾기 패널의 시작 버튼
   document.querySelectorAll('[data-action="fav-start"]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    on(btn, 'click', (e) => {
       e.stopPropagation()
       const key = btn.dataset.key
       const summary = btn.dataset.summary || ''
@@ -538,7 +550,7 @@ export function bindEvents() {
 
   // 즐겨찾기 해제 (패널 내부)
   document.querySelectorAll('[data-action="fav-remove"]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    on(btn, 'click', (e) => {
       e.stopPropagation()
       const key = btn.dataset.key
       toggleFavorite(key, '')
@@ -548,7 +560,7 @@ export function bindEvents() {
 
   // 즐겨찾기 항목 우클릭 → 컨텍스트 메뉴
   document.querySelectorAll('.favorite-item[data-issue-key]').forEach(row => {
-    row.addEventListener('contextmenu', (e) => {
+    on(row, 'contextmenu', (e) => {
       const key = row.dataset.issueKey
       const summary = row.dataset.issueSummary
       if (key) showContextMenu(e, key, summary)
@@ -557,7 +569,7 @@ export function bindEvents() {
 
   // 이슈 행 호버 시 표시되는 '수동 기록' 버튼
   document.querySelectorAll('[data-action="manual-log"]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    on(btn, 'click', (e) => {
       e.stopPropagation()
       const key = btn.dataset.key
       const pool = [...getActiveIssues(), ...(state.searchResults || [])]
@@ -571,7 +583,7 @@ export function bindEvents() {
 
   // 이슈 목록에서 작업 시작
   document.querySelectorAll('[data-action="start"]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    on(btn, 'click', (e) => {
       e.stopPropagation()
       const key = btn.dataset.key
       // 이슈 목록 또는 검색 결과에서 찾기
@@ -586,7 +598,7 @@ export function bindEvents() {
 
   // 세션 시작 시간을 직전 로그 종료 시간으로 조정
   document.querySelectorAll('[data-action="adjust-session-start"]').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
+    on(btn, 'click', async (e) => {
       e.stopPropagation()
       if (btn.disabled) return
       const key = btn.dataset.key
@@ -635,7 +647,7 @@ export function bindEvents() {
 
   // 세션 중단
   document.querySelectorAll('[data-action="pause"]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    on(btn, 'click', (e) => {
       e.stopPropagation()
       pauseSession(btn.dataset.key)
       render()
@@ -644,7 +656,7 @@ export function bindEvents() {
 
   // 세션 재개
   document.querySelectorAll('[data-action="resume"]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    on(btn, 'click', (e) => {
       e.stopPropagation()
       resumeSession(btn.dataset.key)
       render()
@@ -653,19 +665,19 @@ export function bindEvents() {
 
   // 작업 종료 버튼 → 종료 모달
   document.querySelectorAll('[data-action="finish"]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    on(btn, 'click', (e) => {
       e.stopPropagation()
       state.showModal = btn.dataset.key
-      render()
+      render({ sections: ['modals'] })
     })
   })
 
   // 작업 취소 버튼 → 컨펌 모달
   document.querySelectorAll('[data-action="cancel"]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    on(btn, 'click', (e) => {
       e.stopPropagation()
       state.showCancelConfirm = btn.dataset.key
-      render()
+      render({ sections: ['modals'] })
     })
   })
 
@@ -673,12 +685,12 @@ export function bindEvents() {
 
   const modalCancel = document.getElementById('modal-cancel')
   if (modalCancel) {
-    modalCancel.addEventListener('click', () => { state.showModal = null; render() })
+    on(modalCancel, 'click', () => { state.showModal = null; render({ sections: ['modals'] }) })
   }
 
   const modalSubmit = document.getElementById('modal-submit')
   if (modalSubmit) {
-    modalSubmit.addEventListener('click', async () => {
+    on(modalSubmit, 'click', async () => {
       if (modalSubmit.disabled) return
       const sessions = loadSessions()
       const session = sessions.find(s => s.issueKey === state.showModal)
@@ -755,12 +767,12 @@ export function bindEvents() {
 
   const cancelNo = document.getElementById('cancel-confirm-no')
   if (cancelNo) {
-    cancelNo.addEventListener('click', () => { state.showCancelConfirm = null; render() })
+    on(cancelNo, 'click', () => { state.showCancelConfirm = null; render({ sections: ['modals'] }) })
   }
 
   const cancelYes = document.getElementById('cancel-confirm-yes')
   if (cancelYes) {
-    cancelYes.addEventListener('click', () => {
+    on(cancelYes, 'click', () => {
       removeSession(state.showCancelConfirm)
       state.showCancelConfirm = null
       render()
@@ -770,10 +782,10 @@ export function bindEvents() {
   // 수동 기록 버튼
   const manualLogBtn = document.getElementById('btn-manual-log')
   if (manualLogBtn) {
-    manualLogBtn.addEventListener('click', () => {
+    on(manualLogBtn, 'click', () => {
       state.showManualLog = {}
       state.manualIssueCheck = null
-      render()
+      render({ sections: ['modals'] })
     })
   }
 
@@ -781,22 +793,22 @@ export function bindEvents() {
 
   const manualCancel = document.getElementById('manual-log-cancel')
   if (manualCancel) {
-    manualCancel.addEventListener('click', () => { state.showManualLog = null; state.manualIssueCheck = null; render() })
+    on(manualCancel, 'click', () => { state.showManualLog = null; state.manualIssueCheck = null; render({ sections: ['modals'] }) })
   }
 
   // 이슈 키 입력: 자동완성 드롭다운
   const manualIssueInput = document.getElementById('manual-issue-key')
   if (manualIssueInput) {
-    manualIssueInput.addEventListener('input', () => {
+    on(manualIssueInput, 'input', () => {
       state.manualIssueCheck = null
       renderManualKeyHint()
       updateManualKeyDropdown()
     })
-    manualIssueInput.addEventListener('focus', () => {
+    on(manualIssueInput, 'focus', () => {
       if (manualIssueInput.value.trim()) updateManualKeyDropdown()
     })
     // 키보드 네비게이션
-    manualIssueInput.addEventListener('keydown', (e) => {
+    on(manualIssueInput, 'keydown', (e) => {
       const dropdown = document.getElementById('manual-key-dropdown')
       if (!dropdown || dropdown.style.display === 'none') return
       const items = dropdown.querySelectorAll('.autocomplete-item')
@@ -829,7 +841,7 @@ export function bindEvents() {
 
   // 이슈 키 입력: blur 시 유효성 검사 (폼 초기화 방지 위해 render() 대신 힌트 DOM 직접 업데이트)
   if (manualIssueInput) {
-    manualIssueInput.addEventListener('blur', async () => {
+    on(manualIssueInput, 'blur', async () => {
       // blur 후 드롭다운 닫기 (mousedown 선택이 먼저 처리되도록 지연)
       setTimeout(() => {
         const dd = document.getElementById('manual-key-dropdown')
@@ -874,7 +886,7 @@ export function bindEvents() {
   // (사용자가 수동으로 수정하면 autofill 플래그가 꺼져 다음 자동 주입을 건드리지 않음)
   const manualStartInputEl = document.getElementById('manual-start-time')
   if (manualStartInputEl) {
-    manualStartInputEl.addEventListener('input', () => {
+    on(manualStartInputEl, 'input', () => {
       manualStartInputEl.dataset.autofilled = '0'
     })
   }
@@ -907,7 +919,7 @@ export function bindEvents() {
   // 날짜 변경 시 시작 시간 재계산 (사용자 수정 전인 경우에만)
   const manualDateInput = document.getElementById('manual-date')
   if (manualDateInput) {
-    manualDateInput.addEventListener('change', () => {
+    on(manualDateInput, 'change', () => {
       const startInput = document.getElementById('manual-start-time')
       if (startInput) startInput.dataset.autofilled = '1'  // 자동 채움 허용 상태로 복귀
       autofillManualStartTime()
@@ -917,7 +929,7 @@ export function bindEvents() {
   // '지금' 버튼: 종료 시간을 현재 시각으로
   const manualEndNow = document.getElementById('manual-end-now')
   if (manualEndNow) {
-    manualEndNow.addEventListener('click', () => {
+    on(manualEndNow, 'click', () => {
       const now = new Date()
       const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
       const endInput = document.getElementById('manual-end-time')
@@ -931,14 +943,14 @@ export function bindEvents() {
   // 시작/종료 시간 변경 → 소요 시간 실시간 계산
   const manualStartInput = document.getElementById('manual-start-time')
   const manualEndInput = document.getElementById('manual-end-time')
-  if (manualStartInput) manualStartInput.addEventListener('input', updateManualDurationReadout)
-  if (manualEndInput) manualEndInput.addEventListener('input', updateManualDurationReadout)
+  if (manualStartInput) on(manualStartInput, 'input', updateManualDurationReadout)
+  if (manualEndInput) on(manualEndInput, 'input', updateManualDurationReadout)
   if (manualStartInput || manualEndInput) updateManualDurationReadout()
 
   const manualSubmit = document.getElementById('manual-log-submit')
   const manualCancelBtn = document.getElementById('manual-log-cancel')
   if (manualSubmit) {
-    manualSubmit.addEventListener('click', async () => {
+    on(manualSubmit, 'click', async () => {
       if (manualSubmit.disabled) return
       const issueKey = document.getElementById('manual-issue-key').value.trim().toUpperCase()
       const date = document.getElementById('manual-date').value
@@ -988,7 +1000,7 @@ export function bindEvents() {
   // 요약 탭 주차 네비게이션
   const summaryPrev = document.getElementById('summary-prev')
   if (summaryPrev) {
-    summaryPrev.addEventListener('click', () => {
+    on(summaryPrev, 'click', () => {
       state.summaryWeekOffset--
       ensureSummaryWorklogs()
       render()
@@ -997,7 +1009,7 @@ export function bindEvents() {
 
   const summaryNext = document.getElementById('summary-next')
   if (summaryNext && !summaryNext.disabled) {
-    summaryNext.addEventListener('click', () => {
+    on(summaryNext, 'click', () => {
       if (state.summaryWeekOffset < 0) {
         state.summaryWeekOffset++
         ensureSummaryWorklogs()
@@ -1008,7 +1020,7 @@ export function bindEvents() {
 
   const summaryThisWeek = document.getElementById('summary-this-week')
   if (summaryThisWeek) {
-    summaryThisWeek.addEventListener('click', () => {
+    on(summaryThisWeek, 'click', () => {
       state.summaryWeekOffset = 0
       ensureSummaryWorklogs()
       render()
@@ -1017,7 +1029,7 @@ export function bindEvents() {
 
   // 요약 탭 일별 차트 막대 클릭 → 로그 탭으로 이동
   document.querySelectorAll('[data-chart-date]').forEach(col => {
-    col.addEventListener('click', () => {
+    on(col, 'click', () => {
       const dateStr = col.dataset.chartDate
       if (!dateStr) return
       const d = new Date(dateStr + 'T00:00:00')
@@ -1036,7 +1048,7 @@ export function bindEvents() {
 
   // 작업 로그 수정 버튼
   document.querySelectorAll('[data-action="edit-log"]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    on(btn, 'click', (e) => {
       e.stopPropagation()
       const idx = parseInt(btn.dataset.idx)
       const logs = getActiveLogs(state.logDate)
@@ -1052,13 +1064,13 @@ export function bindEvents() {
         comment: log.comment || '',
         date: state.logDate,
       }
-      render()
+      render({ sections: ['modals'] })
     })
   })
 
   // 작업 로그 삭제 버튼
   document.querySelectorAll('[data-action="delete-log"]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    on(btn, 'click', (e) => {
       e.stopPropagation()
       const idx = parseInt(btn.dataset.idx)
       const logs = getActiveLogs(state.logDate)
@@ -1069,7 +1081,7 @@ export function bindEvents() {
         issueKey: log.issueKey,
         summary: log.summary,
       }
-      render()
+      render({ sections: ['modals'] })
     })
   })
 
@@ -1077,13 +1089,13 @@ export function bindEvents() {
 
   const editCancel = document.getElementById('edit-worklog-cancel')
   if (editCancel) {
-    editCancel.addEventListener('click', () => { state.editingWorklog = null; render() })
+    on(editCancel, 'click', () => { state.editingWorklog = null; render({ sections: ['modals'] }) })
   }
 
   // 수정 모달: '지금' 버튼 + 실시간 계산
   const editEndNow = document.getElementById('edit-end-now')
   if (editEndNow) {
-    editEndNow.addEventListener('click', () => {
+    on(editEndNow, 'click', () => {
       const now = new Date()
       const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
       const endInput = document.getElementById('edit-end-time')
@@ -1095,14 +1107,14 @@ export function bindEvents() {
   }
   const editStartInput = document.getElementById('edit-start-time')
   const editEndInput = document.getElementById('edit-end-time')
-  if (editStartInput) editStartInput.addEventListener('input', updateEditDurationReadout)
-  if (editEndInput) editEndInput.addEventListener('input', updateEditDurationReadout)
+  if (editStartInput) on(editStartInput, 'input', updateEditDurationReadout)
+  if (editEndInput) on(editEndInput, 'input', updateEditDurationReadout)
   if (editStartInput || editEndInput) updateEditDurationReadout()
 
   const editSubmit = document.getElementById('edit-worklog-submit')
   const editCancelBtn = document.getElementById('edit-worklog-cancel')
   if (editSubmit) {
-    editSubmit.addEventListener('click', async () => {
+    on(editSubmit, 'click', async () => {
       if (editSubmit.disabled) return
       const startTime = document.getElementById('edit-start-time').value
       const endTime = document.getElementById('edit-end-time').value
@@ -1154,12 +1166,12 @@ export function bindEvents() {
 
   const deleteNo = document.getElementById('delete-worklog-no')
   if (deleteNo) {
-    deleteNo.addEventListener('click', () => { state.deletingWorklog = null; render() })
+    on(deleteNo, 'click', () => { state.deletingWorklog = null; render({ sections: ['modals'] }) })
   }
 
   const deleteYes = document.getElementById('delete-worklog-yes')
   if (deleteYes) {
-    deleteYes.addEventListener('click', async () => {
+    on(deleteYes, 'click', async () => {
       try {
         await deleteWorklog(state.deletingWorklog.issueKey, state.deletingWorklog.worklogId)
         state.deletingWorklog = null

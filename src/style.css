@@ -94,6 +94,16 @@ textarea {
   padding: 0 20px 80px;
 }
 
+/* 부분 렌더링 섹션 컨테이너는 레이아웃상 투명 (sec-content만 .tab-content 규칙 유지) */
+#sec-header,
+#sec-sessions,
+#sec-tabs,
+#sec-favorites,
+#sec-settings-fab,
+#sec-modals {
+  display: contents;
+}
+
 /* 요약 탭 본문은 960px로 좁혀 가독성 유지 (프레임은 1400px 고정) */
 body.tab-summary .tab-content {
   max-width: 960px;

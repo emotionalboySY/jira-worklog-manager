@@ -16,7 +16,8 @@ export function toggleTheme() {
   state.theme = state.theme === 'dark' ? 'light' : 'dark'
   localStorage.setItem('theme', state.theme)
   applyTheme()
-  render()
+  // 테마 아이콘만 바뀌므로 header 섹션만 갱신
+  render({ sections: ['header'] })
 }
 
 // ========== 사용자 설정 적용 ==========
@@ -89,7 +90,7 @@ export function showContextMenu(e, issueKey, summary) {
         state.showManualLog = { issueKey, summary }
         state.manualIssueCheck = { status: 'ok', key: issueKey, summary }
         hideContextMenu()
-        render()
+        render({ sections: ['modals'] })
         return
       }
       let text = ''
