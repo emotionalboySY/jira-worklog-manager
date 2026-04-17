@@ -1168,7 +1168,7 @@ function renderDateNav() {
   return `
     <div class="log-date-nav">
       <button class="btn btn-sm" id="log-prev">◀</button>
-      <input type="text" class="log-date-picker-input" id="log-date-picker" value="${logDate}" readonly />
+      <input type="text" class="log-date-picker-input" id="log-date-picker" readonly />
       <button class="btn btn-sm" id="log-next" ${logDate >= todayStr ? 'disabled' : ''}>▶</button>
       ${logDate !== todayStr ? `<button class="btn btn-primary btn-sm" id="log-today">오늘</button>` : ''}
     </div>
@@ -2089,7 +2089,7 @@ function bindEvents() {
     flatpickrInstance = flatpickr(logDatePicker, {
       locale: Korean,
       dateFormat: 'Y년 m월 d일 (D)',
-      defaultDate: logDate,
+      defaultDate: new Date(logDate + 'T00:00:00'),
       maxDate: 'today',
       disableMobile: true,
       onChange: (selectedDates) => {
