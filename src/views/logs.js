@@ -13,19 +13,24 @@ import {
 } from '../utils.js'
 
 export function renderLogsTab() {
+  const open = state.calendarOpen
   return `
     <div class="log-toolbar">
       <button class="btn btn-sm btn-refresh" id="btn-refresh-worklogs" ${state.worklogsLoading ? 'disabled' : ''} title="작업 로그 새로고침">
         ${state.worklogsLoading ? '<span class="btn-spinner"></span>' : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8A5.5 5.5 0 1 1 12 4.5"/><polyline points="13.5 2 13.5 5 10.5 5"/></svg>'}
       </button>
-      <button class="btn btn-sm" id="btn-calendar-toggle" title="${state.calendarOpen ? '달력 닫기' : '달력 열기'}">
+      <button class="btn btn-sm" id="btn-calendar-toggle" title="${open ? '달력 닫기' : '달력 열기'}">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1.5"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></svg>
-        <span>${state.calendarOpen ? '달력 닫기' : '달력 열기'}</span>
+        <span>${open ? '달력 닫기' : '달력 열기'}</span>
       </button>
     </div>
-    ${state.calendarOpen ? renderCalendarView() : ''}
-    ${renderDateNav()}
-    ${renderLogDetail()}
+    <div class="log-body ${open ? 'with-calendar' : ''}">
+      ${open ? renderCalendarView() : ''}
+      <div class="log-main">
+        ${renderDateNav()}
+        ${renderLogDetail()}
+      </div>
+    </div>
   `
 }
 

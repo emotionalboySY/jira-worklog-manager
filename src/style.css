@@ -89,9 +89,18 @@ textarea {
 
 /* ========== 레이아웃 ========== */
 #app {
-  max-width: 960px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 0 20px 80px;
+}
+
+/* 이슈·요약 탭은 본문을 960px로 다시 좁혀 가독성 유지 (프레임은 1400px 고정) */
+body.tab-issues .tab-content,
+body.tab-summary .tab-content {
+  max-width: 960px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ===== 이슈 탭: 페이지 자체 스크롤 제거, 이슈 리스트만 내부 스크롤 ===== */
@@ -170,20 +179,58 @@ body.tab-logs .tab-content {
   padding-bottom: 20px;
 }
 
-/* 상단 고정 영역: 툴바, 달력(있을 때), 날짜 네비 */
-body.tab-logs .tab-content > .log-toolbar,
-body.tab-logs .tab-content > .calendar,
-body.tab-logs .tab-content > .log-date-nav {
+/* 상단 고정 영역: 툴바 */
+body.tab-logs .tab-content > .log-toolbar {
   flex-shrink: 0;
 }
 
-/* log-detail이 나머지 공간을 flex column으로 차지 */
-body.tab-logs .tab-content > .log-detail {
+/* log-body: 달력 열림 상태이면 좌(달력) 우(로그 본문) 2열 그리드, 아니면 세로 flex */
+body.tab-logs .tab-content > .log-body {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+body.tab-logs .log-body.with-calendar {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 20px;
+}
+
+body.tab-logs .log-body.with-calendar > .calendar {
+  align-self: start;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+/* log-main: 날짜 네비 + 로그 상세를 세로로 쌓되 상세만 스크롤 */
+body.tab-logs .log-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.tab-logs .log-main > .log-date-nav {
+  flex-shrink: 0;
+}
+
+body.tab-logs .log-main > .log-detail {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 좁은 화면: 2열 해제하고 세로 스택으로 폴백 */
+@media (max-width: 1100px) {
+  body.tab-logs .log-body.with-calendar {
+    display: flex;
+    flex-direction: column;
+  }
 }
 
 /* log-detail 내부 고정 영역: 연반차 토글, 합계 */
