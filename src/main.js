@@ -416,6 +416,12 @@ function getTypeLabel(type) {
   return ISSUE_TYPES[type]?.label || type
 }
 
+// UI 표시용 상태명 축약 (원본은 title로 보존)
+function getShortStatusLabel(status) {
+  if (status === '보류(Closed)') return '보류'
+  return status
+}
+
 function getStatusInfo(status) {
   return ISSUE_STATUSES[status] || { label: status, css: 'todo' }
 }
@@ -936,7 +942,8 @@ function renderIssuesTab() {
         <div class="no-session">해당 조건에 맞는 이슈가 없습니다.</div>
       ` : paginateIssues(filtered).map(issue => {
         const statusCss = getStatusCss(issue.statusCategory || issue.status)
-        const statusLabel = issue.statusCategory ? issue.status : getStatusInfo(issue.status).label
+        const rawStatus = issue.statusCategory ? issue.status : getStatusInfo(issue.status).label
+        const statusLabel = getShortStatusLabel(rawStatus)
         const typeIcon = issue.typeIconUrl
           ? `<img class="issue-type-img" src="${issue.typeIconUrl}" alt="${issue.type}" title="${issue.type}" />`
           : `<span class="issue-type-icon ${issue.type}" title="${getTypeLabel(issue.type)}">${getTypeIcon(issue.type)}</span>`
@@ -953,7 +960,7 @@ function renderIssuesTab() {
             <button class="btn-star ${isFavorite(issue.key) ? 'is-favorite' : ''}" data-action="toggle-favorite" data-key="${issue.key}" title="${isFavorite(issue.key) ? '즐겨찾기 해제' : '즐겨찾기 추가'}">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="${isFavorite(issue.key) ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>
             </button>
-            <span class="issue-status ${statusCss}">${statusLabel}</span>
+            <span class="issue-status ${statusCss}" title="${rawStatus}">${statusLabel}</span>
             ${issue.role && issue.role !== 'none'
               ? `<span class="issue-tag ${issue.role}">${{ assignee: '할당', reporter: '보고', watcher: '워칭' }[issue.role]}</span>`
               : `<span class="issue-tag placeholder" aria-hidden="true">·</span>`
