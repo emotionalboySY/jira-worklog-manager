@@ -3,7 +3,7 @@ import flatpickr from 'flatpickr'
 import 'flatpickr/dist/flatpickr.min.css'
 import { Korean } from 'flatpickr/dist/l10n/ko.js'
 import { login, logout, isLoggedIn, handleOAuthCallback, fetchCurrentUser, getSavedUser, saveUser } from './auth.js'
-import { fetchMyIssues, fetchProjects, searchIssuesByKey, fetchMyWorklogs, updateWorklog, deleteWorklog, createWorklog, fetchIssueMeta } from './jira.js'
+import { fetchMyIssues, fetchProjects, searchIssuesByKey, fetchMyWorklogs, updateWorklog, deleteWorklog, createWorklog, fetchIssueMeta, fetchActiveSprintIssueKeys } from './jira.js'
 
 // ========== 목업 데이터 ==========
 const MOCK_USER = {
@@ -326,6 +326,9 @@ let currentFilterTab = 'all'
 let currentProject = 'ALL'
 let currentPage = 1
 let showClosedIssues = false
+let showSprintOnly = false
+let activeSprintKeys = null  // Set<string> | null (null=아직 로드 안됨)
+let sprintLoading = false
 let pageSize = 20
 let searchQuery = ''
 let searchResults = null // null=검색모드 아님, []=검색 결과
@@ -690,7 +693,7 @@ function renderFavoritesPanel() {
     : favorites.map(fav => {
         const status = sessionMap.get(fav.issueKey)
         const btn = status === 'active'
-          ? `<span class="btn btn-sm btn-start session-active-badge">진행 중</span>`
+          ? `<button class="btn btn-sm session-active-finish" data-action="finish" data-key="${fav.issueKey}" title="세션 종료"><span class="active-label">진행 중</span><span class="finish-label">종료</span></button>`
           : status === 'paused'
             ? `<button class="btn btn-sm" data-action="fav-start" data-key="${fav.issueKey}" data-summary="${(fav.summary || '').replace(/"/g, '&quot;')}">재개</button>`
             : `<button class="btn btn-primary btn-sm" data-action="fav-start" data-key="${fav.issueKey}" data-summary="${(fav.summary || '').replace(/"/g, '&quot;')}">시작</button>`
@@ -838,9 +841,16 @@ function filterClosedIssues(issues) {
   return issues.filter(i => i.statusCategory !== CLOSED_CATEGORY)
 }
 
+function filterSprintIssues(issues) {
+  if (!showSprintOnly) return issues
+  if (!activeSprintKeys) return issues
+  return issues.filter(i => activeSprintKeys.has(i.key))
+}
+
 function getFilteredIssues() {
   let issues = getActiveIssues()
   issues = filterClosedIssues(issues)
+  issues = filterSprintIssues(issues)
   if (currentProject !== 'ALL') {
     issues = issues.filter(i => getProjectFromKey(i.key) === currentProject)
   }
@@ -853,6 +863,7 @@ function getFilteredIssues() {
 function getProjectIssues() {
   let issues = getActiveIssues()
   issues = filterClosedIssues(issues)
+  issues = filterSprintIssues(issues)
   if (currentProject === 'ALL') return issues
   return issues.filter(i => getProjectFromKey(i.key) === currentProject)
 }
@@ -896,6 +907,13 @@ function renderIssuesTab() {
       </div>
       ${!isSearchMode ? `
         <div class="filter-right">
+          <label class="closed-toggle">
+            <span class="custom-checkbox ${showSprintOnly ? 'checked' : ''}">
+              <svg viewBox="0 0 12 12" fill="none"><polyline points="2.5 6 5 8.5 9.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <input type="checkbox" id="show-sprint-only" ${showSprintOnly ? 'checked' : ''} ${sprintLoading ? 'disabled' : ''} />
+            <span>현재 스프린트만 보기${sprintLoading ? ' (불러오는 중...)' : ''}</span>
+          </label>
           <label class="closed-toggle">
             <span class="custom-checkbox ${showClosedIssues ? 'checked' : ''}">
               <svg viewBox="0 0 12 12" fill="none"><polyline points="2.5 6 5 8.5 9.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -943,7 +961,7 @@ function renderIssuesTab() {
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><polyline points="8 4.5 8 8 10.5 9.5"/></svg>
             </button>
             ${sessionMap.get(issue.key) === 'active'
-              ? `<span class="btn btn-sm btn-start session-active-badge">진행 중</span>`
+              ? `<button class="btn btn-sm btn-start session-active-finish" data-action="finish" data-key="${issue.key}" title="세션 종료"><span class="active-label">진행 중</span><span class="finish-label">종료</span></button>`
               : sessionMap.has(issue.key)
                 ? `<button class="btn btn-sm btn-start" data-action="start" data-key="${issue.key}">재개</button>`
                 : `<button class="btn btn-primary btn-sm btn-start" data-action="start" data-key="${issue.key}">시작</button>`
@@ -1693,6 +1711,29 @@ function bindEvents() {
     showClosedCheckbox.addEventListener('change', (e) => {
       showClosedIssues = e.target.checked
       currentPage = 1
+      render()
+    })
+  }
+
+  // 현재 스프린트만 보기 토글
+  const showSprintOnlyCheckbox = document.getElementById('show-sprint-only')
+  if (showSprintOnlyCheckbox) {
+    showSprintOnlyCheckbox.addEventListener('change', async (e) => {
+      showSprintOnly = e.target.checked
+      currentPage = 1
+      if (showSprintOnly && activeSprintKeys === null) {
+        sprintLoading = true
+        render()
+        try {
+          const keys = await fetchActiveSprintIssueKeys()
+          activeSprintKeys = new Set(keys)
+        } catch (err) {
+          console.error('스프린트 이슈 조회 실패:', err)
+          activeSprintKeys = new Set()
+          showToast('스프린트 이슈를 불러오지 못했습니다.', '⚠')
+        }
+        sprintLoading = false
+      }
       render()
     })
   }
@@ -2626,13 +2667,15 @@ async function refreshIssues() {
   if (issuesLoading) return
   const userName = getSavedUser()?.displayName || ''
   issuesLoading = true
+  // 스프린트 캐시 초기화 (다음에 필요해지면 재조회)
+  activeSprintKeys = null
   render()
   showToast(`${userName}님의 이슈 목록을 업데이트합니다.`, '🔄')
   try {
-    const [freshIssues, freshProjects] = await Promise.all([
-      fetchMyIssues(),
-      fetchProjects(),
-    ])
+    const promises = [fetchMyIssues(), fetchProjects()]
+    if (showSprintOnly) promises.push(fetchActiveSprintIssueKeys())
+    const [freshIssues, freshProjects, sprintKeys] = await Promise.all(promises)
+    if (showSprintOnly) activeSprintKeys = new Set(sprintKeys || [])
     const oldKeys = JSON.stringify(realIssues.map(i => i.key).sort())
     const newKeys = JSON.stringify(freshIssues.map(i => i.key).sort())
     realIssues = freshIssues

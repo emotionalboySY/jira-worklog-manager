@@ -650,6 +650,32 @@ a.issue-key-link:hover {
   opacity: 1 !important;
 }
 
+/* 진행 중 배지 → 호버 시 종료 버튼으로 전환 */
+.session-active-finish {
+  color: var(--green) !important;
+  border-color: var(--green) !important;
+  opacity: 1 !important;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.session-active-finish .finish-label {
+  display: none;
+}
+
+.session-active-finish:hover {
+  color: var(--red) !important;
+  border-color: var(--red) !important;
+  background: var(--red-bg) !important;
+}
+
+.session-active-finish:hover .active-label {
+  display: none;
+}
+
+.session-active-finish:hover .finish-label {
+  display: inline;
+}
+
 /* 이슈 행 별표 버튼 */
 .btn-star {
   display: inline-flex;

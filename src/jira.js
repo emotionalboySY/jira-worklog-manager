@@ -261,6 +261,13 @@ export async function createWorklog(issueKey, { started, timeSpentSeconds, comme
   return jiraFetch(`/issue/${issueKey}/worklog`, { method: 'POST', body })
 }
 
+// 현재 열린 스프린트에 속한 내 이슈들의 key 목록
+export async function fetchActiveSprintIssueKeys() {
+  const jql = `(assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser()) AND sprint in openSprints()`
+  const issues = await fetchAllPages(jql)
+  return issues.map(i => i.key)
+}
+
 // 이슈 단일 조회 (요약 미리보기 및 유효성 검사용)
 export async function fetchIssueMeta(issueKey) {
   const data = await jiraFetch(
