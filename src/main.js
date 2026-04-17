@@ -1950,17 +1950,39 @@ function bindEvents() {
   // '직전 종료 시간' 버튼: 선택된 날짜의 마지막 worklog endTime을 시작 시간에 주입
   const manualStartFromPrev = document.getElementById('manual-start-from-prev')
   if (manualStartFromPrev) {
-    manualStartFromPrev.addEventListener('click', () => {
+    manualStartFromPrev.addEventListener('click', async () => {
+      if (manualStartFromPrev.disabled) return
       const dateInput = document.getElementById('manual-date')
       const startInput = document.getElementById('manual-start-time')
       if (!dateInput || !startInput) return
       const date = dateInput.value
+      if (!date) return
+
+      // 해당 월이 아직 로드 안됐다면 조용히 로드 (render 없이 → 모달 폼 유지)
+      const d = new Date(date + 'T00:00:00')
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      if (!worklogsLoadedMonths.has(monthKey)) {
+        const originalLabel = manualStartFromPrev.textContent
+        manualStartFromPrev.disabled = true
+        manualStartFromPrev.textContent = '불러오는 중...'
+        try {
+          await ensureMonthWorklogsLoaded(d.getFullYear(), d.getMonth())
+        } catch (e) {
+          console.error('작업 로그 로드 실패:', e)
+          showToast('작업 로그를 불러오지 못했습니다.', '⚠')
+          manualStartFromPrev.disabled = false
+          manualStartFromPrev.textContent = originalLabel
+          return
+        }
+        manualStartFromPrev.disabled = false
+        manualStartFromPrev.textContent = originalLabel
+      }
+
       const logs = worklogsByDate[date] || []
       if (logs.length === 0) {
         showToast('해당 날짜에 기록된 작업 로그가 없습니다.', 'ℹ')
         return
       }
-      // endTime(HH:MM) 중 가장 늦은 값
       const latestEnd = logs.reduce((max, l) => (l.endTime > max ? l.endTime : max), '00:00')
       startInput.value = latestEnd
       updateManualDurationReadout()
@@ -2351,6 +2373,23 @@ async function loadWorklogs(year, month) {
 
   worklogsLoading = false
   render()
+}
+
+// 특정 월 worklog를 render() 없이 조용히 로드 (모달 폼 유지용)
+async function ensureMonthWorklogsLoaded(year, month) {
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
+  if (worklogsLoadedMonths.has(monthKey)) return
+  const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  const fresh = await fetchMyWorklogs(startDate, endDate)
+  // 해당 월 기존 데이터 정리 후 병합
+  for (const key of Object.keys(worklogsByDate)) {
+    if (key.startsWith(monthKey)) delete worklogsByDate[key]
+  }
+  mergeLogs(fresh)
+  worklogsLoadedMonths.add(monthKey)
+  saveWorklogCache(monthKey, fresh)
 }
 
 // 이슈 목록 강제 새로고침
