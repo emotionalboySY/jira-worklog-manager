@@ -2376,14 +2376,24 @@ async function loadWorklogs(year, month) {
 }
 
 // 특정 월 worklog를 render() 없이 조용히 로드 (모달 폼 유지용)
+// 1) 메모리에 이미 있으면 그대로 사용
+// 2) localStorage 캐시에 있으면 즉시 병합 후 반환 (네트워크 호출 X)
+// 3) 그 외에만 API 호출
 async function ensureMonthWorklogsLoaded(year, month) {
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
   if (worklogsLoadedMonths.has(monthKey)) return
+
+  const cached = getCachedMonth(monthKey)
+  if (cached) {
+    mergeLogs(cached)
+    worklogsLoadedMonths.add(monthKey)
+    return
+  }
+
   const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
   const lastDay = new Date(year, month + 1, 0).getDate()
   const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
   const fresh = await fetchMyWorklogs(startDate, endDate)
-  // 해당 월 기존 데이터 정리 후 병합
   for (const key of Object.keys(worklogsByDate)) {
     if (key.startsWith(monthKey)) delete worklogsByDate[key]
   }
