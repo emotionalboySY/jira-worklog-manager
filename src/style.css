@@ -1664,6 +1664,34 @@ span.flatpickr-weekday {
   background: var(--border);
 }
 
+/* ========== 모달 레이블 행 (label + 보조 버튼) ========== */
+.modal-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.modal-label-row .modal-label {
+  margin-bottom: 0;
+}
+
+/* 텍스트 링크형 버튼 */
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn-link:hover {
+  opacity: 0.75;
+  text-decoration: underline;
+}
+
 /* ========== 시간 + 지금 버튼 ========== */
 .time-with-btn {
   display: flex;

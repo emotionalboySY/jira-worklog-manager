@@ -1335,11 +1335,16 @@ function renderManualLogModal() {
           <input type="date" class="modal-input" id="manual-date" value="${todayStr}" max="${todayStr}" />
         </div>
         <div class="modal-field">
-          <label class="modal-label">시작 시간</label>
+          <div class="modal-label-row">
+            <label class="modal-label">시작 시간</label>
+            <button type="button" class="btn-link" id="manual-start-from-prev" title="선택한 날짜의 가장 마지막 작업 로그 종료 시간으로 설정">직전 종료 시간</button>
+          </div>
           <input type="time" class="modal-input" id="manual-start-time" value="${nowTime}" />
         </div>
         <div class="modal-field">
-          <label class="modal-label">종료 시간</label>
+          <div class="modal-label-row">
+            <label class="modal-label">종료 시간</label>
+          </div>
           <div class="time-with-btn">
             <input type="time" class="modal-input" id="manual-end-time" value="${nowTime}" />
             <button type="button" class="btn btn-sm" id="manual-end-now">지금</button>
@@ -1939,6 +1944,26 @@ function bindEvents() {
         manualIssueCheck = { status: 'error', key, message: '이슈를 찾을 수 없거나 접근 권한이 없습니다.' }
       }
       renderManualKeyHint()
+    })
+  }
+
+  // '직전 종료 시간' 버튼: 선택된 날짜의 마지막 worklog endTime을 시작 시간에 주입
+  const manualStartFromPrev = document.getElementById('manual-start-from-prev')
+  if (manualStartFromPrev) {
+    manualStartFromPrev.addEventListener('click', () => {
+      const dateInput = document.getElementById('manual-date')
+      const startInput = document.getElementById('manual-start-time')
+      if (!dateInput || !startInput) return
+      const date = dateInput.value
+      const logs = worklogsByDate[date] || []
+      if (logs.length === 0) {
+        showToast('해당 날짜에 기록된 작업 로그가 없습니다.', 'ℹ')
+        return
+      }
+      // endTime(HH:MM) 중 가장 늦은 값
+      const latestEnd = logs.reduce((max, l) => (l.endTime > max ? l.endTime : max), '00:00')
+      startInput.value = latestEnd
+      updateManualDurationReadout()
     })
   }
 
