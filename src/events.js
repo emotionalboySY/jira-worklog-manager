@@ -58,21 +58,24 @@ import {
 import { ensureSummaryWorklogs } from './views/summary.js'
 import { render } from './render.js'
 
-// 오버레이 배경 클릭 시에만 모달 닫기.
-// click 이벤트는 mousedown/mouseup의 공통 조상을 target으로 삼아 꼬이기 쉬우므로
-// mousedown이 오버레이 자신에서 시작된 경우에만 document의 mouseup을 감시해 닫는다.
-// 모달 내부 요소(textarea 등)에서 드래그가 시작되면 mousedown 리스너가 일찍 return해
-// 어디서 mouseup돼도 모달이 닫히지 않는다.
-function bindOverlayClose(overlay, onClose) {
-  if (!overlay) return
-  overlay.addEventListener('mousedown', (e) => {
-    if (e.target !== overlay) return
-    const onMouseUp = (upEvent) => {
-      document.removeEventListener('mouseup', onMouseUp)
-      if (upEvent.target === overlay) onClose()
-    }
-    document.addEventListener('mouseup', onMouseUp)
-  })
+// ESC 키로 가장 위(나중에 열린) 모달 닫기.
+// 오버레이 바깥 클릭 닫기는 textarea 드래그 선택이 밖에서 끝날 때 오탐하므로 제거.
+// 취소/X 버튼과 ESC로만 닫는다.
+let globalKeyListenerRegistered = false
+
+function handleGlobalKeydown(e) {
+  if (e.key !== 'Escape') return
+  if (state.showSettings) { closeSettings(); return }
+  if (state.deletingWorklog) { state.deletingWorklog = null; render(); return }
+  if (state.editingWorklog) { state.editingWorklog = null; render(); return }
+  if (state.showManualLog) {
+    state.showManualLog = null
+    state.manualIssueCheck = null
+    render()
+    return
+  }
+  if (state.showCancelConfirm) { state.showCancelConfirm = null; render(); return }
+  if (state.showModal) { state.showModal = null; render(); return }
 }
 
 // ========== 설정 모달 헬퍼 ==========
@@ -108,6 +111,12 @@ function deriveProjectColors(hex) {
 
 // ========== 이벤트 바인딩 ==========
 export function bindEvents() {
+  // 전역 ESC 키 리스너 (모달 닫기) — bindEvents는 render마다 호출되므로 한 번만 등록
+  if (!globalKeyListenerRegistered) {
+    document.addEventListener('keydown', handleGlobalKeydown)
+    globalKeyListenerRegistered = true
+  }
+
   // 테마 토글
   const themeBtn = document.getElementById('btn-theme')
   if (themeBtn) {
@@ -134,8 +143,7 @@ export function bindEvents() {
     })
   }
 
-  // 설정 모달: 오버레이 클릭 / 취소
-  bindOverlayClose(document.getElementById('settings-overlay'), closeSettings)
+  // 설정 모달은 ESC 또는 취소 버튼으로만 닫힘
   const settingsCancel = document.getElementById('settings-cancel')
   if (settingsCancel) settingsCancel.addEventListener('click', closeSettings)
 
@@ -661,13 +669,7 @@ export function bindEvents() {
     })
   })
 
-  // 종료 모달
-  const overlay = document.getElementById('modal-overlay')
-  if (overlay) {
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) { state.showModal = null; render() }
-    })
-  }
+  // 종료 모달은 ESC 또는 취소 버튼으로만 닫힘
 
   const modalCancel = document.getElementById('modal-cancel')
   if (modalCancel) {
@@ -749,13 +751,7 @@ export function bindEvents() {
     })
   }
 
-  // 취소 컨펌 모달
-  const cancelOverlay = document.getElementById('cancel-overlay')
-  if (cancelOverlay) {
-    cancelOverlay.addEventListener('click', (e) => {
-      if (e.target === cancelOverlay) { state.showCancelConfirm = null; render() }
-    })
-  }
+  // 취소 컨펌 모달은 ESC 또는 버튼으로만 닫힘
 
   const cancelNo = document.getElementById('cancel-confirm-no')
   if (cancelNo) {
@@ -781,12 +777,7 @@ export function bindEvents() {
     })
   }
 
-  // 수동 기록 모달
-  bindOverlayClose(document.getElementById('manual-log-overlay'), () => {
-    state.showManualLog = null
-    state.manualIssueCheck = null
-    render()
-  })
+  // 수동 기록 모달은 ESC 또는 취소 버튼으로만 닫힘
 
   const manualCancel = document.getElementById('manual-log-cancel')
   if (manualCancel) {
@@ -1082,11 +1073,7 @@ export function bindEvents() {
     })
   })
 
-  // 수정 모달
-  bindOverlayClose(document.getElementById('edit-worklog-overlay'), () => {
-    state.editingWorklog = null
-    render()
-  })
+  // 수정 모달은 ESC 또는 취소 버튼으로만 닫힘
 
   const editCancel = document.getElementById('edit-worklog-cancel')
   if (editCancel) {
@@ -1163,10 +1150,7 @@ export function bindEvents() {
   }
 
   // 삭제 확인 모달
-  bindOverlayClose(document.getElementById('delete-worklog-overlay'), () => {
-    state.deletingWorklog = null
-    render()
-  })
+  // 삭제 확인 모달은 ESC 또는 버튼으로만 닫힘
 
   const deleteNo = document.getElementById('delete-worklog-no')
   if (deleteNo) {
