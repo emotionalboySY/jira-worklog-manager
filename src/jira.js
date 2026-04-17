@@ -75,19 +75,8 @@ function determineRole(fields, myAccountId, { assumeWatcher = false } = {}) {
   return assumeWatcher ? 'watcher' : 'none'
 }
 
-// 이슈 타입 목록 조회 (아이콘 URL 포함)
-export async function fetchIssueTypes() {
-  const data = await jiraFetch('/issuetype')
-  if (!Array.isArray(data)) return []
-  return data.map(t => ({
-    id: t.id,
-    name: t.name,
-    iconUrl: t.iconUrl,
-  }))
-}
-
 // 이슈 키 검색
-export async function searchIssuesByKey(query, projectKeys) {
+export async function searchIssuesByKey(query, projectKeys, { signal } = {}) {
   const userRaw = localStorage.getItem('jira_user')
   const currentUser = userRaw ? JSON.parse(userRaw) : null
   const myAccountId = currentUser?.accountId
@@ -112,7 +101,8 @@ export async function searchIssuesByKey(query, projectKeys) {
   }
 
   const data = await jiraFetch(
-    `/search/jql?jql=${encodeURIComponent(jql)}&fields=${FIELDS}&maxResults=20`
+    `/search/jql?jql=${encodeURIComponent(jql)}&fields=${FIELDS}&maxResults=20`,
+    { signal }
   )
   if (!data || !data.issues) return []
 
@@ -272,9 +262,10 @@ export async function fetchActiveSprintIssueKeys() {
 }
 
 // 이슈 단일 조회 (요약 미리보기 및 유효성 검사용)
-export async function fetchIssueMeta(issueKey) {
+export async function fetchIssueMeta(issueKey, { signal } = {}) {
   const data = await jiraFetch(
-    `/issue/${encodeURIComponent(issueKey)}?fields=summary,issuetype,status`
+    `/issue/${encodeURIComponent(issueKey)}?fields=summary,issuetype,status`,
+    { signal }
   )
   if (!data || !data.key) return null
   const fields = data.fields || {}

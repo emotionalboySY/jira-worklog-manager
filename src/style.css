@@ -653,13 +653,6 @@ a.issue-key-link:hover {
   opacity: 1;
 }
 
-.session-active-badge {
-  color: var(--green) !important;
-  border-color: var(--green) !important;
-  cursor: default !important;
-  opacity: 1 !important;
-}
-
 /* 진행 중 배지 → 호버 시 종료 버튼으로 전환 */
 .session-active-finish {
   color: var(--green) !important;
@@ -2039,14 +2032,6 @@ span.flatpickr-weekday {
   background: var(--accent);
   border-color: var(--accent);
   color: #ffffff;
-}
-
-.log-summary-meta {
-  display: block;
-  margin-top: 4px;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--text-dim);
 }
 
 /* ========== 달력: 연반차 시각화 ========== */

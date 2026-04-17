@@ -5,12 +5,7 @@ import { Korean } from 'flatpickr/dist/l10n/ko.js'
 import { login, logout, isLoggedIn, handleOAuthCallback, fetchCurrentUser, getSavedUser, saveUser } from './auth.js'
 import { fetchMyIssues, fetchProjects, searchIssuesByKey, fetchMyWorklogs, updateWorklog, deleteWorklog, createWorklog, fetchIssueMeta, fetchActiveSprintIssueKeys } from './jira.js'
 
-// ========== 목업 데이터 ==========
-const MOCK_USER = {
-  displayName: '서윤석',
-  email: 'gs_k_bear17@naver.com',
-}
-
+// 로그인 직후 realProjects 로드 전까지 사용할 fallback 목록
 const PROJECTS = [
   { key: 'ALL', name: '전체' },
   { key: 'DK', name: '매일국어' },
@@ -223,72 +218,6 @@ const ISSUE_STATUSES = {
   done:        { label: '완료', css: 'done' },
 }
 
-const MOCK_ISSUES = [
-  // DKT
-  { key: 'DKT-926', summary: '[문제은행] 신규활동추가 - 아콘과 대화하기', type: 'task', status: 'inProgress', priority: '높음', role: 'assignee' },
-  { key: 'DKT-928', summary: '[콘텐츠] 활동꾸러미 3-1 검토 요청', type: 'task', status: 'todo', priority: '보통', role: 'assignee' },
-  { key: 'DKT-922', summary: '[선생님화면] 챔피언 선정 애니메이션 버그', type: 'bug', status: 'inProgress', priority: '높음', role: 'assignee' },
-  { key: 'DKT-900', summary: '[수업관리자] 학습 리포트 UI 개선', type: 'story', status: 'inReview', priority: '보통', role: 'reporter' },
-  { key: 'DKT-915', summary: '[본사관리자] 학원 과금 데이터 일괄 수정', type: 'operation', status: 'todo', priority: '높음', role: 'reporter' },
-  { key: 'DKT-930', summary: '[v2.5] 차기 버전 기능 통합', type: 'epic', status: 'inProgress', priority: '높음', role: 'assignee' },
-  { key: 'DKT-931', summary: '[선생님화면] 수업 중 앱 크래시 긴급 수정', type: 'hotfix', status: 'done', priority: '긴급', role: 'assignee' },
-  // DK
-  { key: 'DK-310', summary: '[학습] 오답노트 자동 생성 기능', type: 'story', status: 'inProgress', priority: '높음', role: 'assignee' },
-  { key: 'DK-305', summary: '[관리자] 학원 결제 내역 조회 오류', type: 'bug', status: 'todo', priority: '긴급', role: 'reporter' },
-  // DD
-  { key: 'DD-150', summary: '[독서록] 독서록 제출 알림 기능', type: 'task', status: 'inProgress', priority: '보통', role: 'assignee' },
-  { key: 'DD-148', summary: '[관리자] 학생 그룹 관리 개선', type: 'story', status: 'inReview', priority: '보통', role: 'watcher' },
-  // RM
-  { key: 'RM-88', summary: '[수학] 문제풀이 타이머 동기화 이슈', type: 'bug', status: 'inProgress', priority: '높음', role: 'watcher' },
-  { key: 'RM-85', summary: '[과학] 실험 영상 콘텐츠 업로드', type: 'task', status: 'done', priority: '보통', role: 'assignee' },
-]
-
-// 날짜별 목업 로그 데이터
-const MOCK_LOGS_BY_DATE = {
-  '2026-04-16': [
-    { issueKey: 'DKT-878', summary: '패치노트 작성', startTime: '08:59', endTime: '09:59', duration: '1h', comment: 'v2.4.1 패치노트 작성 완료', lunchDeducted: 0 },
-    { issueKey: 'DKT-922', summary: '[선생님화면] 챔피언 선정 애니메이션 버그', startTime: '10:00', endTime: '13:07', duration: '2h 7m', comment: 'requestAnimationFrame 타이밍 이슈 수정', lunchDeducted: 60 },
-    { issueKey: 'DKT-928', summary: '[콘텐츠] 활동꾸러미 3-1 검토 요청', startTime: '14:08', endTime: '14:58', duration: '50m', comment: '활동꾸러미 검토 및 피드백 전달', lunchDeducted: 0 },
-  ],
-  '2026-04-15': [
-    { issueKey: 'DKT-900', summary: '[수업관리자] 학습 리포트 UI 개선', startTime: '09:10', endTime: '12:00', duration: '2h 50m', comment: '리포트 차트 컴포넌트 구현', lunchDeducted: 0 },
-    { issueKey: 'DKT-915', summary: '[본사관리자] 학원 과금 데이터 일괄 수정', startTime: '13:00', endTime: '15:30', duration: '2h 30m', comment: '과금 SQL 스크립트 작성 및 검증', lunchDeducted: 0 },
-    { issueKey: 'DK-310', summary: '[학습] 오답노트 자동 생성 기능', startTime: '15:45', endTime: '18:00', duration: '2h 15m', comment: '오답노트 API 설계', lunchDeducted: 0 },
-  ],
-  '2026-04-14': [
-    { issueKey: 'DKT-922', summary: '[선생님화면] 챔피언 선정 애니메이션 버그', startTime: '09:00', endTime: '13:30', duration: '3h 30m', comment: '애니메이션 로직 분석 및 원인 파악', lunchDeducted: 60 },
-    { issueKey: 'DD-150', summary: '[독서록] 독서록 제출 알림 기능', startTime: '14:00', endTime: '17:00', duration: '3h', comment: '푸시 알림 연동 작업', lunchDeducted: 0 },
-  ],
-  '2026-04-10': [
-    { issueKey: 'DKT-926', summary: '[문제은행] 신규활동추가 - 아콘과 대화하기', startTime: '09:00', endTime: '12:00', duration: '3h', comment: '문제은행 UI 설계', lunchDeducted: 0 },
-    { issueKey: 'DKT-930', summary: '[v2.5] 차기 버전 기능 통합', startTime: '13:00', endTime: '18:00', duration: '5h', comment: '기능 통합 브랜치 머지 및 충돌 해결', lunchDeducted: 0 },
-  ],
-  '2026-04-09': [
-    { issueKey: 'RM-85', summary: '[과학] 실험 영상 콘텐츠 업로드', startTime: '09:30', endTime: '13:00', duration: '2h 30m', comment: '영상 인코딩 및 업로드', lunchDeducted: 60 },
-    { issueKey: 'DK-310', summary: '[학습] 오답노트 자동 생성 기능', startTime: '14:00', endTime: '18:30', duration: '4h 30m', comment: 'DB 스키마 설계', lunchDeducted: 0 },
-  ],
-  '2026-04-08': [
-    { issueKey: 'DKT-931', summary: '[선생님화면] 수업 중 앱 크래시 긴급 수정', startTime: '08:30', endTime: '13:00', duration: '3h 30m', comment: '크래시 원인 분석 및 핫픽스', lunchDeducted: 60 },
-    { issueKey: 'DD-148', summary: '[관리자] 학생 그룹 관리 개선', startTime: '14:00', endTime: '17:30', duration: '3h 30m', comment: '그룹 CRUD API 구현', lunchDeducted: 0 },
-  ],
-  '2026-04-07': [
-    { issueKey: 'DKT-900', summary: '[수업관리자] 학습 리포트 UI 개선', startTime: '09:00', endTime: '13:00', duration: '3h', comment: '리포트 와이어프레임 리뷰', lunchDeducted: 60 },
-    { issueKey: 'DKT-922', summary: '[선생님화면] 챔피언 선정 애니메이션 버그', startTime: '14:00', endTime: '18:00', duration: '4h', comment: 'CSS 애니메이션 디버깅', lunchDeducted: 0 },
-  ],
-  '2026-04-03': [
-    { issueKey: 'DKT-878', summary: '패치노트 작성', startTime: '09:00', endTime: '10:30', duration: '1h 30m', comment: 'v2.4.0 패치노트', lunchDeducted: 0 },
-    { issueKey: 'DK-305', summary: '[관리자] 학원 결제 내역 조회 오류', startTime: '10:30', endTime: '13:00', duration: '1h 30m', comment: '결제 API 디버깅', lunchDeducted: 60 },
-    { issueKey: 'RM-88', summary: '[수학] 문제풀이 타이머 동기화 이슈', startTime: '14:00', endTime: '18:00', duration: '4h', comment: 'WebSocket 동기화 로직 수정', lunchDeducted: 0 },
-  ],
-  '2026-04-02': [
-    { issueKey: 'DKT-926', summary: '[문제은행] 신규활동추가 - 아콘과 대화하기', startTime: '09:00', endTime: '17:00', duration: '7h', comment: '기획서 검토 및 API 설계', lunchDeducted: 60 },
-  ],
-  '2026-04-01': [
-    { issueKey: 'DD-150', summary: '[독서록] 독서록 제출 알림 기능', startTime: '09:00', endTime: '12:00', duration: '3h', comment: '알림 시스템 조사', lunchDeducted: 0 },
-    { issueKey: 'DKT-915', summary: '[본사관리자] 학원 과금 데이터 일괄 수정', startTime: '13:00', endTime: '18:00', duration: '5h', comment: '데이터 마이그레이션 스크립트', lunchDeducted: 0 },
-  ],
-}
-
 // ========== 실제 데이터 ==========
 let realIssues = []       // Jira에서 가져온 이슈 목록
 let realProjects = []     // Jira에서 가져온 프로젝트 목록
@@ -400,6 +329,7 @@ let deletingWorklog = null   // 삭제 확인 중인 워크로그
 let showManualLog = null     // 수동 작업 기록 모달 state: null | { issueKey, summary }
 let manualIssueCheck = null  // 이슈 키 검증 결과: null | { status: 'checking'|'ok'|'error', key, summary, message }
 let manualKeySearchTimer = null  // 이슈 키 자동완성 API debounce 타이머
+let manualKeySearchController = null  // 자동완성 in-flight 요청 취소용
 let manualKeyActiveIdx = -1      // 키보드 네비게이션 선택 인덱스
 let theme = localStorage.getItem('theme') || 'dark'
 let favoritesPanelCollapsed = (localStorage.getItem('favorites_collapsed') === '1')
@@ -426,12 +356,6 @@ function toDateString(date) {
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
-}
-
-function formatDateKorean(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00')
-  const days = ['일', '월', '화', '수', '목', '금', '토']
-  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`
 }
 
 function shiftDate(dateStr, delta) {
@@ -498,10 +422,7 @@ function formatMinutes(totalMinutes) {
 }
 
 function getActiveLogs(dateStr) {
-  if (issuesLoaded) {
-    return worklogsByDate[dateStr] || []
-  }
-  return MOCK_LOGS_BY_DATE[dateStr] || []
+  return worklogsByDate[dateStr] || []
 }
 
 function getLogMinutes(dateStr) {
@@ -741,13 +662,13 @@ function renderFavoritesPanel() {
         const btn = status === 'active'
           ? `<button class="btn btn-sm session-active-finish" data-action="finish" data-key="${fav.issueKey}" title="세션 종료"><span class="active-label">진행 중</span><span class="finish-label">종료</span></button>`
           : status === 'paused'
-            ? `<button class="btn btn-sm" data-action="fav-start" data-key="${fav.issueKey}" data-summary="${(fav.summary || '').replace(/"/g, '&quot;')}">재개</button>`
-            : `<button class="btn btn-primary btn-sm" data-action="fav-start" data-key="${fav.issueKey}" data-summary="${(fav.summary || '').replace(/"/g, '&quot;')}">시작</button>`
+            ? `<button class="btn btn-sm" data-action="fav-start" data-key="${fav.issueKey}" data-summary="${escapeHtml(fav.summary || '')}">재개</button>`
+            : `<button class="btn btn-primary btn-sm" data-action="fav-start" data-key="${fav.issueKey}" data-summary="${escapeHtml(fav.summary || '')}">시작</button>`
         return `
-          <div class="favorite-item" data-issue-key="${fav.issueKey}" data-issue-summary="${(fav.summary || '').replace(/"/g, '&quot;')}">
+          <div class="favorite-item" data-issue-key="${fav.issueKey}" data-issue-summary="${escapeHtml(fav.summary || '')}">
             <div class="favorite-item-info">
               ${renderIssueKeyLink(fav.issueKey)}
-              <span class="favorite-summary" title="${(fav.summary || '').replace(/"/g, '&quot;')}">${fav.summary || ''}</span>
+              <span class="favorite-summary" title="${escapeHtml(fav.summary || '')}">${escapeHtml(fav.summary || '')}</span>
             </div>
             <div class="favorite-item-actions">
               ${btn}
@@ -791,11 +712,11 @@ function renderActiveSessions() {
     const totalMinutes = getSessionElapsedMinutes(session)
     const segCount = session.segments.length
     return `
-    <div class="session-card ${session.status}" data-issue-key="${session.issueKey}" data-issue-summary="${session.summary.replace(/"/g, '&quot;')}">
+    <div class="session-card ${session.status}" data-issue-key="${session.issueKey}" data-issue-summary="${escapeHtml(session.summary || '')}">
       <div class="session-info">
         <div class="session-issue">
           ${renderIssueKeyLink(session.issueKey)}
-          <span class="issue-summary">${session.summary}</span>
+          <span class="issue-summary">${escapeHtml(session.summary || '')}</span>
         </div>
         <div class="session-meta">
           <span class="session-status ${session.status}">
@@ -861,7 +782,7 @@ function renderContent() {
 }
 
 function getActiveIssues() {
-  return issuesLoaded ? realIssues : MOCK_ISSUES
+  return realIssues
 }
 
 function getIssueNumber(issueKey) {
@@ -989,12 +910,12 @@ function renderIssuesTab() {
           : `<span class="issue-type-icon ${issue.type}" title="${getTypeLabel(issue.type)}">${getTypeIcon(issue.type)}</span>`
         const typeLabel = issue.typeIconUrl ? issue.type : getTypeLabel(issue.type)
         return `
-        <div class="issue-row" data-issue-key="${issue.key}" data-issue-summary="${issue.summary.replace(/"/g, '&quot;')}">
+        <div class="issue-row" data-issue-key="${issue.key}" data-issue-summary="${escapeHtml(issue.summary || '')}">
           <div class="issue-left">
             ${typeIcon}
             <span class="issue-type-label">${typeLabel}</span>
             ${renderIssueKeyLink(issue.key)}
-            <span class="issue-summary">${issue.summary}</span>
+            <span class="issue-summary">${escapeHtml(issue.summary || '')}</span>
           </div>
           <div class="issue-right">
             <button class="btn-star ${isFavorite(issue.key) ? 'is-favorite' : ''}" data-action="toggle-favorite" data-key="${issue.key}" title="${isFavorite(issue.key) ? '즐겨찾기 해제' : '즐겨찾기 추가'}">
@@ -1212,16 +1133,16 @@ function renderLogDetail() {
       ` : `
         <div class="log-list">
           ${logs.map((log, idx) => `
-            <div class="log-row" data-issue-key="${log.issueKey}" data-issue-summary="${(log.summary || '').replace(/"/g, '&quot;')}">
+            <div class="log-row" data-issue-key="${log.issueKey}" data-issue-summary="${escapeHtml(log.summary || '')}">
               <span class="log-time-range">${log.startTime} → ${log.endTime}</span>
               <span class="log-duration">${log.durationMinutes != null ? formatMinutes(log.durationMinutes) : log.duration}</span>
               <div class="log-issue">
                 <div class="log-issue-header">
                   ${renderIssueKeyLink(log.issueKey)}
-                  <span class="issue-summary">${log.summary}</span>
+                  <span class="issue-summary">${escapeHtml(log.summary || '')}</span>
                   ${log.lunchDeducted > 0 ? `<span class="log-lunch-badge">점심 -${log.lunchDeducted}분</span>` : ''}
                 </div>
-                ${log.comment ? `<span class="log-comment">${log.comment}</span>` : ''}
+                ${log.comment ? `<span class="log-comment">${escapeHtml(log.comment)}</span>` : ''}
               </div>
               ${log.worklogId ? `
                 <div class="log-actions">
@@ -1389,7 +1310,7 @@ function renderModal() {
         <div class="modal-title">작업 종료</div>
         <div class="modal-issue-info">
           <span class="issue-key">${session.issueKey}</span>
-          <span class="modal-issue-summary">${session.summary}</span>
+          <span class="modal-issue-summary">${escapeHtml(session.summary || '')}</span>
         </div>
         <div class="modal-section-label">작업 구간 (${details.length}건)</div>
         ${details.map((seg, i) => `
@@ -1447,7 +1368,7 @@ function renderEditWorklogModal() {
         <div class="modal-title">작업 로그 수정</div>
         <div class="modal-issue-info">
           <span class="issue-key">${w.issueKey}</span>
-          <span class="modal-issue-summary">${w.summary}</span>
+          <span class="modal-issue-summary">${escapeHtml(w.summary || '')}</span>
         </div>
         <div class="modal-field">
           <label class="modal-label">시작 시간</label>
@@ -1466,7 +1387,7 @@ function renderEditWorklogModal() {
         </div>
         <div class="modal-field">
           <label class="modal-label">작업 내용</label>
-          <textarea class="modal-textarea" id="edit-comment">${w.comment || ''}</textarea>
+          <textarea class="modal-textarea" id="edit-comment">${escapeHtml(w.comment || '')}</textarea>
         </div>
         <div class="modal-actions">
           <button class="btn" id="edit-worklog-cancel">취소</button>
@@ -1623,9 +1544,9 @@ function renderManualKeyDropdown(candidates, loading = false) {
   }
   dropdown.style.display = 'block'
   const itemsHtml = candidates.map((c, idx) => `
-    <div class="autocomplete-item ${idx === manualKeyActiveIdx ? 'active' : ''}" data-key="${c.key}" data-summary="${(c.summary || '').replace(/"/g, '&quot;')}" data-idx="${idx}">
+    <div class="autocomplete-item ${idx === manualKeyActiveIdx ? 'active' : ''}" data-key="${c.key}" data-summary="${escapeHtml(c.summary || '')}" data-idx="${idx}">
       <span class="autocomplete-key">${c.key}</span>
-      <span class="autocomplete-summary">${c.summary || ''}</span>
+      <span class="autocomplete-summary">${escapeHtml(c.summary || '')}</span>
     </div>
   `).join('')
   let footerHtml = ''
@@ -1672,8 +1593,13 @@ function updateManualKeyDropdown() {
   const localCandidates = findLocalIssueCandidates(query)
   manualKeyActiveIdx = -1
 
-  // debounced API 검색으로 로컬에 없는 결과 보강
+  // 이전 debounce/in-flight 요청 모두 취소 (네트워크/콜백 낭비 제거)
   clearTimeout(manualKeySearchTimer)
+  if (manualKeySearchController) {
+    manualKeySearchController.abort()
+    manualKeySearchController = null
+  }
+
   const q = query.trim()
   if (q.length < 2) {
     renderManualKeyDropdown(localCandidates)
@@ -1682,11 +1608,14 @@ function updateManualKeyDropdown() {
   // 즉시 로컬 후보 + 로딩 표시 (API 응답 대기 중)
   renderManualKeyDropdown(localCandidates, true)
   manualKeySearchTimer = setTimeout(async () => {
+    const controller = new AbortController()
+    manualKeySearchController = controller
     try {
       const projectKeys = (realProjects && realProjects.length)
         ? realProjects.map(p => p.key)
         : ['DK', 'DKT', 'DD', 'RM']
-      const apiResults = await searchIssuesByKey(q, projectKeys)
+      const apiResults = await searchIssuesByKey(q, projectKeys, { signal: controller.signal })
+      if (controller.signal.aborted) return
       const currentInput = document.getElementById('manual-issue-key')
       if (!currentInput || currentInput.value.trim() !== q) return
       const merged = [...localCandidates]
@@ -1698,10 +1627,13 @@ function updateManualKeyDropdown() {
       }
       renderManualKeyDropdown(merged, false)
     } catch (err) {
+      if (err?.name === 'AbortError') return
       console.warn('자동완성 API 실패:', err)
       const currentInput = document.getElementById('manual-issue-key')
       if (!currentInput || currentInput.value.trim() !== q) return
       renderManualKeyDropdown(localCandidates, false)
+    } finally {
+      if (manualKeySearchController === controller) manualKeySearchController = null
     }
   }, 300)
 }
@@ -2440,6 +2372,11 @@ function bindEvents() {
       const key = manualIssueInput.value.trim().toUpperCase()
       manualIssueInput.value = key
       if (!key) { manualIssueCheck = null; renderManualKeyHint(); return }
+      // 같은 키가 이미 검증 완료되어 있으면 네트워크 재호출 스킵
+      if (manualIssueCheck && manualIssueCheck.key === key
+          && (manualIssueCheck.status === 'ok' || manualIssueCheck.status === 'error')) {
+        return
+      }
       if (!isValidIssueKeyFormat(key)) {
         manualIssueCheck = { status: 'error', key, message: '올바른 형식이 아닙니다. 예: DKT-123' }
         renderManualKeyHint()

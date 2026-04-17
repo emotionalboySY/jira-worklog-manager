@@ -120,6 +120,7 @@ export async function jiraFetch(path, options = {}) {
       'Authorization': `Bearer ${accessToken}`,
     },
     ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
   })
 
   // 401이면 토큰 갱신 후 재시도
@@ -135,6 +136,7 @@ export async function jiraFetch(path, options = {}) {
         'Authorization': `Bearer ${newToken}`,
       },
       ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
     })
 
     return retryRes.json()
