@@ -830,6 +830,9 @@ function renderIssuesTab() {
             <span class="issue-tag ${issue.role}">
               ${{ assignee: '할당', reporter: '보고', watcher: '워칭' }[issue.role]}
             </span>
+            <button class="btn btn-sm btn-manual-inline" data-action="manual-log" data-key="${issue.key}" title="수동 기록">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><polyline points="8 4.5 8 8 10.5 9.5"/></svg>
+            </button>
             ${sessionMap.get(issue.key) === 'active'
               ? `<span class="btn btn-sm btn-start session-active-badge">진행 중</span>`
               : sessionMap.has(issue.key)
@@ -1736,6 +1739,20 @@ function bindEvents() {
       const key = row.dataset.issueKey
       const summary = row.dataset.issueSummary
       if (key) showContextMenu(e, key, summary)
+    })
+  })
+
+  // 이슈 행 호버 시 표시되는 '수동 기록' 버튼
+  document.querySelectorAll('[data-action="manual-log"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const key = btn.dataset.key
+      const pool = [...getActiveIssues(), ...(searchResults || [])]
+      const issue = pool.find(i => i.key === key)
+      if (!issue) return
+      showManualLog = { issueKey: key, summary: issue.summary }
+      manualIssueCheck = { status: 'ok', key, summary: issue.summary }
+      render()
     })
   })
 

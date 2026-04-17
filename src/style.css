@@ -619,6 +619,27 @@ body {
   opacity: 1 !important;
 }
 
+/* 이슈 행 호버 시 나타나는 수동 기록 버튼 */
+.btn-manual-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--text-dim);
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.issue-row:hover .btn-manual-inline {
+  opacity: 1;
+}
+
+.btn-manual-inline:hover {
+  color: var(--accent);
+}
+
 /* ========== 날짜 네비게이션 ========== */
 .log-date-nav {
   display: flex;
