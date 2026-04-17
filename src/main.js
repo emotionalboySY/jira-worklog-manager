@@ -1437,11 +1437,20 @@ function findLoadedIssue(key) {
   return pool.find(i => i.key === key) || null
 }
 
+// 특정 날짜의 worklog 중 가장 늦은 endTime 반환 (없으면 null)
+function getLatestEndTimeForDate(dateStr) {
+  const logs = worklogsByDate[dateStr] || []
+  if (logs.length === 0) return null
+  return logs.reduce((max, l) => (l.endTime > max ? l.endTime : max), '00:00')
+}
+
 function renderManualLogModal() {
   const ctx = showManualLog || {}
   const todayStr = toDateString(new Date())
   const now = new Date()
   const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  // 시작 시간 기본값: 오늘 날짜 worklog의 가장 늦은 endTime, 없으면 현재 시각
+  const defaultStartTime = getLatestEndTimeForDate(todayStr) || nowTime
   const initialKey = ctx.issueKey || ''
   const initialSummary = ctx.summary || ''
   // 이슈 키 상태 표시
@@ -1475,16 +1484,11 @@ function renderManualLogModal() {
           <input type="date" class="modal-input" id="manual-date" value="${todayStr}" max="${todayStr}" />
         </div>
         <div class="modal-field">
-          <div class="modal-label-row">
-            <label class="modal-label">시작 시간</label>
-            <button type="button" class="btn-link" id="manual-start-from-prev" title="선택한 날짜의 가장 마지막 작업 로그 종료 시간으로 설정">직전 종료 시간</button>
-          </div>
-          <input type="time" class="modal-input" id="manual-start-time" value="${nowTime}" />
+          <label class="modal-label">시작 시간</label>
+          <input type="time" class="modal-input" id="manual-start-time" value="${defaultStartTime}" data-autofilled="${defaultStartTime === nowTime ? '0' : '1'}" />
         </div>
         <div class="modal-field">
-          <div class="modal-label-row">
-            <label class="modal-label">종료 시간</label>
-          </div>
+          <label class="modal-label">종료 시간</label>
           <div class="time-with-btn">
             <input type="time" class="modal-input" id="manual-end-time" value="${nowTime}" />
             <button type="button" class="btn btn-sm" id="manual-end-now">지금</button>
@@ -2382,45 +2386,47 @@ function bindEvents() {
     })
   }
 
-  // '직전 종료 시간' 버튼: 선택된 날짜의 마지막 worklog endTime을 시작 시간에 주입
-  const manualStartFromPrev = document.getElementById('manual-start-from-prev')
-  if (manualStartFromPrev) {
-    manualStartFromPrev.addEventListener('click', async () => {
-      if (manualStartFromPrev.disabled) return
-      const dateInput = document.getElementById('manual-date')
+  // 시작 시간 자동 채우기: 선택된 날짜의 마지막 worklog endTime으로 설정
+  // (사용자가 수동으로 수정하면 autofill 플래그가 꺼져 다음 자동 주입을 건드리지 않음)
+  const manualStartInputEl = document.getElementById('manual-start-time')
+  if (manualStartInputEl) {
+    manualStartInputEl.addEventListener('input', () => {
+      manualStartInputEl.dataset.autofilled = '0'
+    })
+  }
+
+  async function autofillManualStartTime() {
+    const dateInput = document.getElementById('manual-date')
+    const startInput = document.getElementById('manual-start-time')
+    if (!dateInput || !startInput) return
+    const date = dateInput.value
+    if (!date) return
+    const d = new Date(date + 'T00:00:00')
+    try {
+      await ensureMonthWorklogsLoaded(d.getFullYear(), d.getMonth())
+    } catch (e) {
+      console.warn('작업 로그 로드 실패:', e)
+      return
+    }
+    const latestEnd = getLatestEndTimeForDate(date)
+    if (!latestEnd) return
+    // 사용자가 입력란을 직접 건드렸다면 덮어쓰지 않음
+    if (startInput.dataset.autofilled === '0') return
+    startInput.value = latestEnd
+    startInput.dataset.autofilled = '1'
+    updateManualDurationReadout()
+  }
+
+  // 모달 열린 직후: 아직 worklog가 로드되지 않았을 수 있으므로 비동기로 확인
+  autofillManualStartTime()
+
+  // 날짜 변경 시 시작 시간 재계산 (사용자 수정 전인 경우에만)
+  const manualDateInput = document.getElementById('manual-date')
+  if (manualDateInput) {
+    manualDateInput.addEventListener('change', () => {
       const startInput = document.getElementById('manual-start-time')
-      if (!dateInput || !startInput) return
-      const date = dateInput.value
-      if (!date) return
-
-      // 해당 월이 아직 로드 안됐다면 조용히 로드 (render 없이 → 모달 폼 유지)
-      const d = new Date(date + 'T00:00:00')
-      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      if (!worklogsLoadedMonths.has(monthKey)) {
-        const originalLabel = manualStartFromPrev.textContent
-        manualStartFromPrev.disabled = true
-        manualStartFromPrev.textContent = '불러오는 중...'
-        try {
-          await ensureMonthWorklogsLoaded(d.getFullYear(), d.getMonth())
-        } catch (e) {
-          console.error('작업 로그 로드 실패:', e)
-          showToast('작업 로그를 불러오지 못했습니다.', '⚠')
-          manualStartFromPrev.disabled = false
-          manualStartFromPrev.textContent = originalLabel
-          return
-        }
-        manualStartFromPrev.disabled = false
-        manualStartFromPrev.textContent = originalLabel
-      }
-
-      const logs = worklogsByDate[date] || []
-      if (logs.length === 0) {
-        showToast('해당 날짜에 기록된 작업 로그가 없습니다.', 'ℹ')
-        return
-      }
-      const latestEnd = logs.reduce((max, l) => (l.endTime > max ? l.endTime : max), '00:00')
-      startInput.value = latestEnd
-      updateManualDurationReadout()
+      if (startInput) startInput.dataset.autofilled = '1'  // 자동 채움 허용 상태로 복귀
+      autofillManualStartTime()
     })
   }
 
