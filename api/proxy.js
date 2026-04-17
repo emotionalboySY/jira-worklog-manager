@@ -31,9 +31,12 @@ export default async function handler(req, res) {
     }
 
     const apiRes = await fetch(targetUrl, options)
-    const data = await apiRes.json().catch(() => null)
 
-    return res.status(apiRes.status).json(data)
+    // 원본 응답을 그대로 전달 (에러 본문 유실 방지)
+    const body = await apiRes.text()
+    const contentType = apiRes.headers.get('content-type')
+    if (contentType) res.setHeader('Content-Type', contentType)
+    return res.status(apiRes.status).send(body)
   } catch (err) {
     return res.status(500).json({ error: err.message })
   }
