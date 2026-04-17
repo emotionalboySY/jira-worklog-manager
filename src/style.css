@@ -69,6 +69,22 @@
 
 body {
   min-height: 100vh;
+  /* 기본적으로 텍스트 선택 비활성화 — 이슈 키/요약/코멘트 등만 예외 허용 */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+}
+
+/* 텍스트 선택 허용 영역 */
+.issue-key,
+.issue-summary,
+.modal-issue-summary,
+.log-comment,
+input,
+textarea {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
 }
 
 /* ========== 레이아웃 ========== */
@@ -276,6 +292,18 @@ body {
   padding: 2px 8px;
   border-radius: 4px;
   white-space: nowrap;
+}
+
+a.issue-key-link {
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+a.issue-key-link:hover {
+  background: var(--accent);
+  color: #ffffff;
+  text-decoration: none;
 }
 
 .issue-summary {

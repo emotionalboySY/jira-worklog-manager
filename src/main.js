@@ -453,6 +453,13 @@ function getJiraIssueUrl(issueKey) {
   return `https://${siteName}.atlassian.net/browse/${issueKey}`
 }
 
+// 이슈 키를 Jira 페이지로 연결하는 링크로 렌더
+function renderIssueKeyLink(issueKey) {
+  const url = getJiraIssueUrl(issueKey)
+  if (!url) return `<span class="issue-key">${issueKey}</span>`
+  return `<a class="issue-key issue-key-link" href="${url}" target="_blank" rel="noopener noreferrer" title="Jira에서 열기">${issueKey}</a>`
+}
+
 function showContextMenu(e, issueKey, summary) {
   e.preventDefault()
   e.stopPropagation()
@@ -642,17 +649,18 @@ function renderActiveSessions() {
     const totalMinutes = getSessionElapsedMinutes(session)
     const segCount = session.segments.length
     return `
-    <div class="session-card ${session.status}">
+    <div class="session-card ${session.status}" data-issue-key="${session.issueKey}" data-issue-summary="${session.summary.replace(/"/g, '&quot;')}">
       <div class="session-info">
         <div class="session-issue">
-          <span class="issue-key">${session.issueKey}</span>
+          ${renderIssueKeyLink(session.issueKey)}
           <span class="issue-summary">${session.summary}</span>
         </div>
         <div class="session-meta">
           <span class="session-status ${session.status}">
             ${session.status === 'active' ? '● 진행 중' : '⏸ 중단됨'}
           </span>
-          <span>${startedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 시작${segCount > 1 ? ` · ${segCount}구간` : ''}</span>
+          <span class="session-started-at">${startedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 시작${segCount > 1 ? ` · ${segCount}구간` : ''}</span>
+          <button class="btn-link session-adjust-start" data-action="adjust-session-start" data-key="${session.issueKey}" title="직전 작업 로그 종료 시간으로 시작 시간 변경">직전 종료 시간으로</button>
         </div>
       </div>
       <div class="session-actions">
@@ -822,7 +830,7 @@ function renderIssuesTab() {
           <div class="issue-left">
             ${typeIcon}
             <span class="issue-type-label">${typeLabel}</span>
-            <span class="issue-key">${issue.key}</span>
+            ${renderIssueKeyLink(issue.key)}
             <span class="issue-summary">${issue.summary}</span>
           </div>
           <div class="issue-right">
@@ -1012,12 +1020,12 @@ function renderLogDetail() {
       ` : `
         <div class="log-list">
           ${logs.map((log, idx) => `
-            <div class="log-row">
+            <div class="log-row" data-issue-key="${log.issueKey}" data-issue-summary="${(log.summary || '').replace(/"/g, '&quot;')}">
               <span class="log-time-range">${log.startTime} → ${log.endTime}</span>
               <span class="log-duration">${log.durationMinutes != null ? formatMinutes(log.durationMinutes) : log.duration}</span>
               <div class="log-issue">
                 <div class="log-issue-header">
-                  <span class="issue-key">${log.issueKey}</span>
+                  ${renderIssueKeyLink(log.issueKey)}
                   <span class="issue-summary">${log.summary}</span>
                   ${log.lunchDeducted > 0 ? `<span class="log-lunch-badge">점심 -${log.lunchDeducted}분</span>` : ''}
                 </div>
@@ -1747,6 +1755,15 @@ function bindEvents() {
     })
   })
 
+  // 작업 로그 상세 행 우클릭 → 컨텍스트 메뉴 (이슈 행과 동일)
+  document.querySelectorAll('.log-row[data-issue-key]').forEach(row => {
+    row.addEventListener('contextmenu', (e) => {
+      const key = row.dataset.issueKey
+      const summary = row.dataset.issueSummary
+      if (key) showContextMenu(e, key, summary)
+    })
+  })
+
   // 이슈 행 호버 시 표시되는 '수동 기록' 버튼
   document.querySelectorAll('[data-action="manual-log"]').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -1773,6 +1790,55 @@ function bindEvents() {
         addSession(key, issue.summary)
         render()
       }
+    })
+  })
+
+  // 세션 시작 시간을 직전 로그 종료 시간으로 조정
+  document.querySelectorAll('[data-action="adjust-session-start"]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      if (btn.disabled) return
+      const key = btn.dataset.key
+      const sessions = loadSessions()
+      const s = sessions.find(x => x.issueKey === key)
+      if (!s || !s.segments.length) return
+      const firstSeg = s.segments[0]
+      const startDate = firstSeg.start
+      const dateStr = toDateString(startDate)
+
+      const originalLabel = btn.textContent
+      btn.disabled = true
+      btn.textContent = '불러오는 중...'
+      try {
+        await ensureMonthWorklogsLoaded(startDate.getFullYear(), startDate.getMonth())
+      } catch (err) {
+        console.error('작업 로그 로드 실패:', err)
+        showToast('작업 로그를 불러오지 못했습니다.', '⚠')
+        btn.disabled = false
+        btn.textContent = originalLabel
+        return
+      }
+      btn.disabled = false
+      btn.textContent = originalLabel
+
+      const logs = worklogsByDate[dateStr] || []
+      if (!logs.length) {
+        showToast('해당 날짜에 기록된 작업 로그가 없습니다.', 'ℹ')
+        return
+      }
+      const latestEnd = logs.reduce((max, l) => (l.endTime > max ? l.endTime : max), '00:00')
+      const [h, m] = latestEnd.split(':').map(Number)
+      const newStart = new Date(startDate)
+      newStart.setHours(h, m, 0, 0)
+
+      if (newStart.getTime() >= firstSeg.start.getTime()) {
+        showToast('직전 종료 시간이 현재 시작 시간보다 늦어 조정할 수 없습니다.', 'ℹ')
+        return
+      }
+      firstSeg.start = newStart
+      saveSessions(sessions)
+      showToast(`시작 시간을 ${latestEnd}(으)로 조정했습니다.`, '✓')
+      render()
     })
   })
 
