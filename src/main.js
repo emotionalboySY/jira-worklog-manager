@@ -1358,7 +1358,10 @@ function renderSummaryTab() {
               <div class="chart-bar ${d.today ? 'today' : ''}" style="height: ${Math.max(Math.min((d.minutes / 480) * 100, 100), d.minutes > 0 ? 2 : 0)}%"></div>
             </div>
             <span class="chart-bar-label">${d.date} (${d.day})</span>
-            ${d.dayOffType ? `<span class="chart-day-off-badge day-off-${d.dayOffType}" title="${getDayOffLabel(d.dayOffType)}">${getDayOffLabel(d.dayOffType)}</span>` : ''}
+            ${d.dayOffType
+              ? `<span class="chart-day-off-badge day-off-${d.dayOffType}" title="${getDayOffLabel(d.dayOffType)}">${getDayOffLabel(d.dayOffType)}</span>`
+              : `<span class="chart-day-off-badge placeholder" aria-hidden="true">·</span>`
+            }
           </div>
         `).join('')}
       </div>

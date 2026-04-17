@@ -1752,6 +1752,10 @@ span.flatpickr-weekday {
   background: rgba(99, 102, 241, 0.1);
 }
 
+.chart-day-off-badge.placeholder {
+  visibility: hidden;
+}
+
 /* ========== 종료 모달 ========== */
 .modal-overlay {
   position: fixed;
