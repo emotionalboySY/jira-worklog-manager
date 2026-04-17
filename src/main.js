@@ -307,11 +307,14 @@ const STATUS_ORDER = {
   '배포대기': 2,
   '준비': 3,
   '대기': 4,
+  // Done 범주: 완료 계열 먼저, 보류 계열 나중
   '완료됨': 5,
+  '완료': 5,
+  '보류': 6,
+  '보류(Closed)': 6,
   'Closed': 6,
 }
 const PROJECT_ORDER = { 'DK': 0, 'DKT': 1, 'DD': 2, 'RM': 3 }
-const ROLE_ORDER = { 'assignee': 0, 'reporter': 1, 'watcher': 2 }
 const CLOSED_CATEGORY = 'done'  // Jira statusCategory key
 let logDate = toDateString(new Date()) // 선택된 날짜
 let logViewMode = 'calendar' // 'calendar' | 'list'
@@ -722,6 +725,11 @@ function getActiveIssues() {
   return issuesLoaded ? realIssues : MOCK_ISSUES
 }
 
+function getIssueNumber(issueKey) {
+  const parts = issueKey.split('-')
+  return parseInt(parts[parts.length - 1], 10) || 0
+}
+
 function sortIssues(issues) {
   return [...issues].sort((a, b) => {
     // 1. 상태순
@@ -730,8 +738,8 @@ function sortIssues(issues) {
     // 2. 프로젝트순
     const projDiff = (PROJECT_ORDER[getProjectFromKey(a.key)] ?? 99) - (PROJECT_ORDER[getProjectFromKey(b.key)] ?? 99)
     if (projDiff !== 0) return projDiff
-    // 3. 역할순
-    return (ROLE_ORDER[a.role] ?? 99) - (ROLE_ORDER[b.role] ?? 99)
+    // 3. 일감 번호 내림차순
+    return getIssueNumber(b.key) - getIssueNumber(a.key)
   })
 }
 
