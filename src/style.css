@@ -2282,3 +2282,73 @@ span.flatpickr-weekday {
     flex-wrap: wrap;
   }
 }
+
+/* ========== 저장소 안내 (헤더 ⓘ) ========== */
+.storage-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--text-dim);
+  cursor: help;
+  position: relative;
+  transition: color 0.15s;
+}
+
+.storage-info:hover,
+.storage-info:focus {
+  color: var(--yellow);
+  outline: none;
+}
+
+.storage-info-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-16px);
+  width: 300px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.55;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s, visibility 0.15s;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.storage-info-tooltip strong {
+  color: var(--text-bright);
+}
+
+.storage-info:hover .storage-info-tooltip,
+.storage-info:focus .storage-info-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ========== 현재 작업 섹션 하단 경고 ========== */
+.session-storage-notice {
+  margin-top: 10px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--yellow);
+  background: var(--yellow-bg);
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  border-radius: var(--radius);
+  line-height: 1.5;
+}
+
+.session-storage-notice strong {
+  color: var(--yellow);
+  font-weight: 700;
+}

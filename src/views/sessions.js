@@ -55,6 +55,10 @@ export function renderActiveSessions() {
     <div class="active-sessions">
       <div class="section-title-row"><span class="section-title">현재 작업</span><button class="btn btn-sm" id="btn-manual-log">+ 수동 기록</button></div>
       ${cards}
+      <div class="session-storage-notice">
+        ⚠️ <strong>종료</strong>를 눌러 Jira에 기록하기 전까지 세션은 이 브라우저에만 저장됩니다.
+        브라우저 데이터를 삭제하면 진행 중 세션이 사라질 수 있어요.
+      </div>
     </div>
   `
 }
