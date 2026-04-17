@@ -756,7 +756,7 @@ function renderIssuesTab() {
   const sessions = loadSessions()
   const sessionMap = new Map(sessions.map(s => [s.issueKey, s.status]))
 
-  if (issuesLoading) {
+  if (issuesLoading && !issuesLoaded) {
     return `<div class="loading-container">
       <div class="loading-spinner"></div>
       <span class="loading-text">이슈 목록을 불러오는 중</span>
@@ -778,6 +778,9 @@ function renderIssuesTab() {
       <input type="text" class="search-input" id="issue-search" placeholder="이슈 키 검색 (예: 123, DKT-123)" value="${searchQuery}" />
       ${searchQuery ? `<button class="search-clear" id="search-clear">✕</button>` : ''}
       ${searchLoading ? `<span class="search-spinner"></span>` : ''}
+      <button class="btn btn-sm btn-refresh" id="btn-refresh-issues" ${issuesLoading ? 'disabled' : ''} title="이슈 목록 새로고침">
+        ${issuesLoading ? '<span class="btn-spinner"></span>' : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8A5.5 5.5 0 1 1 12 4.5"/><polyline points="13.5 2 13.5 5 10.5 5"/></svg>'}
+      </button>
     </div>
     ${renderProjectSelector(isSearchMode)}
     <div class="filter-row">
@@ -877,6 +880,9 @@ function renderPagination(totalItems) {
 function renderLogsTab() {
   return `
     <div class="log-toolbar">
+      <button class="btn btn-sm btn-refresh" id="btn-refresh-worklogs" ${worklogsLoading ? 'disabled' : ''} title="작업 로그 새로고침">
+        ${worklogsLoading ? '<span class="btn-spinner"></span>' : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8A5.5 5.5 0 1 1 12 4.5"/><polyline points="13.5 2 13.5 5 10.5 5"/></svg>'}
+      </button>
       <div class="log-view-toggle">
         <button class="view-btn ${logViewMode === 'calendar' ? 'active' : ''}" data-log-view="calendar" title="달력 보기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1.5"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></svg></button>
         <button class="view-btn ${logViewMode === 'list' ? 'active' : ''}" data-log-view="list" title="목록 보기">☰</button>
@@ -1473,6 +1479,18 @@ function bindEvents() {
     })
   }
 
+  // 이슈 목록 새로고침
+  const refreshIssuesBtn = document.getElementById('btn-refresh-issues')
+  if (refreshIssuesBtn) {
+    refreshIssuesBtn.addEventListener('click', () => refreshIssues())
+  }
+
+  // 작업 로그 새로고침
+  const refreshWorklogsBtn = document.getElementById('btn-refresh-worklogs')
+  if (refreshWorklogsBtn) {
+    refreshWorklogsBtn.addEventListener('click', () => refreshWorklogs())
+  }
+
   // 프로젝트 선택
   document.querySelectorAll('.project-chip').forEach(chip => {
     chip.addEventListener('click', () => {
@@ -1929,8 +1947,10 @@ function bindEvents() {
   if (manualStartInput || manualEndInput) updateManualDurationReadout()
 
   const manualSubmit = document.getElementById('manual-log-submit')
+  const manualCancelBtn = document.getElementById('manual-log-cancel')
   if (manualSubmit) {
     manualSubmit.addEventListener('click', async () => {
+      if (manualSubmit.disabled) return
       const issueKey = document.getElementById('manual-issue-key').value.trim().toUpperCase()
       const date = document.getElementById('manual-date').value
       const startTime = document.getElementById('manual-start-time').value
@@ -1951,6 +1971,13 @@ function bindEvents() {
       const tzStr = `${sign}${String(Math.floor(absOff / 60)).padStart(2, '0')}:${String(absOff % 60).padStart(2, '0')}`
       const started = `${date}T${startTime}:00.000${tzStr}`
 
+      // 제출 중: 버튼을 스피너로 전환 + 중복 클릭 방지
+      const originalLabel = manualSubmit.innerHTML
+      manualSubmit.disabled = true
+      manualSubmit.classList.add('is-loading')
+      manualSubmit.innerHTML = '<span class="btn-spinner"></span>'
+      if (manualCancelBtn) manualCancelBtn.disabled = true
+
       try {
         await createWorklog(issueKey, { started, timeSpentSeconds: dur.actualMinutes * 60, comment })
         showManualLog = null
@@ -1960,6 +1987,10 @@ function bindEvents() {
       } catch (e) {
         console.error('수동 작업 기록 실패:', e)
         alert('작업 기록에 실패했습니다. 이슈 키를 확인해주세요.')
+        manualSubmit.disabled = false
+        manualSubmit.classList.remove('is-loading')
+        manualSubmit.innerHTML = originalLabel
+        if (manualCancelBtn) manualCancelBtn.disabled = false
       }
     })
   }
@@ -2066,8 +2097,10 @@ function bindEvents() {
   if (editStartInput || editEndInput) updateEditDurationReadout()
 
   const editSubmit = document.getElementById('edit-worklog-submit')
+  const editCancelBtn = document.getElementById('edit-worklog-cancel')
   if (editSubmit) {
     editSubmit.addEventListener('click', async () => {
+      if (editSubmit.disabled) return
       const startTime = document.getElementById('edit-start-time').value
       const endTime = document.getElementById('edit-end-time').value
       const comment = document.getElementById('edit-comment').value
@@ -2081,6 +2114,12 @@ function bindEvents() {
       const tzStr = `${sign}${String(Math.floor(absOff / 60)).padStart(2, '0')}:${String(absOff % 60).padStart(2, '0')}`
       const started = `${editingWorklog.date}T${startTime}:00.000${tzStr}`
 
+      const originalLabel = editSubmit.innerHTML
+      editSubmit.disabled = true
+      editSubmit.classList.add('is-loading')
+      editSubmit.innerHTML = '<span class="btn-spinner"></span>'
+      if (editCancelBtn) editCancelBtn.disabled = true
+
       try {
         await updateWorklog(editingWorklog.issueKey, editingWorklog.worklogId, {
           started,
@@ -2093,6 +2132,10 @@ function bindEvents() {
       } catch (e) {
         console.error('작업 로그 수정 실패:', e)
         alert('작업 로그 수정에 실패했습니다.')
+        editSubmit.disabled = false
+        editSubmit.classList.remove('is-loading')
+        editSubmit.innerHTML = originalLabel
+        if (editCancelBtn) editCancelBtn.disabled = false
       }
     })
   }
@@ -2264,6 +2307,73 @@ async function loadWorklogs(year, month) {
     console.error('작업 로그 로드 실패:', e)
   }
 
+  worklogsLoading = false
+  render()
+}
+
+// 이슈 목록 강제 새로고침
+async function refreshIssues() {
+  if (issuesLoading) return
+  issuesLoading = true
+  render()
+  try {
+    const [freshIssues, freshProjects] = await Promise.all([
+      fetchMyIssues(),
+      fetchProjects(),
+    ])
+    const oldKeys = JSON.stringify(realIssues.map(i => i.key).sort())
+    const newKeys = JSON.stringify(freshIssues.map(i => i.key).sort())
+    realIssues = freshIssues
+    realProjects = freshProjects
+    issuesLoaded = true
+    saveIssuesCache(freshIssues, freshProjects)
+    if (oldKeys !== newKeys) {
+      showToast('이슈 목록이 업데이트되었습니다.', '✓')
+    } else {
+      showToast('이미 최신 이슈 목록입니다.', '✓')
+    }
+  } catch (e) {
+    console.error('이슈 새로고침 실패:', e)
+    showToast('이슈 새로고침에 실패했습니다.', '⚠')
+  }
+  issuesLoading = false
+  render()
+}
+
+// 현재 월 작업 로그 강제 새로고침
+async function refreshWorklogs() {
+  if (worklogsLoading) return
+  const year = calendarYear
+  const month = calendarMonth
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
+  worklogsLoadedMonths.delete(monthKey)
+  worklogsLoading = true
+  render()
+  try {
+    const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
+    const lastDay = new Date(year, month + 1, 0).getDate()
+    const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+    const freshLogs = await fetchMyWorklogs(startDate, endDate)
+    const oldSnapshot = JSON.stringify(
+      Object.keys(worklogsByDate)
+        .filter(k => k.startsWith(monthKey))
+        .reduce((acc, k) => { acc[k] = worklogsByDate[k]; return acc }, {})
+    )
+    for (const key of Object.keys(worklogsByDate)) {
+      if (key.startsWith(monthKey)) delete worklogsByDate[key]
+    }
+    mergeLogs(freshLogs)
+    worklogsLoadedMonths.add(monthKey)
+    saveWorklogCache(monthKey, freshLogs)
+    if (oldSnapshot !== JSON.stringify(freshLogs)) {
+      showToast('작업 기록이 업데이트되었습니다.', '✓')
+    } else {
+      showToast('이미 최신 작업 기록입니다.', '✓')
+    }
+  } catch (e) {
+    console.error('작업 로그 새로고침 실패:', e)
+    showToast('작업 로그 새로고침에 실패했습니다.', '⚠')
+  }
   worklogsLoading = false
   render()
 }

@@ -948,6 +948,8 @@ span.flatpickr-weekday {
 .log-toolbar {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 12px;
 }
 
@@ -1681,6 +1683,43 @@ span.flatpickr-weekday {
 
 .input-hint.error {
   color: #ef4444;
+}
+
+/* ========== 새로고침 버튼 ========== */
+.btn-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--text);
+}
+
+.btn-refresh:disabled {
+  cursor: default;
+  opacity: 0.9;
+}
+
+.btn-refresh svg {
+  display: block;
+}
+
+/* ========== 버튼 내부 스피너 ========== */
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: loading-spin 0.7s linear infinite;
+  opacity: 0.9;
+}
+
+.btn.is-loading {
+  pointer-events: none;
+  min-width: 80px;
 }
 
 /* ========== 반응형 ========== */
