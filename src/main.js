@@ -778,9 +778,6 @@ function renderIssuesTab() {
       <input type="text" class="search-input" id="issue-search" placeholder="이슈 키 검색 (예: 123, DKT-123)" value="${searchQuery}" />
       ${searchQuery ? `<button class="search-clear" id="search-clear">✕</button>` : ''}
       ${searchLoading ? `<span class="search-spinner"></span>` : ''}
-      <button class="btn btn-sm btn-refresh" id="btn-refresh-issues" ${issuesLoading ? 'disabled' : ''} title="이슈 목록 새로고침">
-        ${issuesLoading ? '<span class="btn-spinner"></span>' : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8A5.5 5.5 0 1 1 12 4.5"/><polyline points="13.5 2 13.5 5 10.5 5"/></svg>'}
-      </button>
     </div>
     ${renderProjectSelector(isSearchMode)}
     <div class="filter-row">
@@ -803,6 +800,9 @@ function renderIssuesTab() {
           <select class="page-size-select" id="page-size">
             ${[10, 20, 30, 50].map(n => `<option value="${n}" ${pageSize === n ? 'selected' : ''}>${n}개씩</option>`).join('')}
           </select>
+          <button class="btn btn-sm btn-refresh" id="btn-refresh-issues" ${issuesLoading ? 'disabled' : ''} title="이슈 목록 새로고침">
+            ${issuesLoading ? '<span class="btn-spinner"></span>' : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8A5.5 5.5 0 1 1 12 4.5"/><polyline points="13.5 2 13.5 5 10.5 5"/></svg>'}
+          </button>
         </div>
       ` : ''}
     </div>
@@ -2314,8 +2314,10 @@ async function loadWorklogs(year, month) {
 // 이슈 목록 강제 새로고침
 async function refreshIssues() {
   if (issuesLoading) return
+  const userName = getSavedUser()?.displayName || ''
   issuesLoading = true
   render()
+  showToast(`${userName}님의 이슈 목록을 업데이트합니다.`, '🔄')
   try {
     const [freshIssues, freshProjects] = await Promise.all([
       fetchMyIssues(),
@@ -2343,12 +2345,14 @@ async function refreshIssues() {
 // 현재 월 작업 로그 강제 새로고침
 async function refreshWorklogs() {
   if (worklogsLoading) return
+  const userName = getSavedUser()?.displayName || ''
   const year = calendarYear
   const month = calendarMonth
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
   worklogsLoadedMonths.delete(monthKey)
   worklogsLoading = true
   render()
+  showToast(`${userName}님의 작업 기록을 업데이트합니다.`, '🔄')
   try {
     const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
     const lastDay = new Date(year, month + 1, 0).getDate()
