@@ -94,8 +94,7 @@ textarea {
   padding: 0 20px 80px;
 }
 
-/* 이슈·요약 탭은 본문을 960px로 다시 좁혀 가독성 유지 (프레임은 1400px 고정) */
-body.tab-issues .tab-content,
+/* 요약 탭 본문은 960px로 좁혀 가독성 유지 (프레임은 1400px 고정) */
 body.tab-summary .tab-content {
   max-width: 960px;
   width: 100%;
@@ -1537,7 +1536,7 @@ span.flatpickr-weekday {
 
 .calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
 }
 
@@ -1560,6 +1559,8 @@ span.flatpickr-weekday {
   border-radius: var(--radius);
   cursor: pointer;
   transition: all 0.15s;
+  min-width: 0;
+  overflow: hidden;
   border: 2px solid transparent;
   position: relative;
 }
