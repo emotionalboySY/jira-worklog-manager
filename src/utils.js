@@ -5,10 +5,22 @@ import {
   ISSUE_STATUSES,
   LUNCH_START,
   LUNCH_END,
-  STATUS_ORDER,
-  PROJECT_ORDER,
+  DEFAULT_STATUS_ORDER,
+  DEFAULT_PROJECT_ORDER,
   CLOSED_CATEGORY,
 } from './state.js'
+
+// 사용자 설정(userPrefs) 기반 정렬 인덱스
+function statusOrderIndex(status) {
+  const order = state.userPrefs?.statusOrder || DEFAULT_STATUS_ORDER
+  const i = order.indexOf(status)
+  return i === -1 ? 999 : i
+}
+function projectOrderIndex(project) {
+  const order = state.userPrefs?.projectOrder || DEFAULT_PROJECT_ORDER
+  const i = order.indexOf(project)
+  return i === -1 ? 999 : i
+}
 
 // ========== 날짜/시간 ==========
 export function toDateString(date) {
@@ -130,12 +142,12 @@ export function getActiveIssues() {
 export function sortIssues(issues) {
   return [...issues].sort((a, b) => {
     // 1. 상태순
-    const statusDiff = (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99)
+    const statusDiff = statusOrderIndex(a.status) - statusOrderIndex(b.status)
     if (statusDiff !== 0) return statusDiff
     // 2. 프로젝트순
-    const projDiff = (PROJECT_ORDER[getProjectFromKey(a.key)] ?? 99) - (PROJECT_ORDER[getProjectFromKey(b.key)] ?? 99)
+    const projDiff = projectOrderIndex(getProjectFromKey(a.key)) - projectOrderIndex(getProjectFromKey(b.key))
     if (projDiff !== 0) return projDiff
-    // 3. 일감 번호 내림차순
+    // 3. 일감 번호 내림차순 (고정)
     return getIssueNumber(b.key) - getIssueNumber(a.key)
   })
 }

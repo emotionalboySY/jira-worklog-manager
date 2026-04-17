@@ -2,13 +2,15 @@
 import './style.css'
 import 'flatpickr/dist/flatpickr.min.css'
 import { handleOAuthCallback, isLoggedIn, fetchCurrentUser, saveUser, getSavedUser } from './auth.js'
-import { applyTheme } from './ui.js'
+import { applyTheme, applyPreferences } from './ui.js'
+import { loadPreferences } from './storage.js'
 import { render } from './render.js'
 import { loadIssues } from './data.js'
 
 // ========== 초기화 ==========
 async function init() {
   applyTheme()
+  applyPreferences(loadPreferences())
 
   // OAuth 콜백 처리 (로그인 후 리다이렉트된 경우)
   await handleOAuthCallback()

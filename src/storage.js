@@ -1,4 +1,4 @@
-// localStorage 래퍼 (세션/연반차/즐겨찾기/캐시)
+// localStorage 래퍼 (세션/연반차/즐겨찾기/캐시/사용자 설정)
 import {
   state,
   SESSIONS_KEY,
@@ -7,6 +7,10 @@ import {
   ISSUES_CACHE_KEY,
   WORKLOG_CACHE_KEY,
   WORKLOG_CACHE_MAX_MONTHS,
+  PREFERENCES_KEY,
+  DEFAULT_STATUS_ORDER,
+  DEFAULT_PROJECT_ORDER,
+  DEFAULT_PROJECT_COLORS,
 } from './state.js'
 import { calcLunchOverlap } from './utils.js'
 
@@ -241,4 +245,56 @@ export function mergeLogs(logs) {
   for (const [date, entries] of Object.entries(logs)) {
     state.worklogsByDate[date] = entries
   }
+}
+
+// ========== 사용자 설정 (정렬 순서/프로젝트 색상) ==========
+function defaultPreferences() {
+  return {
+    statusOrder: [...DEFAULT_STATUS_ORDER],
+    projectOrder: [...DEFAULT_PROJECT_ORDER],
+    projectColors: JSON.parse(JSON.stringify(DEFAULT_PROJECT_COLORS)),
+  }
+}
+
+export function loadPreferences() {
+  const defaults = defaultPreferences()
+  try {
+    const raw = localStorage.getItem(PREFERENCES_KEY)
+    if (!raw) return defaults
+    const saved = JSON.parse(raw)
+    // 방어적 병합: 저장 이후 기본값에 새 항목이 추가된 경우도 수용
+    const merged = {
+      statusOrder: Array.isArray(saved.statusOrder) && saved.statusOrder.length
+        ? mergeOrder(saved.statusOrder, DEFAULT_STATUS_ORDER)
+        : defaults.statusOrder,
+      projectOrder: Array.isArray(saved.projectOrder) && saved.projectOrder.length
+        ? mergeOrder(saved.projectOrder, DEFAULT_PROJECT_ORDER)
+        : defaults.projectOrder,
+      projectColors: { ...defaults.projectColors, ...(saved.projectColors || {}) },
+    }
+    return merged
+  } catch {
+    return defaults
+  }
+}
+
+// 저장된 순서 뒤에 기본값에서 새로 추가된 항목 append
+function mergeOrder(saved, defaultsArr) {
+  const seen = new Set(saved)
+  const extras = defaultsArr.filter(x => !seen.has(x))
+  return [...saved, ...extras]
+}
+
+export function savePreferences(prefs) {
+  try {
+    localStorage.setItem(PREFERENCES_KEY, JSON.stringify(prefs))
+  } catch (e) {
+    console.warn('설정 저장 실패:', e)
+  }
+}
+
+export function resetPreferences() {
+  const d = defaultPreferences()
+  savePreferences(d)
+  return d
 }

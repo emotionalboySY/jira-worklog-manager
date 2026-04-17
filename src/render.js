@@ -12,6 +12,7 @@ import {
   renderDeleteWorklogConfirm,
   renderManualLogModal,
 } from './views/modals.js'
+import { renderSettingsFab, renderSettingsModal } from './views/settings.js'
 import { bindEvents, startTimerUpdate } from './events.js'
 
 export function render() {
@@ -37,11 +38,13 @@ export function render() {
     ${renderTabs()}
     <div class="tab-content">${renderContent()}</div>
     ${renderFavoritesPanel()}
+    ${renderSettingsFab()}
     ${state.showModal ? renderModal() : ''}
     ${state.showCancelConfirm ? renderCancelConfirm() : ''}
     ${state.editingWorklog ? renderEditWorklogModal() : ''}
     ${state.deletingWorklog ? renderDeleteWorklogConfirm() : ''}
     ${state.showManualLog ? renderManualLogModal() : ''}
+    ${state.showSettings ? renderSettingsModal() : ''}
   `
   bindEvents()
   startTimerUpdate()

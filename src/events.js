@@ -20,6 +20,9 @@ import {
   getSegmentDetails,
   setDayOff,
   toggleFavorite,
+  loadPreferences,
+  savePreferences,
+  resetPreferences,
 } from './storage.js'
 import {
   toDateString,
@@ -28,7 +31,7 @@ import {
   getActiveIssues,
   getActiveLogs,
 } from './utils.js'
-import { toggleTheme, showToast, showContextMenu } from './ui.js'
+import { toggleTheme, showToast, showContextMenu, applyPreferences } from './ui.js'
 import {
   loadWorklogs,
   ensureMonthWorklogsLoaded,
@@ -51,6 +54,37 @@ import {
 import { ensureSummaryWorklogs } from './views/summary.js'
 import { render } from './render.js'
 
+// ========== 설정 모달 헬퍼 ==========
+function closeSettings() {
+  // 저장 전이라면 실제 적용된 prefs(state.userPrefs)로 CSS 변수 되돌림 (미리보기 롤백)
+  applyPreferences(state.userPrefs)
+  state.showSettings = false
+  state.settingsDraft = null
+  render()
+}
+
+function hexToRgb(hex) {
+  const h = (hex || '').replace('#', '')
+  if (h.length !== 6) return { r: 99, g: 102, b: 241 } // accent 기본
+  return {
+    r: parseInt(h.substring(0, 2), 16),
+    g: parseInt(h.substring(2, 4), 16),
+    b: parseInt(h.substring(4, 6), 16),
+  }
+}
+
+// base hex → { bar, fg, bg } 파생. fg는 white에 30% 섞어 밝게, bg는 opacity 0.14
+function deriveProjectColors(hex) {
+  const { r, g, b } = hexToRgb(hex)
+  const mix = (c) => Math.min(255, Math.round(c + (255 - c) * 0.3))
+  const fg = `#${[mix(r), mix(g), mix(b)].map(v => v.toString(16).padStart(2, '0')).join('')}`
+  return {
+    bar: hex,
+    fg,
+    bg: `rgba(${r}, ${g}, ${b}, 0.14)`,
+  }
+}
+
 // ========== 이벤트 바인딩 ==========
 export function bindEvents() {
   // 테마 토글
@@ -67,6 +101,80 @@ export function bindEvents() {
       render()
     })
   }
+
+  // 설정 FAB 열기
+  const settingsFab = document.getElementById('btn-open-settings')
+  if (settingsFab) {
+    settingsFab.addEventListener('click', () => {
+      // 현재 저장된 prefs를 draft로 복제
+      state.settingsDraft = JSON.parse(JSON.stringify(state.userPrefs))
+      state.showSettings = true
+      render()
+    })
+  }
+
+  // 설정 모달: 오버레이 클릭 / 취소
+  const settingsOverlay = document.getElementById('settings-overlay')
+  if (settingsOverlay) {
+    settingsOverlay.addEventListener('click', (e) => {
+      if (e.target === settingsOverlay) closeSettings()
+    })
+  }
+  const settingsCancel = document.getElementById('settings-cancel')
+  if (settingsCancel) settingsCancel.addEventListener('click', closeSettings)
+
+  // 설정 모달: 기본값 재설정
+  const settingsReset = document.getElementById('settings-reset')
+  if (settingsReset) {
+    settingsReset.addEventListener('click', () => {
+      const d = resetPreferences()
+      applyPreferences(d)
+      state.settingsDraft = JSON.parse(JSON.stringify(d))
+      render()
+      showToast('설정을 기본값으로 되돌렸습니다.', '✓')
+    })
+  }
+
+  // 설정 모달: 저장
+  const settingsSave = document.getElementById('settings-save')
+  if (settingsSave) {
+    settingsSave.addEventListener('click', () => {
+      if (!state.settingsDraft) return
+      savePreferences(state.settingsDraft)
+      applyPreferences(state.settingsDraft)
+      state.showSettings = false
+      state.settingsDraft = null
+      render()
+      showToast('설정을 저장했습니다.', '✓')
+    })
+  }
+
+  // 순서 변경 ▲▼
+  document.querySelectorAll('[data-order-move]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const dir = btn.dataset.orderMove
+      const kind = btn.dataset.kind
+      const idx = parseInt(btn.dataset.idx, 10)
+      const arr = kind === 'status' ? state.settingsDraft.statusOrder : state.settingsDraft.projectOrder
+      const target = dir === 'up' ? idx - 1 : idx + 1
+      if (target < 0 || target >= arr.length) return
+      ;[arr[idx], arr[target]] = [arr[target], arr[idx]]
+      render()
+    })
+  })
+
+  // 프로젝트 색상 변경 (input type=color의 change 이벤트)
+  document.querySelectorAll('[data-project-color]').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const projectKey = input.dataset.projectColor
+      const hex = e.target.value
+      const colors = deriveProjectColors(hex)
+      state.settingsDraft.projectColors[projectKey] = colors
+      // 즉시 미리보기 CSS 변수 업데이트 (저장 전에도 시각 확인 가능)
+      applyPreferences(state.settingsDraft)
+      render()
+    })
+  })
 
   // 이슈 목록 새로고침
   const refreshIssuesBtn = document.getElementById('btn-refresh-issues')

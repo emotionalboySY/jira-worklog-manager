@@ -19,6 +19,20 @@ export function toggleTheme() {
   render()
 }
 
+// ========== 사용자 설정 적용 ==========
+// prefs.projectColors를 CSS 변수로 주입하고 state.userPrefs 갱신.
+// 정렬 순서는 state에만 반영 (sortIssues가 참조)
+export function applyPreferences(prefs) {
+  state.userPrefs = prefs
+  const root = document.documentElement
+  for (const [key, colors] of Object.entries(prefs.projectColors || {})) {
+    if (!colors) continue
+    if (colors.fg) root.style.setProperty(`--project-${key}-fg`, colors.fg)
+    if (colors.bg) root.style.setProperty(`--project-${key}-bg`, colors.bg)
+    if (colors.bar) root.style.setProperty(`--project-${key}-bar`, colors.bar)
+  }
+}
+
 // ========== 토스트 알림 ==========
 export function ensureToastContainer() {
   if (!document.getElementById('toast-container')) {

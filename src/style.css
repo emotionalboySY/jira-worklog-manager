@@ -2465,38 +2465,33 @@ span.flatpickr-weekday {
   font-weight: 700;
 }
 
-/* ========== 프로젝트별 색상 ========== */
-/* 이슈 키 배지: 프로젝트별 색 오버라이드 */
-.issue-key[data-project="DK"] {
-  color: #60a5fa;
-  background: rgba(59, 130, 246, 0.14);
-}
-.issue-key[data-project="DKT"] {
-  color: #34d399;
-  background: rgba(16, 185, 129, 0.14);
-}
-.issue-key[data-project="DD"] {
-  color: #fb923c;
-  background: rgba(249, 115, 22, 0.14);
-}
-.issue-key[data-project="RM"] {
-  color: #c084fc;
-  background: rgba(168, 85, 247, 0.14);
+/* ========== 프로젝트별 색상 (CSS 변수 기반, 사용자 설정에서 변경 가능) ========== */
+:root {
+  --project-DK-fg: #60a5fa;
+  --project-DK-bg: rgba(59, 130, 246, 0.14);
+  --project-DK-bar: #3b82f6;
+  --project-DKT-fg: #34d399;
+  --project-DKT-bg: rgba(16, 185, 129, 0.14);
+  --project-DKT-bar: #10b981;
+  --project-DD-fg: #fb923c;
+  --project-DD-bg: rgba(249, 115, 22, 0.14);
+  --project-DD-bar: #f97316;
+  --project-RM-fg: #c084fc;
+  --project-RM-bg: rgba(168, 85, 247, 0.14);
+  --project-RM-bar: #a855f7;
 }
 
-/* 링크 hover 시 반전 색상도 프로젝트별로 */
-a.issue-key-link[data-project="DK"]:hover {
-  background: #3b82f6; color: #ffffff;
-}
-a.issue-key-link[data-project="DKT"]:hover {
-  background: #10b981; color: #ffffff;
-}
-a.issue-key-link[data-project="DD"]:hover {
-  background: #f97316; color: #ffffff;
-}
-a.issue-key-link[data-project="RM"]:hover {
-  background: #a855f7; color: #ffffff;
-}
+/* 이슈 키 배지: 프로젝트별 색 */
+.issue-key[data-project="DK"]  { color: var(--project-DK-fg);  background: var(--project-DK-bg); }
+.issue-key[data-project="DKT"] { color: var(--project-DKT-fg); background: var(--project-DKT-bg); }
+.issue-key[data-project="DD"]  { color: var(--project-DD-fg);  background: var(--project-DD-bg); }
+.issue-key[data-project="RM"]  { color: var(--project-RM-fg);  background: var(--project-RM-bg); }
+
+/* 링크 hover 시 반전 색상 */
+a.issue-key-link[data-project="DK"]:hover  { background: var(--project-DK-bar);  color: #ffffff; }
+a.issue-key-link[data-project="DKT"]:hover { background: var(--project-DKT-bar); color: #ffffff; }
+a.issue-key-link[data-project="DD"]:hover  { background: var(--project-DD-bar);  color: #ffffff; }
+a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); color: #ffffff; }
 
 /* 행 왼쪽 3px 컬러 바 — 부모에 show-project-bar 클래스가 있을 때만
    (기본 padding-left 14px을 11px로 줄여서 3px border 추가해도 총 너비 유지) */
@@ -2506,27 +2501,149 @@ a.issue-key-link[data-project="RM"]:hover {
   padding-left: 11px;
 }
 .issue-list.show-project-bar .issue-row[data-project="DK"],
-.log-list.show-project-bar .log-row[data-project="DK"] {
-  border-left-color: #3b82f6;
-}
+.log-list.show-project-bar .log-row[data-project="DK"]   { border-left-color: var(--project-DK-bar); }
 .issue-list.show-project-bar .issue-row[data-project="DKT"],
-.log-list.show-project-bar .log-row[data-project="DKT"] {
-  border-left-color: #10b981;
-}
+.log-list.show-project-bar .log-row[data-project="DKT"]  { border-left-color: var(--project-DKT-bar); }
 .issue-list.show-project-bar .issue-row[data-project="DD"],
-.log-list.show-project-bar .log-row[data-project="DD"] {
-  border-left-color: #f97316;
-}
+.log-list.show-project-bar .log-row[data-project="DD"]   { border-left-color: var(--project-DD-bar); }
 .issue-list.show-project-bar .issue-row[data-project="RM"],
-.log-list.show-project-bar .log-row[data-project="RM"] {
-  border-left-color: #a855f7;
-}
+.log-list.show-project-bar .log-row[data-project="RM"]   { border-left-color: var(--project-RM-bar); }
 
 /* 세션 카드에도 같은 바 (세션은 상시 표시) */
-.session-card[data-project] {
-  padding-left: 15px;
+.session-card[data-project] { padding-left: 15px; }
+.session-card[data-project="DK"]  { border-left: 3px solid var(--project-DK-bar); }
+.session-card[data-project="DKT"] { border-left: 3px solid var(--project-DKT-bar); }
+.session-card[data-project="DD"]  { border-left: 3px solid var(--project-DD-bar); }
+.session-card[data-project="RM"]  { border-left: 3px solid var(--project-RM-bar); }
+
+/* ========== 설정 FAB 버튼 ========== */
+.settings-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 140;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, transform 0.15s, background 0.15s;
 }
-.session-card[data-project="DK"]  { border-left: 3px solid #3b82f6; }
-.session-card[data-project="DKT"] { border-left: 3px solid #10b981; }
-.session-card[data-project="DD"]  { border-left: 3px solid #f97316; }
-.session-card[data-project="RM"]  { border-left: 3px solid #a855f7; }
+
+.settings-fab:hover {
+  color: var(--accent);
+  background: var(--bg-hover);
+  transform: rotate(30deg);
+}
+
+/* ========== 설정 모달 ========== */
+.modal-settings {
+  width: 560px;
+  max-width: 92vw;
+  max-height: 84vh;
+  overflow-y: auto;
+}
+
+.settings-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.settings-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.settings-order-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border-radius: 4px;
+}
+
+.settings-order-index {
+  min-width: 22px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.settings-order-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-bright);
+  font-weight: 500;
+}
+
+.settings-project-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.settings-color-input {
+  width: 32px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.settings-color-input::-webkit-color-swatch-wrapper { padding: 2px; }
+.settings-color-input::-webkit-color-swatch { border: none; border-radius: 3px; }
+
+.settings-order-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.settings-order-actions .btn {
+  min-width: 28px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.settings-note {
+  margin-top: 18px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--accent-bg);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  line-height: 1.6;
+}
+
+.settings-note strong {
+  color: var(--text-bright);
+  font-weight: 700;
+}
+
+.settings-actions {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-actions-right {
+  display: flex;
+  gap: 8px;
+}

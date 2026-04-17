@@ -30,28 +30,30 @@ export const ISSUE_STATUSES = {
   done:        { label: '완료', css: 'done' },
 }
 
-// 정렬 순서 (낮을수록 위에 표시)
-export const STATUS_ORDER = {
-  '진행중': 0,
-  '검토': 1,
-  '배포대기': 2,
-  '준비': 3,
-  '대기': 4,
-  // Done 범주: 완료 계열 먼저, 보류 계열 나중
-  '완료됨': 5,
-  '완료': 5,
-  '보류': 6,
-  '보류(Closed)': 6,
-  'Closed': 6,
-}
-export const PROJECT_ORDER = { 'DK': 0, 'DKT': 1, 'DD': 2, 'RM': 3 }
+// ===== 정렬 순서 기본값 (사용자가 설정에서 재배치 가능) =====
+// 배열 순서 = 위→아래. indexOf로 우선순위 결정.
+export const DEFAULT_STATUS_ORDER = [
+  '진행중',
+  '검토',
+  '배포대기',
+  '준비',
+  '대기',
+  '완료됨',
+  '완료',
+  '보류',
+  '보류(Closed)',
+  'Closed',
+]
 
-// 프로젝트별 색상 (배지/왼쪽 바). 미매핑 프로젝트는 기본 accent 색상 폴백
-export const PROJECT_COLORS = {
-  DK:  { fg: '#60a5fa', bg: 'rgba(59, 130, 246, 0.14)' },   // 파랑
-  DKT: { fg: '#34d399', bg: 'rgba(16, 185, 129, 0.14)' },   // 초록
-  DD:  { fg: '#fb923c', bg: 'rgba(249, 115, 22, 0.14)' },   // 주황
-  RM:  { fg: '#c084fc', bg: 'rgba(168, 85, 247, 0.14)' },   // 보라
+export const DEFAULT_PROJECT_ORDER = ['DK', 'DKT', 'DD', 'RM']
+
+// ===== 프로젝트별 색상 기본값 =====
+// bar = 메인 색(컬러 바, 호버 배경), fg = 밝은 텍스트, bg = 투명 배경
+export const DEFAULT_PROJECT_COLORS = {
+  DK:  { bar: '#3b82f6', fg: '#60a5fa', bg: 'rgba(59, 130, 246, 0.14)' },   // 파랑
+  DKT: { bar: '#10b981', fg: '#34d399', bg: 'rgba(16, 185, 129, 0.14)' },   // 초록
+  DD:  { bar: '#f97316', fg: '#fb923c', bg: 'rgba(249, 115, 22, 0.14)' },   // 주황
+  RM:  { bar: '#a855f7', fg: '#c084fc', bg: 'rgba(168, 85, 247, 0.14)' },   // 보라
 }
 export const CLOSED_CATEGORY = 'done'  // Jira statusCategory key
 
@@ -62,6 +64,7 @@ export const FAVORITES_KEY = 'favorite_issues'
 export const ISSUES_CACHE_KEY = 'issues_cache'
 export const WORKLOG_CACHE_KEY = 'worklog_cache'
 export const WORKLOG_CACHE_MAX_MONTHS = 3
+export const PREFERENCES_KEY = 'user_preferences'
 
 // 이슈 키 형식 검사 (예: DKT-123)
 export const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9]+-\d+$/
@@ -114,6 +117,15 @@ export const state = {
   editingWorklog: null,    // 수정 중인 워크로그
   deletingWorklog: null,   // 삭제 확인 중인 워크로그
   showManualLog: null,     // 수동 작업 기록 모달 state: null | { issueKey, summary }
+  showSettings: false,     // 설정 모달 표시 여부
+  settingsDraft: null,     // 설정 모달에서 편집 중인 임시 값 (저장 전)
+
+  // ----- 사용자 설정 (저장된 값) -----
+  userPrefs: {
+    statusOrder: [...DEFAULT_STATUS_ORDER],
+    projectOrder: [...DEFAULT_PROJECT_ORDER],
+    projectColors: JSON.parse(JSON.stringify(DEFAULT_PROJECT_COLORS)),
+  },
   manualIssueCheck: null,  // 이슈 키 검증 결과: null | { status: 'checking'|'ok'|'error', key, summary, message }
   manualKeySearchTimer: null,  // 이슈 키 자동완성 API debounce 타이머
   manualKeySearchController: null,  // 자동완성 in-flight 요청 취소용
