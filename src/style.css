@@ -141,6 +141,71 @@ body.tab-issues .tab-content > .issue-list {
   overflow-y: auto;
 }
 
+/* ===== 작업 로그 탭: 페이지 자체 스크롤 제거, log-list만 내부 스크롤 ===== */
+body.tab-logs {
+  height: 100vh;
+  overflow: hidden;
+}
+
+body.tab-logs #app {
+  height: 100vh;
+  padding-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+body.tab-logs .header,
+body.tab-logs .active-sessions,
+body.tab-logs .tabs-container {
+  flex-shrink: 0;
+}
+
+body.tab-logs .tab-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 20px;
+}
+
+/* 상단 고정 영역: 툴바, 달력(있을 때), 날짜 네비 */
+body.tab-logs .tab-content > .log-toolbar,
+body.tab-logs .tab-content > .calendar,
+body.tab-logs .tab-content > .log-date-nav {
+  flex-shrink: 0;
+}
+
+/* log-detail이 나머지 공간을 flex column으로 차지 */
+body.tab-logs .tab-content > .log-detail {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* log-detail 내부 고정 영역: 연반차 토글, 합계 */
+body.tab-logs .log-detail > .day-off-toggle,
+body.tab-logs .log-detail > .log-summary {
+  flex-shrink: 0;
+}
+
+/* log-list만 스크롤 */
+body.tab-logs .log-detail > .log-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 로딩/빈 상태도 남은 공간 차지 (스크롤 필요 없으면 그대로) */
+body.tab-logs .log-detail > .loading-container,
+body.tab-logs .log-detail > .no-session {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 /* ========== 헤더 ========== */
 .header {
   display: flex;
