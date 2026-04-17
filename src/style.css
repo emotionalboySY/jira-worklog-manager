@@ -610,6 +610,13 @@ a.issue-key-link:hover {
   padding: 2px 6px;
   border-radius: 3px;
   text-transform: uppercase;
+  display: inline-block;
+  min-width: 32px;
+  text-align: center;
+}
+
+.issue-tag.placeholder {
+  visibility: hidden;
 }
 
 .issue-tag.assignee {
