@@ -661,11 +661,17 @@ export function bindEvents() {
   const modalSubmit = document.getElementById('modal-submit')
   if (modalSubmit) {
     modalSubmit.addEventListener('click', async () => {
+      if (modalSubmit.disabled) return
       const sessions = loadSessions()
       const session = sessions.find(s => s.issueKey === state.showModal)
       if (!session) return
 
       const details = getSegmentDetails(session)
+      const totalActual = details.reduce((sum, d) => sum + d.actualMinutes, 0)
+      if (totalActual <= 0) {
+        alert('기록 가능한 시간이 없습니다. 점심시간(12:00~13:00) 제외 후 실제 작업 시간이 1분 이상이어야 합니다.')
+        return
+      }
       const comment = document.getElementById('finish-comment')?.value || ''
 
       // 타임존 오프셋
@@ -674,8 +680,24 @@ export function bindEvents() {
       const absOff = Math.abs(offset)
       const tzStr = `${sign}${String(Math.floor(absOff / 60)).padStart(2, '0')}:${String(absOff % 60).padStart(2, '0')}`
 
+      // 버튼 스피너 + 중복 클릭 차단
+      const originalLabel = modalSubmit.innerHTML
+      const modalCancelBtn = document.getElementById('modal-cancel')
+      modalSubmit.disabled = true
+      modalSubmit.classList.add('is-loading')
+      modalSubmit.innerHTML = '<span class="btn-spinner"></span>'
+      if (modalCancelBtn) modalCancelBtn.disabled = true
+
+      const restore = () => {
+        modalSubmit.disabled = false
+        modalSubmit.classList.remove('is-loading')
+        modalSubmit.innerHTML = originalLabel
+        if (modalCancelBtn) modalCancelBtn.disabled = false
+      }
+
+      let successCount = 0
       try {
-        // 구간별로 worklog 생성
+        // 구간별로 worklog 생성. 어느 하나라도 실패하면 throw되어 세션 유지
         for (const seg of details) {
           if (seg.actualMinutes <= 0) continue
           const started = `${toDateString(seg.start)}T${String(seg.start.getHours()).padStart(2, '0')}:${String(seg.start.getMinutes()).padStart(2, '0')}:00.000${tzStr}`
@@ -684,20 +706,34 @@ export function bindEvents() {
             timeSpentSeconds: seg.actualMinutes * 60,
             comment,
           })
+          successCount++
         }
-        removeSession(session.issueKey)
-        state.showModal = null
-        // 관련된 모든 월 캐시 무효화
-        const months = new Set(details.map(d => `${d.start.getFullYear()}-${d.start.getMonth()}`))
-        for (const m of months) {
-          const [y, mo] = m.split('-')
-          invalidateWorklogMonth(toDateString(details[0].start))
-        }
-        render()
       } catch (e) {
         console.error('Jira worklog 기록 실패:', e)
-        alert('Jira에 worklog 기록에 실패했습니다.')
+        alert(`Jira 워크로그 기록에 실패했습니다.\n${e?.message || '알 수 없는 오류'}\n\n이미 ${successCount}건은 기록되었을 수 있습니다. 세션은 그대로 유지하며, 기록 여부는 Jira에서 직접 확인해 주세요.`)
+        restore()
+        return
       }
+
+      if (successCount === 0) {
+        alert('기록된 worklog가 없습니다. 세션은 유지됩니다.')
+        restore()
+        return
+      }
+
+      // 성공 시에만 세션 삭제 + 캐시 무효화
+      removeSession(session.issueKey)
+      state.showModal = null
+      const invalidatedMonths = new Set()
+      for (const d of details) {
+        const monthStart = toDateString(new Date(d.start.getFullYear(), d.start.getMonth(), 1))
+        if (!invalidatedMonths.has(monthStart)) {
+          invalidatedMonths.add(monthStart)
+          invalidateWorklogMonth(monthStart)
+        }
+      }
+      showToast(`Jira에 ${successCount}건 기록했습니다.`, '✓')
+      render()
     })
   }
 

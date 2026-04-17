@@ -104,6 +104,8 @@ export async function refreshAccessToken() {
 }
 
 // Jira API 호출 (프록시 경유)
+// 성공: JSON 응답 반환 (204 No Content나 JSON이 아닌 경우 null)
+// 실패: HTTP 상태 에러는 throw하여 호출부 try/catch가 감지 가능하도록 함
 export async function jiraFetch(path, options = {}) {
   const accessToken = localStorage.getItem('jira_access_token')
   const cloudId = localStorage.getItem('jira_cloud_id')
@@ -113,35 +115,38 @@ export async function jiraFetch(path, options = {}) {
   const baseUrl = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3`
   const targetUrl = `${baseUrl}${path}`
 
-  const res = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`, {
+  const doFetch = (token) => fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`, {
     method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
+      'Authorization': `Bearer ${token}`,
     },
     ...(options.body ? { body: JSON.stringify(options.body) } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   })
 
+  let res = await doFetch(accessToken)
+
   // 401이면 토큰 갱신 후 재시도
   if (res.status === 401) {
     const refreshed = await refreshAccessToken()
     if (!refreshed) return null
-
     const newToken = localStorage.getItem('jira_access_token')
-    const retryRes = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`, {
-      method: options.method || 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${newToken}`,
-      },
-      ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-      ...(options.signal ? { signal: options.signal } : {}),
-    })
-
-    return retryRes.json()
+    res = await doFetch(newToken)
   }
 
+  if (!res.ok) {
+    let detail = ''
+    try { detail = await res.text() } catch {}
+    const err = new Error(`Jira API ${res.status} ${res.statusText || ''}: ${detail.slice(0, 400)}`.trim())
+    err.status = res.status
+    err.detail = detail
+    throw err
+  }
+
+  if (res.status === 204) return null
+  const ctype = res.headers.get('content-type') || ''
+  if (!ctype.includes('application/json')) return null
   return res.json()
 }
 
