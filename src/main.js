@@ -1537,21 +1537,28 @@ function findLocalIssueCandidates(query) {
     .slice(0, 15)
 }
 
-function renderManualKeyDropdown(candidates) {
+function renderManualKeyDropdown(candidates, loading = false) {
   const dropdown = document.getElementById('manual-key-dropdown')
   if (!dropdown) return
-  if (candidates.length === 0) {
+  if (candidates.length === 0 && !loading) {
     dropdown.style.display = 'none'
     dropdown.innerHTML = ''
     return
   }
   dropdown.style.display = 'block'
-  dropdown.innerHTML = candidates.map((c, idx) => `
+  const itemsHtml = candidates.map((c, idx) => `
     <div class="autocomplete-item ${idx === manualKeyActiveIdx ? 'active' : ''}" data-key="${c.key}" data-summary="${(c.summary || '').replace(/"/g, '&quot;')}" data-idx="${idx}">
       <span class="autocomplete-key">${c.key}</span>
       <span class="autocomplete-summary">${c.summary || ''}</span>
     </div>
   `).join('')
+  let footerHtml = ''
+  if (loading) {
+    footerHtml = candidates.length === 0
+      ? `<div class="autocomplete-loading"><span class="btn-spinner"></span><span>Jira에서 검색 중...</span></div>`
+      : `<div class="autocomplete-footer"><span class="btn-spinner"></span><span>Jira에서 더 검색 중...</span></div>`
+  }
+  dropdown.innerHTML = itemsHtml + footerHtml
   dropdown.querySelectorAll('.autocomplete-item').forEach(el => {
     // mousedown은 blur보다 먼저 발생 → blur로 드롭다운 닫히기 전에 선택 처리
     el.addEventListener('mousedown', (e) => {
@@ -1588,19 +1595,22 @@ function updateManualKeyDropdown() {
   }
   const localCandidates = findLocalIssueCandidates(query)
   manualKeyActiveIdx = -1
-  renderManualKeyDropdown(localCandidates)
 
   // debounced API 검색으로 로컬에 없는 결과 보강
   clearTimeout(manualKeySearchTimer)
   const q = query.trim()
-  if (q.length < 2) return
+  if (q.length < 2) {
+    renderManualKeyDropdown(localCandidates)
+    return
+  }
+  // 즉시 로컬 후보 + 로딩 표시 (API 응답 대기 중)
+  renderManualKeyDropdown(localCandidates, true)
   manualKeySearchTimer = setTimeout(async () => {
     try {
       const projectKeys = (realProjects && realProjects.length)
         ? realProjects.map(p => p.key)
         : ['DK', 'DKT', 'DD', 'RM']
       const apiResults = await searchIssuesByKey(q, projectKeys)
-      // 사용자가 계속 같은 쿼리 유지 중인지 확인
       const currentInput = document.getElementById('manual-issue-key')
       if (!currentInput || currentInput.value.trim() !== q) return
       const merged = [...localCandidates]
@@ -1610,9 +1620,12 @@ function updateManualKeyDropdown() {
         }
         if (merged.length >= 20) break
       }
-      renderManualKeyDropdown(merged)
+      renderManualKeyDropdown(merged, false)
     } catch (err) {
       console.warn('자동완성 API 실패:', err)
+      const currentInput = document.getElementById('manual-issue-key')
+      if (!currentInput || currentInput.value.trim() !== q) return
+      renderManualKeyDropdown(localCandidates, false)
     }
   }, 300)
 }

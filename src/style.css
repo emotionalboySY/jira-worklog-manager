@@ -2009,6 +2009,26 @@ span.flatpickr-weekday {
   text-overflow: ellipsis;
 }
 
+.autocomplete-loading,
+.autocomplete-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.autocomplete-footer {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+
+.autocomplete-loading .btn-spinner,
+.autocomplete-footer .btn-spinner {
+  color: var(--accent);
+}
+
 /* ========== 모달 레이블 행 (label + 보조 버튼) ========== */
 .modal-label-row {
   display: flex;
