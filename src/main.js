@@ -361,6 +361,8 @@ let editingWorklog = null    // 수정 중인 워크로그
 let deletingWorklog = null   // 삭제 확인 중인 워크로그
 let showManualLog = null     // 수동 작업 기록 모달 state: null | { issueKey, summary }
 let manualIssueCheck = null  // 이슈 키 검증 결과: null | { status: 'checking'|'ok'|'error', key, summary, message }
+let manualKeySearchTimer = null  // 이슈 키 자동완성 API debounce 타이머
+let manualKeyActiveIdx = -1      // 키보드 네비게이션 선택 인덱스
 let theme = localStorage.getItem('theme') || 'dark'
 let favoritesPanelCollapsed = (localStorage.getItem('favorites_collapsed') === '1')
 
@@ -1462,7 +1464,10 @@ function renderManualLogModal() {
         <div class="modal-title">수동 작업 기록</div>
         <div class="modal-field">
           <label class="modal-label">이슈 키</label>
-          <input type="text" class="modal-input" id="manual-issue-key" placeholder="예: DKT-123" value="${escapeHtml(initialKey)}" autocomplete="off" />
+          <div class="autocomplete-wrapper">
+            <input type="text" class="modal-input" id="manual-issue-key" placeholder="예: DKT-123 또는 키워드" value="${escapeHtml(initialKey)}" autocomplete="off" />
+            <div class="autocomplete-dropdown" id="manual-key-dropdown"></div>
+          </div>
           ${keyStatusHtml}
         </div>
         <div class="modal-field">
@@ -1510,6 +1515,106 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+}
+
+// ========== 이슈 키 자동완성 ==========
+// 로컬 풀(realIssues + searchResults + favorites)에서 쿼리 매칭 후보 생성
+function findLocalIssueCandidates(query) {
+  const q = query.trim().toUpperCase()
+  if (!q) return []
+  const pool = new Map()
+  for (const i of getActiveIssues()) {
+    if (i.key) pool.set(i.key, { key: i.key, summary: i.summary || '' })
+  }
+  for (const i of (searchResults || [])) {
+    if (i.key && !pool.has(i.key)) pool.set(i.key, { key: i.key, summary: i.summary || '' })
+  }
+  for (const f of loadFavorites()) {
+    if (f.issueKey && !pool.has(f.issueKey)) pool.set(f.issueKey, { key: f.issueKey, summary: f.summary || '' })
+  }
+  return [...pool.values()]
+    .filter(i => i.key.toUpperCase().includes(q) || (i.summary || '').toUpperCase().includes(q))
+    .slice(0, 15)
+}
+
+function renderManualKeyDropdown(candidates) {
+  const dropdown = document.getElementById('manual-key-dropdown')
+  if (!dropdown) return
+  if (candidates.length === 0) {
+    dropdown.style.display = 'none'
+    dropdown.innerHTML = ''
+    return
+  }
+  dropdown.style.display = 'block'
+  dropdown.innerHTML = candidates.map((c, idx) => `
+    <div class="autocomplete-item ${idx === manualKeyActiveIdx ? 'active' : ''}" data-key="${c.key}" data-summary="${(c.summary || '').replace(/"/g, '&quot;')}" data-idx="${idx}">
+      <span class="autocomplete-key">${c.key}</span>
+      <span class="autocomplete-summary">${c.summary || ''}</span>
+    </div>
+  `).join('')
+  dropdown.querySelectorAll('.autocomplete-item').forEach(el => {
+    // mousedown은 blur보다 먼저 발생 → blur로 드롭다운 닫히기 전에 선택 처리
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      selectManualKeyCandidate(el.dataset.key, el.dataset.summary || '')
+    })
+    el.addEventListener('mouseenter', () => {
+      manualKeyActiveIdx = parseInt(el.dataset.idx)
+      dropdown.querySelectorAll('.autocomplete-item').forEach((it, i) => {
+        it.classList.toggle('active', i === manualKeyActiveIdx)
+      })
+    })
+  })
+}
+
+function selectManualKeyCandidate(key, summary) {
+  const input = document.getElementById('manual-issue-key')
+  if (!input) return
+  input.value = key
+  manualIssueCheck = { status: 'ok', key, summary }
+  renderManualKeyHint()
+  const dropdown = document.getElementById('manual-key-dropdown')
+  if (dropdown) { dropdown.style.display = 'none'; dropdown.innerHTML = '' }
+  manualKeyActiveIdx = -1
+}
+
+function updateManualKeyDropdown() {
+  const input = document.getElementById('manual-issue-key')
+  if (!input) return
+  const query = input.value
+  if (!query.trim()) {
+    renderManualKeyDropdown([])
+    return
+  }
+  const localCandidates = findLocalIssueCandidates(query)
+  manualKeyActiveIdx = -1
+  renderManualKeyDropdown(localCandidates)
+
+  // debounced API 검색으로 로컬에 없는 결과 보강
+  clearTimeout(manualKeySearchTimer)
+  const q = query.trim()
+  if (q.length < 2) return
+  manualKeySearchTimer = setTimeout(async () => {
+    try {
+      const projectKeys = (realProjects && realProjects.length)
+        ? realProjects.map(p => p.key)
+        : ['DK', 'DKT', 'DD', 'RM']
+      const apiResults = await searchIssuesByKey(q, projectKeys)
+      // 사용자가 계속 같은 쿼리 유지 중인지 확인
+      const currentInput = document.getElementById('manual-issue-key')
+      if (!currentInput || currentInput.value.trim() !== q) return
+      const merged = [...localCandidates]
+      for (const r of apiResults) {
+        if (!merged.some(c => c.key === r.key)) {
+          merged.push({ key: r.key, summary: r.summary })
+        }
+        if (merged.length >= 20) break
+      }
+      renderManualKeyDropdown(merged)
+    } catch (err) {
+      console.warn('자동완성 API 실패:', err)
+    }
+  }, 300)
 }
 
 // 이슈 키 힌트 영역만 직접 업데이트 (모달 입력값 유지 위해 전체 리렌더 회피)
@@ -2183,10 +2288,57 @@ function bindEvents() {
     manualCancel.addEventListener('click', () => { showManualLog = null; manualIssueCheck = null; render() })
   }
 
-  // 이슈 키 입력: blur 시 유효성 검사 (폼 초기화 방지 위해 render() 대신 힌트 DOM 직접 업데이트)
+  // 이슈 키 입력: 자동완성 드롭다운
   const manualIssueInput = document.getElementById('manual-issue-key')
   if (manualIssueInput) {
+    manualIssueInput.addEventListener('input', () => {
+      manualIssueCheck = null
+      renderManualKeyHint()
+      updateManualKeyDropdown()
+    })
+    manualIssueInput.addEventListener('focus', () => {
+      if (manualIssueInput.value.trim()) updateManualKeyDropdown()
+    })
+    // 키보드 네비게이션
+    manualIssueInput.addEventListener('keydown', (e) => {
+      const dropdown = document.getElementById('manual-key-dropdown')
+      if (!dropdown || dropdown.style.display === 'none') return
+      const items = dropdown.querySelectorAll('.autocomplete-item')
+      if (items.length === 0) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        manualKeyActiveIdx = (manualKeyActiveIdx + 1) % items.length
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        manualKeyActiveIdx = (manualKeyActiveIdx - 1 + items.length) % items.length
+      } else if (e.key === 'Enter') {
+        if (manualKeyActiveIdx >= 0) {
+          e.preventDefault()
+          const el = items[manualKeyActiveIdx]
+          selectManualKeyCandidate(el.dataset.key, el.dataset.summary || '')
+          return
+        }
+      } else if (e.key === 'Escape') {
+        manualKeyActiveIdx = -1
+        dropdown.style.display = 'none'
+        dropdown.innerHTML = ''
+        return
+      } else {
+        return
+      }
+      items.forEach((el, i) => el.classList.toggle('active', i === manualKeyActiveIdx))
+      if (manualKeyActiveIdx >= 0) items[manualKeyActiveIdx].scrollIntoView({ block: 'nearest' })
+    })
+  }
+
+  // 이슈 키 입력: blur 시 유효성 검사 (폼 초기화 방지 위해 render() 대신 힌트 DOM 직접 업데이트)
+  if (manualIssueInput) {
     manualIssueInput.addEventListener('blur', async () => {
+      // blur 후 드롭다운 닫기 (mousedown 선택이 먼저 처리되도록 지연)
+      setTimeout(() => {
+        const dd = document.getElementById('manual-key-dropdown')
+        if (dd) { dd.style.display = 'none'; dd.innerHTML = '' }
+      }, 150)
       const key = manualIssueInput.value.trim().toUpperCase()
       manualIssueInput.value = key
       if (!key) { manualIssueCheck = null; renderManualKeyHint(); return }
