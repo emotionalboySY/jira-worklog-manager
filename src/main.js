@@ -954,9 +954,11 @@ function renderIssuesTab() {
               <svg width="15" height="15" viewBox="0 0 16 16" fill="${isFavorite(issue.key) ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>
             </button>
             <span class="issue-status ${statusCss}">${statusLabel}</span>
-            <span class="issue-tag ${issue.role}">
-              ${{ assignee: '할당', reporter: '보고', watcher: '워칭' }[issue.role]}
-            </span>
+            ${issue.role && issue.role !== 'none' ? `
+              <span class="issue-tag ${issue.role}">
+                ${{ assignee: '할당', reporter: '보고', watcher: '워칭' }[issue.role]}
+              </span>
+            ` : ''}
             <button class="btn btn-sm btn-manual-inline" data-action="manual-log" data-key="${issue.key}" title="수동 기록">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><polyline points="8 4.5 8 8 10.5 9.5"/></svg>
             </button>

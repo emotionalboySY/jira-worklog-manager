@@ -49,7 +49,7 @@ export async function fetchMyIssues() {
 
   return allIssues.map(issue => {
     const fields = issue.fields
-    const role = determineRole(fields, myAccountId)
+    const role = determineRole(fields, myAccountId, { assumeWatcher: true })
 
     return {
       key: issue.key,
@@ -65,11 +65,14 @@ export async function fetchMyIssues() {
   })
 }
 
-function determineRole(fields, myAccountId) {
-  if (!myAccountId) return 'watcher'
+// assumeWatcher: true면 assignee/reporter 아닐 때 watcher로 간주 (fetchMyIssues처럼 JQL로 내 이슈만 가져온 경우)
+// false면 isWatching 값으로만 판단 (직접 key 조회처럼 범위가 불명확한 경우)
+function determineRole(fields, myAccountId, { assumeWatcher = false } = {}) {
+  if (!myAccountId) return assumeWatcher ? 'watcher' : 'none'
   if (fields.assignee?.accountId === myAccountId) return 'assignee'
   if (fields.reporter?.accountId === myAccountId) return 'reporter'
-  return 'watcher'
+  if (fields.watches?.isWatching) return 'watcher'
+  return assumeWatcher ? 'watcher' : 'none'
 }
 
 // 이슈 타입 목록 조회 (아이콘 URL 포함)
