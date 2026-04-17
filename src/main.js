@@ -1096,10 +1096,8 @@ function renderCalendarView() {
   // 해당 월 날짜 셀
   for (let d = 1; d <= lastDay.getDate(); d++) {
     const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-    const workedMinutes = getLogMinutes(dateStr)
+    const minutes = getLogMinutes(dateStr)
     const dayOffType = getDayOff(dateStr)
-    const dayOffMinutes = getDayOffMinutes(dayOffType)
-    const minutes = workedMinutes + dayOffMinutes
     const isFuture = dateStr > todayStr
     cells.push({
       day: d,
@@ -1199,10 +1197,7 @@ function renderDayOffToggle() {
 
 function renderLogDetail() {
   const logs = getActiveLogs(logDate)
-  const workedMinutes = getLogMinutes(logDate)
-  const dayOffType = getDayOff(logDate)
-  const dayOffMinutes = getDayOffMinutes(dayOffType)
-  const totalMinutes = workedMinutes + dayOffMinutes
+  const totalMinutes = getLogMinutes(logDate)
 
   return `
     <div class="log-detail">
@@ -1212,39 +1207,34 @@ function renderLogDetail() {
           <div class="loading-spinner"></div>
           <span class="loading-text">작업 로그를 불러오는 중</span>
         </div>
-      ` : logs.length === 0 && !dayOffType ? `
+      ` : logs.length === 0 ? `
         <div class="no-session">이 날짜에 기록된 작업 로그가 없습니다.</div>
       ` : `
-        ${logs.length > 0 ? `
-          <div class="log-list">
-            ${logs.map((log, idx) => `
-              <div class="log-row" data-issue-key="${log.issueKey}" data-issue-summary="${(log.summary || '').replace(/"/g, '&quot;')}">
-                <span class="log-time-range">${log.startTime} → ${log.endTime}</span>
-                <span class="log-duration">${log.durationMinutes != null ? formatMinutes(log.durationMinutes) : log.duration}</span>
-                <div class="log-issue">
-                  <div class="log-issue-header">
-                    ${renderIssueKeyLink(log.issueKey)}
-                    <span class="issue-summary">${log.summary}</span>
-                    ${log.lunchDeducted > 0 ? `<span class="log-lunch-badge">점심 -${log.lunchDeducted}분</span>` : ''}
-                  </div>
-                  ${log.comment ? `<span class="log-comment">${log.comment}</span>` : ''}
+        <div class="log-list">
+          ${logs.map((log, idx) => `
+            <div class="log-row" data-issue-key="${log.issueKey}" data-issue-summary="${(log.summary || '').replace(/"/g, '&quot;')}">
+              <span class="log-time-range">${log.startTime} → ${log.endTime}</span>
+              <span class="log-duration">${log.durationMinutes != null ? formatMinutes(log.durationMinutes) : log.duration}</span>
+              <div class="log-issue">
+                <div class="log-issue-header">
+                  ${renderIssueKeyLink(log.issueKey)}
+                  <span class="issue-summary">${log.summary}</span>
+                  ${log.lunchDeducted > 0 ? `<span class="log-lunch-badge">점심 -${log.lunchDeducted}분</span>` : ''}
                 </div>
-                ${log.worklogId ? `
-                  <div class="log-actions">
-                    <button class="btn btn-sm" data-action="edit-log" data-idx="${idx}">수정</button>
-                    <button class="btn btn-sm btn-danger" data-action="delete-log" data-idx="${idx}">삭제</button>
-                  </div>
-                ` : ''}
+                ${log.comment ? `<span class="log-comment">${log.comment}</span>` : ''}
               </div>
-            `).join('')}
-          </div>
-        ` : ''}
+              ${log.worklogId ? `
+                <div class="log-actions">
+                  <button class="btn btn-sm" data-action="edit-log" data-idx="${idx}">수정</button>
+                  <button class="btn btn-sm btn-danger" data-action="delete-log" data-idx="${idx}">삭제</button>
+                </div>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
         <div class="log-summary">
-          <span class="log-summary-label">총 근무 시간</span>
-          <span class="log-summary-value">
-            ${formatMinutes(totalMinutes)}
-            ${dayOffType ? `<span class="log-summary-meta">작업 ${formatMinutes(workedMinutes)} + ${getDayOffLabel(dayOffType)} ${formatMinutes(dayOffMinutes)}</span>` : ''}
-          </span>
+          <span class="log-summary-label">총 작업 시간</span>
+          <span class="log-summary-value">${formatMinutes(totalMinutes)}</span>
         </div>
       `}
     </div>
@@ -1282,10 +1272,7 @@ function getWeekData(offset) {
     const d = new Date(thursday)
     d.setDate(thursday.getDate() + i)
     const dateStr = toDateString(d)
-    const workedMinutes = getLogMinutes(dateStr)
-    const dayOffType = getDayOff(dateStr)
-    const dayOffMinutes = getDayOffMinutes(dayOffType)
-    const minutes = workedMinutes + dayOffMinutes
+    const minutes = getLogMinutes(dateStr)
     const isToday = d.toDateString() === today.toDateString()
     const isFuture = d > today
     const dow = d.getDay()
@@ -1293,9 +1280,6 @@ function getWeekData(offset) {
       day: days[dow],
       date: `${String(d.getMonth() + 1).padStart(2, '0')}월 ${String(d.getDate()).padStart(2, '0')}일`,
       minutes: isFuture ? 0 : minutes,
-      workedMinutes: isFuture ? 0 : workedMinutes,
-      dayOffType: isFuture ? null : dayOffType,
-      dayOffMinutes: isFuture ? 0 : dayOffMinutes,
       today: isToday,
       isFuture,
       weekend: dow === 0 || dow === 6,
