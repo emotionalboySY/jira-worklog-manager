@@ -2352,3 +2352,69 @@ span.flatpickr-weekday {
   color: var(--yellow);
   font-weight: 700;
 }
+
+/* ========== 프로젝트별 색상 ========== */
+/* 이슈 키 배지: 프로젝트별 색 오버라이드 */
+.issue-key[data-project="DK"] {
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.14);
+}
+.issue-key[data-project="DKT"] {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.14);
+}
+.issue-key[data-project="DD"] {
+  color: #fb923c;
+  background: rgba(249, 115, 22, 0.14);
+}
+.issue-key[data-project="RM"] {
+  color: #c084fc;
+  background: rgba(168, 85, 247, 0.14);
+}
+
+/* 링크 hover 시 반전 색상도 프로젝트별로 */
+a.issue-key-link[data-project="DK"]:hover {
+  background: #3b82f6; color: #ffffff;
+}
+a.issue-key-link[data-project="DKT"]:hover {
+  background: #10b981; color: #ffffff;
+}
+a.issue-key-link[data-project="DD"]:hover {
+  background: #f97316; color: #ffffff;
+}
+a.issue-key-link[data-project="RM"]:hover {
+  background: #a855f7; color: #ffffff;
+}
+
+/* 행 왼쪽 3px 컬러 바 — 부모에 show-project-bar 클래스가 있을 때만
+   (기본 padding-left 14px을 11px로 줄여서 3px border 추가해도 총 너비 유지) */
+.issue-list.show-project-bar .issue-row,
+.log-list.show-project-bar .log-row {
+  border-left: 3px solid transparent;
+  padding-left: 11px;
+}
+.issue-list.show-project-bar .issue-row[data-project="DK"],
+.log-list.show-project-bar .log-row[data-project="DK"] {
+  border-left-color: #3b82f6;
+}
+.issue-list.show-project-bar .issue-row[data-project="DKT"],
+.log-list.show-project-bar .log-row[data-project="DKT"] {
+  border-left-color: #10b981;
+}
+.issue-list.show-project-bar .issue-row[data-project="DD"],
+.log-list.show-project-bar .log-row[data-project="DD"] {
+  border-left-color: #f97316;
+}
+.issue-list.show-project-bar .issue-row[data-project="RM"],
+.log-list.show-project-bar .log-row[data-project="RM"] {
+  border-left-color: #a855f7;
+}
+
+/* 세션 카드에도 같은 바 (세션은 상시 표시) */
+.session-card[data-project] {
+  padding-left: 15px;
+}
+.session-card[data-project="DK"]  { border-left: 3px solid #3b82f6; }
+.session-card[data-project="DKT"] { border-left: 3px solid #10b981; }
+.session-card[data-project="DD"]  { border-left: 3px solid #f97316; }
+.session-card[data-project="RM"]  { border-left: 3px solid #a855f7; }

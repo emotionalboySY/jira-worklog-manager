@@ -11,6 +11,7 @@ import {
   renderIssueKeyLink,
   getFilteredIssues,
   getProjectIssues,
+  getProjectFromKey,
 } from '../utils.js'
 import { renderProjectSelector } from './header.js'
 
@@ -77,7 +78,7 @@ export function renderIssuesTab() {
       ` : ''}
     </div>
     ${isSearchMode ? `<div class="search-result-info">검색 결과 ${filtered.length}건</div>` : ''}
-    <div class="issue-list">
+    <div class="issue-list ${(isSearchMode || state.currentProject === 'ALL') ? 'show-project-bar' : ''}">
       ${filtered.length === 0 ? `
         <div class="no-session">해당 조건에 맞는 이슈가 없습니다.</div>
       ` : paginateIssues(filtered).map(issue => {
@@ -89,7 +90,7 @@ export function renderIssuesTab() {
           : `<span class="issue-type-icon ${issue.type}" title="${getTypeLabel(issue.type)}">${getTypeIcon(issue.type)}</span>`
         const typeLabel = issue.typeIconUrl ? issue.type : getTypeLabel(issue.type)
         return `
-        <div class="issue-row" data-issue-key="${issue.key}" data-issue-summary="${escapeHtml(issue.summary || '')}">
+        <div class="issue-row" data-issue-key="${issue.key}" data-issue-summary="${escapeHtml(issue.summary || '')}" data-project="${getProjectFromKey(issue.key)}">
           <div class="issue-left">
             ${typeIcon}
             <span class="issue-type-label">${typeLabel}</span>

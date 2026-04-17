@@ -45,6 +45,14 @@ export const STATUS_ORDER = {
   'Closed': 6,
 }
 export const PROJECT_ORDER = { 'DK': 0, 'DKT': 1, 'DD': 2, 'RM': 3 }
+
+// 프로젝트별 색상 (배지/왼쪽 바). 미매핑 프로젝트는 기본 accent 색상 폴백
+export const PROJECT_COLORS = {
+  DK:  { fg: '#60a5fa', bg: 'rgba(59, 130, 246, 0.14)' },   // 파랑
+  DKT: { fg: '#34d399', bg: 'rgba(16, 185, 129, 0.14)' },   // 초록
+  DD:  { fg: '#fb923c', bg: 'rgba(249, 115, 22, 0.14)' },   // 주황
+  RM:  { fg: '#c084fc', bg: 'rgba(168, 85, 247, 0.14)' },   // 보라
+}
 export const CLOSED_CATEGORY = 'done'  // Jira statusCategory key
 
 // localStorage 키

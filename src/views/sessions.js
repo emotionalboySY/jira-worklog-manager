@@ -1,6 +1,6 @@
 // 현재 작업 세션 카드 영역
 import { loadSessions, getSessionStartedAt, getSessionElapsedMinutes } from '../storage.js'
-import { escapeHtml, formatMinutes, renderIssueKeyLink } from '../utils.js'
+import { escapeHtml, formatMinutes, renderIssueKeyLink, getProjectFromKey } from '../utils.js'
 
 export function renderActiveSessions() {
   const sessions = loadSessions()
@@ -19,7 +19,7 @@ export function renderActiveSessions() {
     const totalMinutes = getSessionElapsedMinutes(session)
     const segCount = session.segments.length
     return `
-    <div class="session-card ${session.status}" data-issue-key="${session.issueKey}" data-issue-summary="${escapeHtml(session.summary || '')}">
+    <div class="session-card ${session.status}" data-issue-key="${session.issueKey}" data-issue-summary="${escapeHtml(session.summary || '')}" data-project="${getProjectFromKey(session.issueKey)}">
       <div class="session-info">
         <div class="session-issue">
           ${renderIssueKeyLink(session.issueKey)}

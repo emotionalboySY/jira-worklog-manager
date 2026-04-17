@@ -1,7 +1,7 @@
 // 플로팅 즐겨찾기 패널 (우측 고정)
 import { state } from '../state.js'
 import { loadFavorites, loadSessions } from '../storage.js'
-import { escapeHtml, renderIssueKeyLink } from '../utils.js'
+import { escapeHtml, renderIssueKeyLink, getProjectFromKey } from '../utils.js'
 
 export function renderFavoritesPanel() {
   const favorites = loadFavorites()
@@ -29,7 +29,7 @@ export function renderFavoritesPanel() {
             ? `<button class="btn btn-sm" data-action="fav-start" data-key="${fav.issueKey}" data-summary="${escapeHtml(fav.summary || '')}">재개</button>`
             : `<button class="btn btn-primary btn-sm" data-action="fav-start" data-key="${fav.issueKey}" data-summary="${escapeHtml(fav.summary || '')}">시작</button>`
         return `
-          <div class="favorite-item" data-issue-key="${fav.issueKey}" data-issue-summary="${escapeHtml(fav.summary || '')}">
+          <div class="favorite-item" data-issue-key="${fav.issueKey}" data-issue-summary="${escapeHtml(fav.summary || '')}" data-project="${getProjectFromKey(fav.issueKey)}">
             <div class="favorite-item-info">
               ${renderIssueKeyLink(fav.issueKey)}
               <span class="favorite-summary" title="${escapeHtml(fav.summary || '')}">${escapeHtml(fav.summary || '')}</span>

@@ -9,6 +9,7 @@ import {
   getActiveLogs,
   getLogMinutes,
   renderIssueKeyLink,
+  getProjectFromKey,
 } from '../utils.js'
 
 export function renderLogsTab() {
@@ -166,9 +167,9 @@ export function renderLogDetail() {
       ` : logs.length === 0 ? `
         <div class="no-session">이 날짜에 기록된 작업 로그가 없습니다.</div>
       ` : `
-        <div class="log-list">
+        <div class="log-list show-project-bar">
           ${logs.map((log, idx) => `
-            <div class="log-row" data-issue-key="${log.issueKey}" data-issue-summary="${escapeHtml(log.summary || '')}">
+            <div class="log-row" data-issue-key="${log.issueKey}" data-issue-summary="${escapeHtml(log.summary || '')}" data-project="${getProjectFromKey(log.issueKey)}">
               <span class="log-time-range">${log.startTime} → ${log.endTime}</span>
               <span class="log-duration">${log.durationMinutes != null ? formatMinutes(log.durationMinutes) : log.duration}</span>
               <div class="log-issue">

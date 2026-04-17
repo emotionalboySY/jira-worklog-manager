@@ -114,11 +114,12 @@ export function getJiraIssueUrl(issueKey) {
   return `https://${siteName}.atlassian.net/browse/${issueKey}`
 }
 
-// 이슈 키를 Jira 페이지로 연결하는 링크로 렌더
+// 이슈 키를 Jira 페이지로 연결하는 링크로 렌더 (프로젝트별 색상 적용용 data-project 포함)
 export function renderIssueKeyLink(issueKey) {
+  const project = getProjectFromKey(issueKey)
   const url = getJiraIssueUrl(issueKey)
-  if (!url) return `<span class="issue-key">${issueKey}</span>`
-  return `<a class="issue-key issue-key-link" href="${url}" target="_blank" rel="noopener noreferrer" title="Jira에서 열기">${issueKey}</a>`
+  if (!url) return `<span class="issue-key" data-project="${project}">${issueKey}</span>`
+  return `<a class="issue-key issue-key-link" data-project="${project}" href="${url}" target="_blank" rel="noopener noreferrer" title="Jira에서 열기">${issueKey}</a>`
 }
 
 // ========== 이슈 필터/정렬 ==========
