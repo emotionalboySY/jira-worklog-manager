@@ -351,7 +351,7 @@ const STATUS_ORDER = {
 const PROJECT_ORDER = { 'DK': 0, 'DKT': 1, 'DD': 2, 'RM': 3 }
 const CLOSED_CATEGORY = 'done'  // Jira statusCategory key
 let logDate = toDateString(new Date()) // 선택된 날짜
-let logViewMode = 'calendar' // 'calendar' | 'list'
+let calendarOpen = (localStorage.getItem('log_calendar_open') !== '0') // 기본 열림
 let calendarYear = new Date().getFullYear()
 let calendarMonth = new Date().getMonth() // 0-indexed
 let summaryWeekOffset = 0   // 0=이번 주, -1=지난 주, ...
@@ -1013,12 +1013,13 @@ function renderLogsTab() {
       <button class="btn btn-sm btn-refresh" id="btn-refresh-worklogs" ${worklogsLoading ? 'disabled' : ''} title="작업 로그 새로고침">
         ${worklogsLoading ? '<span class="btn-spinner"></span>' : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8A5.5 5.5 0 1 1 12 4.5"/><polyline points="13.5 2 13.5 5 10.5 5"/></svg>'}
       </button>
-      <div class="log-view-toggle">
-        <button class="view-btn ${logViewMode === 'calendar' ? 'active' : ''}" data-log-view="calendar" title="달력 보기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1.5"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></svg></button>
-        <button class="view-btn ${logViewMode === 'list' ? 'active' : ''}" data-log-view="list" title="목록 보기">☰</button>
-      </div>
+      <button class="btn btn-sm" id="btn-calendar-toggle" title="${calendarOpen ? '달력 닫기' : '달력 열기'}">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1.5"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></svg>
+        <span>${calendarOpen ? '달력 닫기' : '달력 열기'}</span>
+      </button>
     </div>
-    ${logViewMode === 'calendar' ? renderCalendarView() : renderListView()}
+    ${calendarOpen ? renderCalendarView() : ''}
+    ${renderDateNav()}
     ${renderLogDetail()}
   `
 }
@@ -1110,7 +1111,7 @@ function renderCalendarView() {
   `
 }
 
-function renderListView() {
+function renderDateNav() {
   const todayStr = toDateString(new Date())
   return `
     <div class="log-date-nav">
@@ -1128,7 +1129,6 @@ function renderLogDetail() {
 
   return `
     <div class="log-detail">
-      <div class="log-detail-header">${formatDateKorean(logDate)}</div>
       ${worklogsLoading && logs.length === 0 ? `
         <div class="loading-container">
           <div class="loading-spinner"></div>
@@ -1758,13 +1758,15 @@ function bindEvents() {
     })
   })
 
-  // 뷰 토글 (달력/목록)
-  document.querySelectorAll('.view-btn[data-log-view]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      logViewMode = btn.dataset.logView
+  // 달력 열기/닫기 토글
+  const calendarToggleBtn = document.getElementById('btn-calendar-toggle')
+  if (calendarToggleBtn) {
+    calendarToggleBtn.addEventListener('click', () => {
+      calendarOpen = !calendarOpen
+      localStorage.setItem('log_calendar_open', calendarOpen ? '1' : '0')
       render()
     })
-  })
+  }
 
   // 달력 년/월 직접 선택
   const calYearSelect = document.getElementById('cal-year')
