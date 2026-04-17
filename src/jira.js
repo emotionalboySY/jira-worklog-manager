@@ -261,6 +261,23 @@ export async function createWorklog(issueKey, { started, timeSpentSeconds, comme
   return jiraFetch(`/issue/${issueKey}/worklog`, { method: 'POST', body })
 }
 
+// 이슈 단일 조회 (요약 미리보기 및 유효성 검사용)
+export async function fetchIssueMeta(issueKey) {
+  const data = await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}?fields=summary,issuetype,status`
+  )
+  if (!data || !data.key) return null
+  const fields = data.fields || {}
+  return {
+    key: data.key,
+    summary: fields.summary || '',
+    type: fields.issuetype?.name || '',
+    typeIconUrl: fields.issuetype?.iconUrl || '',
+    status: fields.status?.name || '',
+    statusCategory: fields.status?.statusCategory?.key || 'new',
+  }
+}
+
 // 프로젝트 목록 조회
 export async function fetchProjects() {
   const data = await jiraFetch('/project/search?maxResults=50&orderBy=name')

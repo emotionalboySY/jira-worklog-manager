@@ -1635,6 +1635,54 @@ span.flatpickr-weekday {
   color: var(--text-bright);
 }
 
+.context-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+/* ========== 시간 + 지금 버튼 ========== */
+.time-with-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.time-with-btn .modal-input {
+  flex: 1;
+}
+
+/* ========== 소요 시간 자동 계산 표시 ========== */
+.duration-readout {
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.duration-readout.error {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+/* ========== 입력 힌트 (유효성 검사 메시지) ========== */
+.input-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.input-hint.ok {
+  color: #10b981;
+}
+
+.input-hint.error {
+  color: #ef4444;
+}
+
 /* ========== 반응형 ========== */
 @media (max-width: 640px) {
   .session-card {

@@ -3,7 +3,7 @@ import flatpickr from 'flatpickr'
 import 'flatpickr/dist/flatpickr.min.css'
 import { Korean } from 'flatpickr/dist/l10n/ko.js'
 import { login, logout, isLoggedIn, handleOAuthCallback, fetchCurrentUser, getSavedUser, saveUser } from './auth.js'
-import { fetchMyIssues, fetchProjects, searchIssuesByKey, fetchMyWorklogs, updateWorklog, deleteWorklog, createWorklog } from './jira.js'
+import { fetchMyIssues, fetchProjects, searchIssuesByKey, fetchMyWorklogs, updateWorklog, deleteWorklog, createWorklog, fetchIssueMeta } from './jira.js'
 
 // ========== 목업 데이터 ==========
 const MOCK_USER = {
@@ -322,7 +322,8 @@ let showModal = null             // 종료 모달 대상 issueKey
 let showCancelConfirm = null // 취소 확인 대상 issueKey
 let editingWorklog = null    // 수정 중인 워크로그
 let deletingWorklog = null   // 삭제 확인 중인 워크로그
-let showManualLog = false    // 수동 작업 기록 모달
+let showManualLog = null     // 수동 작업 기록 모달 state: null | { issueKey, summary }
+let manualIssueCheck = null  // 이슈 키 검증 결과: null | { status: 'checking'|'ok'|'error', key, summary, message }
 let theme = localStorage.getItem('theme') || 'dark'
 
 // ========== 테마 초기화 ==========
@@ -460,6 +461,8 @@ function showContextMenu(e, issueKey, summary) {
   const menu = document.createElement('div')
   menu.className = 'context-menu'
   menu.innerHTML = `
+    <div class="context-menu-item" data-ctx="manual-log">이 이슈에 수동 기록</div>
+    <div class="context-menu-separator"></div>
     <div class="context-menu-item" data-ctx="key">이슈 키(${issueKey}) 복사</div>
     <div class="context-menu-item" data-ctx="summary">이슈 요약 복사</div>
     <div class="context-menu-item" data-ctx="link">이슈 링크 복사</div>
@@ -478,6 +481,13 @@ function showContextMenu(e, issueKey, summary) {
   menu.querySelectorAll('.context-menu-item').forEach(item => {
     item.addEventListener('click', () => {
       const action = item.dataset.ctx
+      if (action === 'manual-log') {
+        showManualLog = { issueKey, summary }
+        manualIssueCheck = { status: 'ok', key: issueKey, summary }
+        hideContextMenu()
+        render()
+        return
+      }
       let text = ''
       if (action === 'key') text = issueKey
       else if (action === 'summary') text = summary
@@ -1208,6 +1218,11 @@ function renderCancelConfirm() {
 function renderEditWorklogModal() {
   if (!editingWorklog) return ''
   const w = editingWorklog
+  // 시작 시간 + 소요 시간(분)으로부터 종료 시간 역산
+  const [sh, sm] = w.startTime.split(':').map(Number)
+  const totalStartMin = sh * 60 + sm
+  const totalEndMin = totalStartMin + (w.durationHours * 60 + w.durationMins)
+  const endTime = `${String(Math.floor(totalEndMin / 60) % 24).padStart(2, '0')}:${String(totalEndMin % 60).padStart(2, '0')}`
   return `
     <div class="modal-overlay" id="edit-worklog-overlay">
       <div class="modal">
@@ -1221,13 +1236,15 @@ function renderEditWorklogModal() {
           <input type="time" class="modal-input" id="edit-start-time" value="${w.startTime}" />
         </div>
         <div class="modal-field">
-          <label class="modal-label">소요 시간</label>
-          <div class="duration-inputs">
-            <input type="number" class="modal-input duration-input" id="edit-duration-hours" value="${w.durationHours}" min="0" max="23" />
-            <span class="duration-label">시간</span>
-            <input type="number" class="modal-input duration-input" id="edit-duration-mins" value="${w.durationMins}" min="0" max="59" />
-            <span class="duration-label">분</span>
+          <label class="modal-label">종료 시간</label>
+          <div class="time-with-btn">
+            <input type="time" class="modal-input" id="edit-end-time" value="${endTime}" />
+            <button type="button" class="btn btn-sm" id="edit-end-now">지금</button>
           </div>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">소요 시간</label>
+          <div class="duration-readout" id="edit-duration-readout">-</div>
         </div>
         <div class="modal-field">
           <label class="modal-label">작업 내용</label>
@@ -1261,16 +1278,48 @@ function renderDeleteWorklogConfirm() {
   `
 }
 
+// 이슈 키 형식 검사 (예: DKT-123)
+const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9]+-\d+$/
+
+function isValidIssueKeyFormat(key) {
+  return ISSUE_KEY_PATTERN.test(key)
+}
+
+// 이미 로드된 이슈 목록에서 찾기 (API 호출 없이)
+function findLoadedIssue(key) {
+  const pool = [...getActiveIssues(), ...(searchResults || [])]
+  return pool.find(i => i.key === key) || null
+}
+
 function renderManualLogModal() {
+  const ctx = showManualLog || {}
   const todayStr = toDateString(new Date())
-  const nowTime = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`
+  const now = new Date()
+  const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  const initialKey = ctx.issueKey || ''
+  const initialSummary = ctx.summary || ''
+  // 이슈 키 상태 표시
+  let keyStatusHtml = ''
+  if (manualIssueCheck) {
+    if (manualIssueCheck.status === 'checking') {
+      keyStatusHtml = `<div class="input-hint">확인 중...</div>`
+    } else if (manualIssueCheck.status === 'ok') {
+      keyStatusHtml = `<div class="input-hint ok">✓ ${escapeHtml(manualIssueCheck.summary)}</div>`
+    } else if (manualIssueCheck.status === 'error') {
+      keyStatusHtml = `<div class="input-hint error">⚠ ${escapeHtml(manualIssueCheck.message)}</div>`
+    }
+  } else if (initialSummary) {
+    keyStatusHtml = `<div class="input-hint ok">✓ ${escapeHtml(initialSummary)}</div>`
+  }
+
   return `
     <div class="modal-overlay" id="manual-log-overlay">
       <div class="modal">
         <div class="modal-title">수동 작업 기록</div>
         <div class="modal-field">
           <label class="modal-label">이슈 키</label>
-          <input type="text" class="modal-input" id="manual-issue-key" placeholder="예: DKT-123" />
+          <input type="text" class="modal-input" id="manual-issue-key" placeholder="예: DKT-123" value="${escapeHtml(initialKey)}" autocomplete="off" />
+          ${keyStatusHtml}
         </div>
         <div class="modal-field">
           <label class="modal-label">작업 날짜</label>
@@ -1281,13 +1330,15 @@ function renderManualLogModal() {
           <input type="time" class="modal-input" id="manual-start-time" value="${nowTime}" />
         </div>
         <div class="modal-field">
-          <label class="modal-label">소요 시간</label>
-          <div class="duration-inputs">
-            <input type="number" class="modal-input duration-input" id="manual-duration-hours" value="1" min="0" max="23" />
-            <span class="duration-label">시간</span>
-            <input type="number" class="modal-input duration-input" id="manual-duration-mins" value="0" min="0" max="59" />
-            <span class="duration-label">분</span>
+          <label class="modal-label">종료 시간</label>
+          <div class="time-with-btn">
+            <input type="time" class="modal-input" id="manual-end-time" value="${nowTime}" />
+            <button type="button" class="btn btn-sm" id="manual-end-now">지금</button>
           </div>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">소요 시간</label>
+          <div class="duration-readout" id="manual-duration-readout">-</div>
         </div>
         <div class="modal-field">
           <label class="modal-label">작업 내용</label>
@@ -1300,6 +1351,93 @@ function renderManualLogModal() {
       </div>
     </div>
   `
+}
+
+// HTML 속성 이스케이프
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+// 이슈 키 힌트 영역만 직접 업데이트 (모달 입력값 유지 위해 전체 리렌더 회피)
+function renderManualKeyHint() {
+  const input = document.getElementById('manual-issue-key')
+  if (!input) return
+  const field = input.closest('.modal-field')
+  if (!field) return
+  const existing = field.querySelector('.input-hint')
+  if (existing) existing.remove()
+  if (!manualIssueCheck) return
+  const hint = document.createElement('div')
+  hint.className = 'input-hint'
+  if (manualIssueCheck.status === 'checking') {
+    hint.textContent = '확인 중...'
+  } else if (manualIssueCheck.status === 'ok') {
+    hint.classList.add('ok')
+    hint.textContent = `✓ ${manualIssueCheck.summary || ''}`
+  } else {
+    hint.classList.add('error')
+    hint.textContent = `⚠ ${manualIssueCheck.message || ''}`
+  }
+  field.appendChild(hint)
+}
+
+// 소요 시간 readout 업데이트 (수동 로그 모달)
+function updateManualDurationReadout() {
+  const startEl = document.getElementById('manual-start-time')
+  const endEl = document.getElementById('manual-end-time')
+  const readout = document.getElementById('manual-duration-readout')
+  if (!startEl || !endEl || !readout) return
+  const dur = computeDurationFromTimes(startEl.value, endEl.value)
+  if (!dur.valid) {
+    readout.textContent = dur.message || '-'
+    readout.classList.add('error')
+    return
+  }
+  readout.classList.remove('error')
+  const main = formatMinutes(dur.actualMinutes)
+  readout.textContent = dur.lunchMinutes > 0
+    ? `${main} (점심 -${dur.lunchMinutes}분 차감)`
+    : main
+}
+
+// 소요 시간 readout 업데이트 (수정 모달)
+function updateEditDurationReadout() {
+  const startEl = document.getElementById('edit-start-time')
+  const endEl = document.getElementById('edit-end-time')
+  const readout = document.getElementById('edit-duration-readout')
+  if (!startEl || !endEl || !readout) return
+  const dur = computeDurationFromTimes(startEl.value, endEl.value)
+  if (!dur.valid) {
+    readout.textContent = dur.message || '-'
+    readout.classList.add('error')
+    return
+  }
+  readout.classList.remove('error')
+  const main = formatMinutes(dur.actualMinutes)
+  readout.textContent = dur.lunchMinutes > 0
+    ? `${main} (점심 -${dur.lunchMinutes}분 차감)`
+    : main
+}
+
+// 시작/종료 시간(HH:MM)으로부터 점심시간 차감된 실제 소요(분) 계산
+// 반환: { totalMinutes, lunchMinutes, actualMinutes, valid, message }
+function computeDurationFromTimes(startTime, endTime) {
+  if (!startTime || !endTime) return { valid: false, message: '시간을 입력해주세요.' }
+  const [sh, sm] = startTime.split(':').map(Number)
+  const [eh, em] = endTime.split(':').map(Number)
+  const startMin = sh * 60 + sm
+  const endMin = eh * 60 + em
+  if (endMin <= startMin) return { valid: false, message: '종료 시간은 시작 시간보다 이후여야 합니다.' }
+  const totalMinutes = endMin - startMin
+  const lunchMinutes = Math.max(0, Math.min(endMin, LUNCH_END) - Math.max(startMin, LUNCH_START))
+  const actualMinutes = Math.max(0, totalMinutes - lunchMinutes)
+  if (actualMinutes <= 0) return { valid: false, message: '점심시간을 제외하면 실제 작업 시간이 없습니다.' }
+  return { valid: true, totalMinutes, lunchMinutes, actualMinutes }
 }
 
 function invalidateWorklogMonth(dateStr) {
@@ -1715,21 +1853,80 @@ function bindEvents() {
   // 수동 기록 버튼
   const manualLogBtn = document.getElementById('btn-manual-log')
   if (manualLogBtn) {
-    manualLogBtn.addEventListener('click', () => { showManualLog = true; render() })
+    manualLogBtn.addEventListener('click', () => {
+      showManualLog = {}
+      manualIssueCheck = null
+      render()
+    })
   }
 
   // 수동 기록 모달
   const manualOverlay = document.getElementById('manual-log-overlay')
   if (manualOverlay) {
     manualOverlay.addEventListener('click', (e) => {
-      if (e.target === manualOverlay) { showManualLog = false; render() }
+      if (e.target === manualOverlay) { showManualLog = null; manualIssueCheck = null; render() }
     })
   }
 
   const manualCancel = document.getElementById('manual-log-cancel')
   if (manualCancel) {
-    manualCancel.addEventListener('click', () => { showManualLog = false; render() })
+    manualCancel.addEventListener('click', () => { showManualLog = null; manualIssueCheck = null; render() })
   }
+
+  // 이슈 키 입력: blur 시 유효성 검사 (폼 초기화 방지 위해 render() 대신 힌트 DOM 직접 업데이트)
+  const manualIssueInput = document.getElementById('manual-issue-key')
+  if (manualIssueInput) {
+    manualIssueInput.addEventListener('blur', async () => {
+      const key = manualIssueInput.value.trim().toUpperCase()
+      manualIssueInput.value = key
+      if (!key) { manualIssueCheck = null; renderManualKeyHint(); return }
+      if (!isValidIssueKeyFormat(key)) {
+        manualIssueCheck = { status: 'error', key, message: '올바른 형식이 아닙니다. 예: DKT-123' }
+        renderManualKeyHint()
+        return
+      }
+      const local = findLoadedIssue(key)
+      if (local) {
+        manualIssueCheck = { status: 'ok', key, summary: local.summary }
+        renderManualKeyHint()
+        return
+      }
+      manualIssueCheck = { status: 'checking', key }
+      renderManualKeyHint()
+      try {
+        const meta = await fetchIssueMeta(key)
+        if (meta) {
+          manualIssueCheck = { status: 'ok', key: meta.key, summary: meta.summary }
+        } else {
+          manualIssueCheck = { status: 'error', key, message: '이슈를 찾을 수 없습니다.' }
+        }
+      } catch {
+        manualIssueCheck = { status: 'error', key, message: '이슈를 찾을 수 없거나 접근 권한이 없습니다.' }
+      }
+      renderManualKeyHint()
+    })
+  }
+
+  // '지금' 버튼: 종료 시간을 현재 시각으로
+  const manualEndNow = document.getElementById('manual-end-now')
+  if (manualEndNow) {
+    manualEndNow.addEventListener('click', () => {
+      const now = new Date()
+      const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      const endInput = document.getElementById('manual-end-time')
+      if (endInput) {
+        endInput.value = nowTime
+        updateManualDurationReadout()
+      }
+    })
+  }
+
+  // 시작/종료 시간 변경 → 소요 시간 실시간 계산
+  const manualStartInput = document.getElementById('manual-start-time')
+  const manualEndInput = document.getElementById('manual-end-time')
+  if (manualStartInput) manualStartInput.addEventListener('input', updateManualDurationReadout)
+  if (manualEndInput) manualEndInput.addEventListener('input', updateManualDurationReadout)
+  if (manualStartInput || manualEndInput) updateManualDurationReadout()
 
   const manualSubmit = document.getElementById('manual-log-submit')
   if (manualSubmit) {
@@ -1737,14 +1934,16 @@ function bindEvents() {
       const issueKey = document.getElementById('manual-issue-key').value.trim().toUpperCase()
       const date = document.getElementById('manual-date').value
       const startTime = document.getElementById('manual-start-time').value
-      const hours = parseInt(document.getElementById('manual-duration-hours').value) || 0
-      const mins = parseInt(document.getElementById('manual-duration-mins').value) || 0
+      const endTime = document.getElementById('manual-end-time').value
       const comment = document.getElementById('manual-comment').value
-      const totalSeconds = (hours * 60 + mins) * 60
 
       if (!issueKey) { alert('이슈 키를 입력해주세요.'); return }
-      if (!date || !startTime) { alert('날짜와 시작 시간을 입력해주세요.'); return }
-      if (totalSeconds <= 0) { alert('소요 시간을 입력해주세요.'); return }
+      if (!isValidIssueKeyFormat(issueKey)) { alert('이슈 키 형식이 올바르지 않습니다. 예: DKT-123'); return }
+      if (manualIssueCheck?.status === 'error') { alert('이슈 키를 확인해주세요.'); return }
+      if (!date) { alert('날짜를 입력해주세요.'); return }
+
+      const dur = computeDurationFromTimes(startTime, endTime)
+      if (!dur.valid) { alert(dur.message); return }
 
       const offset = new Date().getTimezoneOffset()
       const sign = offset <= 0 ? '+' : '-'
@@ -1753,8 +1952,9 @@ function bindEvents() {
       const started = `${date}T${startTime}:00.000${tzStr}`
 
       try {
-        await createWorklog(issueKey, { started, timeSpentSeconds: totalSeconds, comment })
-        showManualLog = false
+        await createWorklog(issueKey, { started, timeSpentSeconds: dur.actualMinutes * 60, comment })
+        showManualLog = null
+        manualIssueCheck = null
         invalidateWorklogMonth(date)
         render()
       } catch (e) {
@@ -1846,16 +2046,34 @@ function bindEvents() {
     editCancel.addEventListener('click', () => { editingWorklog = null; render() })
   }
 
+  // 수정 모달: '지금' 버튼 + 실시간 계산
+  const editEndNow = document.getElementById('edit-end-now')
+  if (editEndNow) {
+    editEndNow.addEventListener('click', () => {
+      const now = new Date()
+      const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      const endInput = document.getElementById('edit-end-time')
+      if (endInput) {
+        endInput.value = nowTime
+        updateEditDurationReadout()
+      }
+    })
+  }
+  const editStartInput = document.getElementById('edit-start-time')
+  const editEndInput = document.getElementById('edit-end-time')
+  if (editStartInput) editStartInput.addEventListener('input', updateEditDurationReadout)
+  if (editEndInput) editEndInput.addEventListener('input', updateEditDurationReadout)
+  if (editStartInput || editEndInput) updateEditDurationReadout()
+
   const editSubmit = document.getElementById('edit-worklog-submit')
   if (editSubmit) {
     editSubmit.addEventListener('click', async () => {
       const startTime = document.getElementById('edit-start-time').value
-      const hours = parseInt(document.getElementById('edit-duration-hours').value) || 0
-      const mins = parseInt(document.getElementById('edit-duration-mins').value) || 0
+      const endTime = document.getElementById('edit-end-time').value
       const comment = document.getElementById('edit-comment').value
-      const totalSeconds = (hours * 60 + mins) * 60
 
-      if (totalSeconds <= 0) { alert('소요 시간을 입력해주세요.'); return }
+      const dur = computeDurationFromTimes(startTime, endTime)
+      if (!dur.valid) { alert(dur.message); return }
 
       const offset = new Date().getTimezoneOffset()
       const sign = offset <= 0 ? '+' : '-'
@@ -1866,7 +2084,7 @@ function bindEvents() {
       try {
         await updateWorklog(editingWorklog.issueKey, editingWorklog.worklogId, {
           started,
-          timeSpentSeconds: totalSeconds,
+          timeSpentSeconds: dur.actualMinutes * 60,
           comment,
         })
         const savedDate = editingWorklog.date
