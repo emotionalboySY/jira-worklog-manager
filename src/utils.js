@@ -61,6 +61,48 @@ export function buildJiraStarted(dateStr, timeStr) {
   return `${dateStr}T${hh}:${mm}:00.000${getJiraTzOffset()}`
 }
 
+// 점심시간(12:00-13:00)을 피해 worklog 구간을 분리 생성.
+// 종료 시간을 유지하기 위해 점심 전/후 2개의 worklog로 쪼갬.
+// 반환: [{ started, seconds }, ...]
+export function buildWorklogSegments(dateStr, startTime, endTime) {
+  const [sh, sm] = startTime.split(':').map(Number)
+  const [eh, em] = endTime.split(':').map(Number)
+  const startMin = sh * 60 + sm
+  const endMin = eh * 60 + em
+  const minToHHmm = (min) =>
+    `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+
+  const ranges = []
+  if (endMin <= LUNCH_START || startMin >= LUNCH_END) {
+    ranges.push([startMin, endMin])
+  } else {
+    if (startMin < LUNCH_START) ranges.push([startMin, LUNCH_START])
+    if (endMin > LUNCH_END) ranges.push([LUNCH_END, endMin])
+  }
+
+  return ranges
+    .filter(([s, e]) => e > s)
+    .map(([s, e]) => ({
+      started: buildJiraStarted(dateStr, minToHHmm(s)),
+      seconds: (e - s) * 60,
+    }))
+}
+
+// Jira API 에러 응답(JSON)에서 사람이 읽을 수 있는 메시지로 변환
+export function formatJiraError(err) {
+  const detail = err?.detail || ''
+  try {
+    const parsed = JSON.parse(detail)
+    const msgs = []
+    if (Array.isArray(parsed.errorMessages)) msgs.push(...parsed.errorMessages)
+    if (parsed.errors && typeof parsed.errors === 'object') {
+      for (const [k, v] of Object.entries(parsed.errors)) msgs.push(`${k}: ${v}`)
+    }
+    if (msgs.length) return msgs.join('\n')
+  } catch {}
+  return err?.message || '알 수 없는 오류가 발생했습니다.'
+}
+
 // 점심시간 자동 계산: 작업 시간이 12:00~13:00과 겹치는 분 수 반환
 export function calcLunchOverlap(startDate, endDate) {
   const startMinutes = startDate.getHours() * 60 + startDate.getMinutes()

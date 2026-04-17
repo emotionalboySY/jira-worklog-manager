@@ -411,7 +411,7 @@ export function updateManualDurationReadout() {
   readout.classList.remove('error')
   const main = formatMinutes(dur.actualMinutes)
   readout.textContent = dur.lunchMinutes > 0
-    ? `${main} (점심 -${dur.lunchMinutes}분 차감)`
+    ? `${main} (점심시간 ${formatMinutes(dur.lunchMinutes)} 제외)`
     : main
 }
 
@@ -430,7 +430,7 @@ export function updateEditDurationReadout() {
   readout.classList.remove('error')
   const main = formatMinutes(dur.actualMinutes)
   readout.textContent = dur.lunchMinutes > 0
-    ? `${main} (점심 -${dur.lunchMinutes}분 차감)`
+    ? `${main} (점심시간 ${formatMinutes(dur.lunchMinutes)} 제외)`
     : main
 }
 

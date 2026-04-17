@@ -2367,6 +2367,7 @@ span.flatpickr-weekday {
 .btn.is-loading {
   pointer-events: none;
   min-width: 80px;
+  justify-content: center;
 }
 
 /* ========== 반응형 ========== */

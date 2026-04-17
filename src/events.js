@@ -32,6 +32,8 @@ import {
   getActiveLogs,
   getJiraTzOffset,
   buildJiraStarted,
+  buildWorklogSegments,
+  formatJiraError,
 } from './utils.js'
 import { toggleTheme, showToast, showContextMenu, applyPreferences } from './ui.js'
 import {
@@ -950,7 +952,9 @@ export function bindEvents() {
       const dur = computeDurationFromTimes(startTime, endTime)
       if (!dur.valid) { alert(dur.message); return }
 
-      const started = buildJiraStarted(date, startTime)
+      // 점심시간이 겹치면 두 개 구간으로 쪼개서 기록 (종료 시간 유지를 위해)
+      const segments = buildWorklogSegments(date, startTime, endTime)
+      if (segments.length === 0) { alert('유효한 작업 구간이 없습니다.'); return }
 
       // 제출 중: 버튼을 스피너로 전환 + 중복 클릭 방지
       const originalLabel = manualSubmit.innerHTML
@@ -960,14 +964,17 @@ export function bindEvents() {
       if (manualCancelBtn) manualCancelBtn.disabled = true
 
       try {
-        await createWorklog(issueKey, { started, timeSpentSeconds: dur.actualMinutes * 60, comment })
+        for (const seg of segments) {
+          await createWorklog(issueKey, { started: seg.started, timeSpentSeconds: seg.seconds, comment })
+        }
         state.showManualLog = null
         state.manualIssueCheck = null
         invalidateWorklogMonth(date)
+        showToast('작업 로그가 기록되었습니다.', '✓')
         render()
       } catch (e) {
         console.error('수동 작업 기록 실패:', e)
-        alert('작업 기록에 실패했습니다. 이슈 키를 확인해주세요.')
+        alert(`작업 기록에 실패했습니다.\n\n${formatJiraError(e)}`)
         manualSubmit.disabled = false
         manualSubmit.classList.remove('is-loading')
         manualSubmit.innerHTML = originalLabel
@@ -1108,7 +1115,9 @@ export function bindEvents() {
       const dur = computeDurationFromTimes(startTime, endTime)
       if (!dur.valid) { alert(dur.message); return }
 
-      const started = buildJiraStarted(state.editingWorklog.date, startTime)
+      // 점심시간이 겹치면 기존 worklog는 첫 구간으로 수정하고 뒤 구간은 별도 생성
+      const segments = buildWorklogSegments(state.editingWorklog.date, startTime, endTime)
+      if (segments.length === 0) { alert('유효한 작업 구간이 없습니다.'); return }
 
       const originalLabel = editSubmit.innerHTML
       editSubmit.disabled = true
@@ -1118,16 +1127,24 @@ export function bindEvents() {
 
       try {
         await updateWorklog(state.editingWorklog.issueKey, state.editingWorklog.worklogId, {
-          started,
-          timeSpentSeconds: dur.actualMinutes * 60,
+          started: segments[0].started,
+          timeSpentSeconds: segments[0].seconds,
           comment,
         })
+        for (let i = 1; i < segments.length; i++) {
+          await createWorklog(state.editingWorklog.issueKey, {
+            started: segments[i].started,
+            timeSpentSeconds: segments[i].seconds,
+            comment,
+          })
+        }
         const savedDate = state.editingWorklog.date
         state.editingWorklog = null
         invalidateWorklogMonth(savedDate)
+        showToast('작업 로그를 수정했습니다.', '✓')
       } catch (e) {
         console.error('작업 로그 수정 실패:', e)
-        alert('작업 로그 수정에 실패했습니다.')
+        alert(`작업 로그 수정에 실패했습니다.\n\n${formatJiraError(e)}`)
         editSubmit.disabled = false
         editSubmit.classList.remove('is-loading')
         editSubmit.innerHTML = originalLabel
