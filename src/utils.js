@@ -52,6 +52,15 @@ export function getJiraTzOffset() {
   return `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}${String(abs % 60).padStart(2, '0')}`
 }
 
+// Jira worklog의 started 필드 빌더. timeStr이 "HH:mm" 또는 "HH:mm:ss" 어느 쪽이든 안전하게 처리
+// (일부 브라우저/상태에서 <input type="time">이 "HH:mm:ss"를 반환해 중복 ":ss"가 붙는 문제 방지)
+export function buildJiraStarted(dateStr, timeStr) {
+  const [h = '00', m = '00'] = timeStr.split(':')
+  const hh = h.padStart(2, '0')
+  const mm = m.padStart(2, '0')
+  return `${dateStr}T${hh}:${mm}:00.000${getJiraTzOffset()}`
+}
+
 // 점심시간 자동 계산: 작업 시간이 12:00~13:00과 겹치는 분 수 반환
 export function calcLunchOverlap(startDate, endDate) {
   const startMinutes = startDate.getHours() * 60 + startDate.getMinutes()

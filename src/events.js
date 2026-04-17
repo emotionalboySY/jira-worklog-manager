@@ -31,6 +31,7 @@ import {
   getActiveIssues,
   getActiveLogs,
   getJiraTzOffset,
+  buildJiraStarted,
 } from './utils.js'
 import { toggleTheme, showToast, showContextMenu, applyPreferences } from './ui.js'
 import {
@@ -949,7 +950,7 @@ export function bindEvents() {
       const dur = computeDurationFromTimes(startTime, endTime)
       if (!dur.valid) { alert(dur.message); return }
 
-      const started = `${date}T${startTime}:00.000${getJiraTzOffset()}`
+      const started = buildJiraStarted(date, startTime)
 
       // 제출 중: 버튼을 스피너로 전환 + 중복 클릭 방지
       const originalLabel = manualSubmit.innerHTML
@@ -1107,7 +1108,7 @@ export function bindEvents() {
       const dur = computeDurationFromTimes(startTime, endTime)
       if (!dur.valid) { alert(dur.message); return }
 
-      const started = `${state.editingWorklog.date}T${startTime}:00.000${getJiraTzOffset()}`
+      const started = buildJiraStarted(state.editingWorklog.date, startTime)
 
       const originalLabel = editSubmit.innerHTML
       editSubmit.disabled = true
