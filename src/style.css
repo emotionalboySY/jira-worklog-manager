@@ -887,6 +887,10 @@ a.issue-key-link:hover {
   padding: 0;
   border-radius: 50%;
 }
+body:has(#settings-overlay) .favorites-panel {
+  z-index: 90;
+  pointer-events: none;
+}
 
 .favorites-toggle {
   display: inline-flex;
