@@ -1280,6 +1280,7 @@ function getWeekData(offset) {
     weekData.push({
       day: days[dow],
       date: `${String(d.getMonth() + 1).padStart(2, '0')}월 ${String(d.getDate()).padStart(2, '0')}일`,
+      dateStr,
       minutes: isFuture ? 0 : minutes,
       dayOffType: isFuture ? null : dayOffType,
       today: isToday,
@@ -1352,7 +1353,7 @@ function renderSummaryTab() {
       <div class="weekly-chart-title">${isCurrentWeek ? '금주' : ''}(${weekMonth}월 ${weekNum}주차) 일별 작업 시간</div>
       <div class="chart-bars">
         ${weekData.map(d => `
-          <div class="chart-bar-col ${d.isFuture ? 'future' : ''} ${d.weekend ? 'weekend' : ''}">
+          <div class="chart-bar-col ${d.isFuture ? 'future' : ''} ${d.weekend ? 'weekend' : ''} ${!d.isFuture ? 'clickable' : ''}" ${!d.isFuture ? `data-chart-date="${d.dateStr}" title="${d.date} 기록 보기"` : ''}>
             <span class="chart-bar-value">${d.minutes > 0 ? formatMinutes(d.minutes) : '-'}</span>
             <div class="chart-bar-track">
               <div class="chart-bar ${d.today ? 'today' : ''}" style="height: ${Math.max(Math.min((d.minutes / 480) * 100, 100), d.minutes > 0 ? 2 : 0)}%"></div>
@@ -2609,6 +2610,25 @@ function bindEvents() {
       render()
     })
   }
+
+  // 요약 탭 일별 차트 막대 클릭 → 로그 탭으로 이동
+  document.querySelectorAll('[data-chart-date]').forEach(col => {
+    col.addEventListener('click', () => {
+      const dateStr = col.dataset.chartDate
+      if (!dateStr) return
+      const d = new Date(dateStr + 'T00:00:00')
+      currentMainTab = 'logs'
+      calendarYear = d.getFullYear()
+      calendarMonth = d.getMonth()
+      logDate = dateStr
+      calendarOpen = true
+      localStorage.setItem('log_calendar_open', '1')
+      if (isLoggedIn() && issuesLoaded) {
+        loadWorklogs(d.getFullYear(), d.getMonth())
+      }
+      render()
+    })
+  })
 
   // 작업 로그 수정 버튼
   document.querySelectorAll('[data-action="edit-log"]').forEach(btn => {

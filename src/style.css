@@ -1687,6 +1687,17 @@ span.flatpickr-weekday {
   gap: 6px;
   height: 100%;
   justify-content: flex-end;
+  padding: 4px 2px;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+}
+
+.chart-bar-col.clickable {
+  cursor: pointer;
+}
+
+.chart-bar-col.clickable:hover {
+  background: var(--bg-hover);
 }
 
 .chart-bar-track {
