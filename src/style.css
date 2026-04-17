@@ -2637,16 +2637,15 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   padding: 8px 10px;
   background: var(--bg-card);
   border-radius: 4px;
-  transition: opacity 0.15s;
+  transition: transform 150ms ease;
 }
-.settings-order-item.dragging {
-  opacity: 0.4;
+.settings-order-item.drag-placeholder {
+  opacity: 0;
 }
-.settings-order-item.drag-over-top {
-  box-shadow: 0 -2px 0 0 var(--accent);
-}
-.settings-order-item.drag-over-bottom {
-  box-shadow: 0 2px 0 0 var(--accent);
+.settings-order-item.drag-ghost {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0.95;
+  transition: none;
 }
 
 .settings-order-index {

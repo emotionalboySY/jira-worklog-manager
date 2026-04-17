@@ -198,67 +198,75 @@ export function bindEvents() {
     })
   })
 
-  // 드래그 앤 드롭 순서 변경
+  // 드래그 앤 드롭 순서 변경 (포인터 기반, 밀림 애니메이션)
   document.querySelectorAll('.settings-drag-handle').forEach(handle => {
-    on(handle, 'mousedown', () => {
+    on(handle, 'mousedown', (e) => {
+      e.preventDefault()
       const item = handle.closest('.settings-order-item')
-      if (item) item.setAttribute('draggable', 'true')
-    })
-  })
-
-  document.querySelectorAll('.settings-order-item').forEach(item => {
-    on(item, 'dragstart', (e) => {
-      if (!item.getAttribute('draggable')) { e.preventDefault(); return }
+      if (!item) return
+      const list = item.closest('.settings-order-list')
+      const items = [...list.querySelectorAll('.settings-order-item')]
       const kind = item.dataset.kind
-      const idx = parseInt(item.dataset.idx, 10)
-      state._dragState = { kind, idx }
-      item.classList.add('dragging')
-      e.dataTransfer.effectAllowed = 'move'
-      e.dataTransfer.setData('text/plain', '')
-    })
+      const fromIdx = parseInt(item.dataset.idx, 10)
+      const rects = items.map(el => el.getBoundingClientRect())
+      const listGap = 4 // settings-order-list gap
+      const stepH = rects[0].height + listGap
 
-    on(item, 'dragover', (e) => {
-      if (!state._dragState || state._dragState.kind !== item.dataset.kind) return
-      e.preventDefault()
-      e.dataTransfer.dropEffect = 'move'
-      const rect = item.getBoundingClientRect()
-      const midY = rect.top + rect.height / 2
-      item.closest('.settings-order-list')?.querySelectorAll('.settings-order-item').forEach(el => {
-        el.classList.remove('drag-over-top', 'drag-over-bottom')
-      })
-      item.classList.add(e.clientY < midY ? 'drag-over-top' : 'drag-over-bottom')
-    })
+      // 고스트(드래그 중 커서 따라다니는 복제 요소)
+      const ghost = item.cloneNode(true)
+      ghost.className = 'settings-order-item drag-ghost'
+      ghost.style.cssText = `position:fixed;left:${rects[fromIdx].left}px;top:${rects[fromIdx].top}px;width:${rects[fromIdx].width}px;z-index:999;pointer-events:none;`
+      document.body.appendChild(ghost)
 
-    on(item, 'dragleave', () => {
-      item.classList.remove('drag-over-top', 'drag-over-bottom')
-    })
+      item.classList.add('drag-placeholder')
+      const startY = e.clientY
+      const ghostStartTop = rects[fromIdx].top
+      let currentIdx = fromIdx
 
-    on(item, 'drop', (e) => {
-      e.preventDefault()
-      if (!state._dragState || state._dragState.kind !== item.dataset.kind) return
-      const fromIdx = state._dragState.idx
-      const targetIdx = parseInt(item.dataset.idx, 10)
-      const rect = item.getBoundingClientRect()
-      const dropAfter = e.clientY >= rect.top + rect.height / 2
-      let insertIdx = dropAfter ? targetIdx + 1 : targetIdx
-      if (insertIdx === fromIdx || insertIdx === fromIdx + 1) return
-      const arr = state._dragState.kind === 'status'
-        ? state.settingsDraft.statusOrder
-        : state.settingsDraft.projectOrder
-      const [moved] = arr.splice(fromIdx, 1)
-      if (fromIdx < insertIdx) insertIdx--
-      arr.splice(insertIdx, 0, moved)
-      state._dragState = null
-      render({ sections: ['modals'] })
-    })
+      function onMove(ev) {
+        const dy = ev.clientY - startY
+        ghost.style.top = (ghostStartTop + dy) + 'px'
 
-    on(item, 'dragend', () => {
-      item.removeAttribute('draggable')
-      item.classList.remove('dragging')
-      document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
-        el.classList.remove('drag-over-top', 'drag-over-bottom')
-      })
-      state._dragState = null
+        // 고스트 중심 Y로 삽입 위치 계산
+        const midY = ghostStartTop + dy + rects[fromIdx].height / 2
+        let newIdx = 0
+        for (let i = 0; i < rects.length; i++) {
+          if (midY > rects[i].top + rects[i].height / 2) newIdx = i
+        }
+        newIdx = Math.max(0, Math.min(newIdx, items.length - 1))
+
+        if (newIdx !== currentIdx) {
+          currentIdx = newIdx
+          items.forEach((el, i) => {
+            if (i === fromIdx) return
+            if (fromIdx < currentIdx) {
+              el.style.transform = (i > fromIdx && i <= currentIdx) ? `translateY(-${stepH}px)` : ''
+            } else {
+              el.style.transform = (i >= currentIdx && i < fromIdx) ? `translateY(${stepH}px)` : ''
+            }
+          })
+        }
+      }
+
+      function onUp() {
+        document.removeEventListener('mousemove', onMove)
+        document.removeEventListener('mouseup', onUp)
+        ghost.remove()
+        item.classList.remove('drag-placeholder')
+        items.forEach(el => { el.style.transform = '' })
+
+        if (currentIdx !== fromIdx) {
+          const arr = kind === 'status'
+            ? state.settingsDraft.statusOrder
+            : state.settingsDraft.projectOrder
+          const [moved] = arr.splice(fromIdx, 1)
+          arr.splice(currentIdx, 0, moved)
+        }
+        render({ sections: ['modals'] })
+      }
+
+      document.addEventListener('mousemove', onMove)
+      document.addEventListener('mouseup', onUp)
     })
   })
 
