@@ -1273,6 +1273,7 @@ function getWeekData(offset) {
     d.setDate(thursday.getDate() + i)
     const dateStr = toDateString(d)
     const minutes = getLogMinutes(dateStr)
+    const dayOffType = getDayOff(dateStr)
     const isToday = d.toDateString() === today.toDateString()
     const isFuture = d > today
     const dow = d.getDay()
@@ -1280,6 +1281,7 @@ function getWeekData(offset) {
       day: days[dow],
       date: `${String(d.getMonth() + 1).padStart(2, '0')}월 ${String(d.getDate()).padStart(2, '0')}일`,
       minutes: isFuture ? 0 : minutes,
+      dayOffType: isFuture ? null : dayOffType,
       today: isToday,
       isFuture,
       weekend: dow === 0 || dow === 6,
@@ -1356,6 +1358,7 @@ function renderSummaryTab() {
               <div class="chart-bar ${d.today ? 'today' : ''}" style="height: ${Math.max(Math.min((d.minutes / 480) * 100, 100), d.minutes > 0 ? 2 : 0)}%"></div>
             </div>
             <span class="chart-bar-label">${d.date} (${d.day})</span>
+            ${d.dayOffType ? `<span class="chart-day-off-badge day-off-${d.dayOffType}" title="${getDayOffLabel(d.dayOffType)}">${getDayOffLabel(d.dayOffType)}</span>` : ''}
           </div>
         `).join('')}
       </div>
