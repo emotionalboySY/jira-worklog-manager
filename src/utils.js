@@ -61,7 +61,7 @@ export function buildJiraStarted(dateStr, timeStr) {
   return `${dateStr}T${hh}:${mm}:00.000${getJiraTzOffset()}`
 }
 
-// 점심시간(12:00-13:00)을 피해 worklog 구간을 분리 생성.
+// 점심시간(LUNCH_START~LUNCH_END, 기본 11:30~12:30)을 피해 worklog 구간을 분리 생성.
 // 종료 시간을 유지하기 위해 점심 전/후 2개의 worklog로 쪼갬.
 // 반환: [{ started, seconds }, ...]
 export function buildWorklogSegments(dateStr, startTime, endTime) {
@@ -103,7 +103,7 @@ export function formatJiraError(err) {
   return err?.message || '알 수 없는 오류가 발생했습니다.'
 }
 
-// 점심시간 자동 계산: 작업 시간이 12:00~13:00과 겹치는 분 수 반환
+// 점심시간(LUNCH_START~LUNCH_END) 구간과 겹치는 분 수 반환
 export function calcLunchOverlap(startDate, endDate) {
   const startMinutes = startDate.getHours() * 60 + startDate.getMinutes()
   const endMinutes = endDate.getHours() * 60 + endDate.getMinutes()
@@ -127,6 +127,18 @@ export function formatHoursShort(minutes) {
   if (m === 0) return `${h}시간`
   if (h === 0) return `${m}분`
   return `${h}시간${m}분`
+}
+
+// "HH:MM" 형식으로 분 단위 값을 포맷
+export function formatHHMM(minutes) {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+// 점심시간 범위 문자열 (예: "11:30~12:30")
+export function formatLunchRange() {
+  return `${formatHHMM(LUNCH_START)}~${formatHHMM(LUNCH_END)}`
 }
 
 // ========== HTML ==========

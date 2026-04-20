@@ -30,10 +30,9 @@ import {
   formatMinutes,
   getActiveIssues,
   getActiveLogs,
-  getJiraTzOffset,
-  buildJiraStarted,
   buildWorklogSegments,
   formatJiraError,
+  formatLunchRange,
 } from './utils.js'
 import { toggleTheme, showToast, showContextMenu, applyPreferences } from './ui.js'
 import {
@@ -900,12 +899,10 @@ export function bindEvents() {
       const details = getSegmentDetails(session)
       const totalActual = details.reduce((sum, d) => sum + d.actualMinutes, 0)
       if (totalActual <= 0) {
-        alert('기록 가능한 시간이 없습니다. 점심시간(12:00~13:00) 제외 후 실제 작업 시간이 1분 이상이어야 합니다.')
+        alert(`기록 가능한 시간이 없습니다. 점심시간(${formatLunchRange()}) 제외 후 실제 작업 시간이 1분 이상이어야 합니다.`)
         return
       }
       const comment = document.getElementById('finish-comment')?.value || ''
-
-      const tzStr = getJiraTzOffset()
 
       // 버튼 스피너 + 중복 클릭 차단
       const originalLabel = modalSubmit.innerHTML
@@ -924,16 +921,22 @@ export function bindEvents() {
 
       let successCount = 0
       try {
-        // 구간별로 worklog 생성. 어느 하나라도 실패하면 throw되어 세션 유지
+        // 구간별로 worklog 생성. 점심시간과 겹치면 buildWorklogSegments로 앞/뒤로 쪼개서
+        // Jira에도 원래 시작/종료 시각이 보존되도록 한다.
         for (const seg of details) {
           if (seg.actualMinutes <= 0) continue
-          const started = `${toDateString(seg.start)}T${String(seg.start.getHours()).padStart(2, '0')}:${String(seg.start.getMinutes()).padStart(2, '0')}:00.000${tzStr}`
-          await createWorklog(targetIssueKey, {
-            started,
-            timeSpentSeconds: seg.actualMinutes * 60,
-            comment,
-          })
-          successCount++
+          const dateStr = toDateString(seg.start)
+          const startTime = `${String(seg.start.getHours()).padStart(2, '0')}:${String(seg.start.getMinutes()).padStart(2, '0')}`
+          const endTime = `${String(seg.end.getHours()).padStart(2, '0')}:${String(seg.end.getMinutes()).padStart(2, '0')}`
+          const subSegments = buildWorklogSegments(dateStr, startTime, endTime)
+          for (const ss of subSegments) {
+            await createWorklog(targetIssueKey, {
+              started: ss.started,
+              timeSpentSeconds: ss.seconds,
+              comment,
+            })
+            successCount++
+          }
         }
       } catch (e) {
         console.error('Jira worklog 기록 실패:', e)

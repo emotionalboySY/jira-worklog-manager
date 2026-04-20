@@ -11,8 +11,8 @@ export const PROJECTS = [
   { key: 'DD', name: '독도' },
 ]
 
-export const LUNCH_START = 12 * 60 // 12:00 (분 단위)
-export const LUNCH_END = 13 * 60   // 13:00 (분 단위)
+export const LUNCH_START = 11 * 60 + 30 // 11:30 (분 단위)
+export const LUNCH_END = 12 * 60 + 30   // 12:30 (분 단위)
 
 export const ISSUE_TYPES = {
   task:      { icon: '✓', label: '작업' },
