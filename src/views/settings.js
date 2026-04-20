@@ -60,6 +60,13 @@ export function renderSettingsModal() {
           ℹ️ 상태와 프로젝트로 정렬한 뒤, 같은 그룹 안에서는 <strong>이슈 번호 내림차순</strong>으로 고정 정렬됩니다.
         </div>
 
+        <div class="modal-section-label" style="margin-top:20px;">요약 탭 주 시작 요일</div>
+        <div class="settings-hint">요약 탭에서 한 주의 시작 요일을 선택합니다. 주차 번호는 ISO 기준(해당 주 목요일이 속한 달)으로 일관 유지됩니다.</div>
+        <div class="settings-segmented" role="radiogroup" aria-label="주 시작 요일">
+          <button type="button" class="settings-segmented-btn ${draft.summaryWeekStart === 'thursday' ? 'active' : ''}" role="radio" aria-checked="${draft.summaryWeekStart === 'thursday'}" data-week-start="thursday">목요일 ~ 수요일</button>
+          <button type="button" class="settings-segmented-btn ${draft.summaryWeekStart === 'monday' ? 'active' : ''}" role="radio" aria-checked="${draft.summaryWeekStart === 'monday'}" data-week-start="monday">월요일 ~ 일요일</button>
+        </div>
+
         <div class="modal-actions settings-actions">
           <button class="btn btn-sm" id="settings-reset">기본값으로 재설정</button>
           <div class="settings-actions-right">

@@ -212,6 +212,15 @@ export function bindEvents() {
     })
   }
 
+  // 주 시작 요일 세그먼트 버튼
+  document.querySelectorAll('[data-week-start]').forEach(btn => {
+    on(btn, 'click', () => {
+      if (!state.settingsDraft) return
+      state.settingsDraft.summaryWeekStart = btn.dataset.weekStart
+      render({ sections: ['modals'] })
+    })
+  })
+
   // 프로젝트 색상 변경 (input type=color의 change 이벤트)
   document.querySelectorAll('[data-project-color]').forEach(input => {
     on(input, 'change', (e) => {
@@ -451,12 +460,20 @@ export function bindEvents() {
   })
 
   // 달력 열기/닫기 토글
+  // render()를 호출하면 log-body DOM이 교체되어 grid-template-columns transition이
+  // 실행되지 않는다. 달력 DOM은 항상 렌더되므로, 기존 요소의 .with-calendar 클래스만
+  // 토글하여 CSS transition을 실행시킨다.
   const calendarToggleBtn = document.getElementById('btn-calendar-toggle')
   if (calendarToggleBtn) {
     on(calendarToggleBtn, 'click', () => {
       state.calendarOpen = !state.calendarOpen
       localStorage.setItem('log_calendar_open', state.calendarOpen ? '1' : '0')
-      render()
+      const logBody = document.querySelector('.log-body')
+      if (logBody) logBody.classList.toggle('with-calendar', state.calendarOpen)
+      const label = state.calendarOpen ? '달력 닫기' : '달력 열기'
+      calendarToggleBtn.title = label
+      const span = calendarToggleBtn.querySelector('span')
+      if (span) span.textContent = label
     })
   }
 

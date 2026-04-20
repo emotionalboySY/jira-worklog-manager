@@ -14,6 +14,8 @@ import {
 
 export function renderLogsTab() {
   const open = state.calendarOpen
+  // 달력은 항상 렌더링하고, .with-calendar 클래스로 표시 여부(그리드 폭)를 제어한다.
+  // 열기/닫기 토글 시 DOM 교체 없이 클래스만 바꿔 grid-template-columns transition 실행.
   return `
     <div class="log-toolbar">
       <button class="btn btn-sm btn-refresh" id="btn-refresh-worklogs" ${state.worklogsLoading ? 'disabled' : ''} title="작업 로그 새로고침">
@@ -25,7 +27,7 @@ export function renderLogsTab() {
       </button>
     </div>
     <div class="log-body ${open ? 'with-calendar' : ''}">
-      ${open ? renderCalendarView() : ''}
+      ${renderCalendarView()}
       <div class="log-main">
         ${renderDateNav()}
         ${renderLogDetail()}

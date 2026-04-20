@@ -193,25 +193,34 @@ body.tab-logs .tab-content > .log-toolbar {
   flex-shrink: 0;
 }
 
-/* log-body: 달력 열림 상태이면 좌(달력) 우(로그 본문) 2열 그리드, 아니면 세로 flex */
+/* log-body: 항상 2열 그리드. 달력 닫힘 상태는 좌측 컬럼을 0으로 줄여 숨긴다.
+   grid-template-columns 전환은 크로미움 119+/파이어폭스 124+/사파리 17.4+ 에서 보간 지원. */
 body.tab-logs .tab-content > .log-body {
   flex: 1 1 auto;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 0fr 1fr;
+  gap: 0;
   overflow: hidden;
+  transition: grid-template-columns 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.05), gap 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.05);
 }
 
 body.tab-logs .log-body.with-calendar {
-  display: grid;
   grid-template-columns: 380px 1fr;
   gap: 20px;
 }
 
-body.tab-logs .log-body.with-calendar > .calendar {
+body.tab-logs .log-body > .calendar {
   align-self: start;
+  min-width: 0;
   min-height: 0;
   margin-bottom: 0;
+  overflow: hidden;
+}
+
+/* 달력이 닫힌 상태에서는 내부 요소가 hover/클릭되지 않도록 */
+body.tab-logs .log-body:not(.with-calendar) > .calendar {
+  pointer-events: none;
 }
 
 /* log-main: 날짜 네비 + 로그 상세를 세로로 쌓되 상세만 스크롤 */
@@ -234,11 +243,17 @@ body.tab-logs .log-main > .log-detail {
   overflow: hidden;
 }
 
-/* 좁은 화면: 2열 해제하고 세로 스택으로 폴백 */
+/* 좁은 화면: 2열 해제하고 세로 스택으로 폴백 (애니메이션 없음) */
 @media (max-width: 1100px) {
-  body.tab-logs .log-body.with-calendar {
+  body.tab-logs .tab-content > .log-body {
     display: flex;
     flex-direction: column;
+    grid-template-columns: none;
+    gap: 0;
+    transition: none;
+  }
+  body.tab-logs .log-body:not(.with-calendar) > .calendar {
+    display: none;
   }
 }
 
@@ -2925,6 +2940,38 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 .settings-actions-right {
   display: flex;
   gap: 8px;
+}
+
+/* 세그먼트 컨트롤 (2-way 토글) */
+.settings-segmented {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  gap: 3px;
+}
+
+.settings-segmented-btn {
+  padding: 6px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: calc(var(--radius) - 3px);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.settings-segmented-btn:hover:not(.active) {
+  color: var(--text-bright);
+  background: var(--bg-hover);
+}
+
+.settings-segmented-btn.active {
+  background: var(--accent);
+  color: #ffffff;
 }
 
 /* ========== 접근성: 모션 최소화 설정 시 애니메이션 축소 ========== */

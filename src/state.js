@@ -47,6 +47,9 @@ export const DEFAULT_STATUS_ORDER = [
 
 export const DEFAULT_PROJECT_ORDER = ['DK', 'DKT', 'DD', 'RM']
 
+// 요약 탭 주 시작 요일: 'thursday' (목~수, 기본) | 'monday' (월~일)
+export const DEFAULT_SUMMARY_WEEK_START = 'thursday'
+
 // ===== 프로젝트별 색상 기본값 =====
 // bar = 메인 색(컬러 바, 호버 배경), fg = 밝은 텍스트, bg = 투명 배경
 export const DEFAULT_PROJECT_COLORS = {
@@ -130,6 +133,7 @@ export const state = {
     statusOrder: [...DEFAULT_STATUS_ORDER],
     projectOrder: [...DEFAULT_PROJECT_ORDER],
     projectColors: JSON.parse(JSON.stringify(DEFAULT_PROJECT_COLORS)),
+    summaryWeekStart: DEFAULT_SUMMARY_WEEK_START,
   },
   manualIssueCheck: null,  // 이슈 키 검증 결과: null | { status: 'checking'|'ok'|'error', key, summary, message }
   manualKeySearchTimer: null,  // 이슈 키 자동완성 API debounce 타이머

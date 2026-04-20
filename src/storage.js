@@ -11,6 +11,7 @@ import {
   DEFAULT_STATUS_ORDER,
   DEFAULT_PROJECT_ORDER,
   DEFAULT_PROJECT_COLORS,
+  DEFAULT_SUMMARY_WEEK_START,
 } from './state.js'
 import { calcLunchOverlap } from './utils.js'
 
@@ -253,6 +254,7 @@ function defaultPreferences() {
     statusOrder: [...DEFAULT_STATUS_ORDER],
     projectOrder: [...DEFAULT_PROJECT_ORDER],
     projectColors: JSON.parse(JSON.stringify(DEFAULT_PROJECT_COLORS)),
+    summaryWeekStart: DEFAULT_SUMMARY_WEEK_START,
   }
 }
 
@@ -271,6 +273,9 @@ export function loadPreferences() {
         ? mergeOrder(saved.projectOrder, DEFAULT_PROJECT_ORDER)
         : defaults.projectOrder,
       projectColors: { ...defaults.projectColors, ...(saved.projectColors || {}) },
+      summaryWeekStart: (saved.summaryWeekStart === 'monday' || saved.summaryWeekStart === 'thursday')
+        ? saved.summaryWeekStart
+        : defaults.summaryWeekStart,
     }
     return merged
   } catch {

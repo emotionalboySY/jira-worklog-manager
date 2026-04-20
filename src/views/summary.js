@@ -1,5 +1,5 @@
 // 요약 탭
-import { state } from '../state.js'
+import { state, DEFAULT_SUMMARY_WEEK_START } from '../state.js'
 import { isLoggedIn } from '../auth.js'
 import { loadWorklogs } from '../data.js'
 import { getDayOff, getDayOffLabel } from '../storage.js'
@@ -10,13 +10,32 @@ import {
   getLogMinutes,
 } from '../utils.js'
 
-// 주어진 오프셋의 목요일 구하기 (0=이번 주, -1=지난 주, ...)
-export function getThursdayByOffset(offset) {
+// 사용자 설정 기반 주 시작 요일 번호 (getDay() 반환값: 0=일, 1=월, 4=목)
+function weekStartDow() {
+  const v = state.userPrefs?.summaryWeekStart || DEFAULT_SUMMARY_WEEK_START
+  return v === 'monday' ? 1 : 4
+}
+
+// 주어진 offset의 '주 시작일' 날짜 구하기 (0=이번 주, -1=지난 주, ...)
+export function getWeekStartByOffset(offset) {
+  const startDow = weekStartDow()
   const today = new Date()
   const dayOfWeek = today.getDay()
-  const diffToThursday = (dayOfWeek < 4) ? dayOfWeek + 3 : dayOfWeek - 4
-  const thursday = new Date(today)
-  thursday.setDate(today.getDate() - diffToThursday + offset * 7)
+  // 오늘로부터 이번 주 시작일까지 며칠 거슬러 올라가야 하는지
+  let diff = dayOfWeek - startDow
+  if (diff < 0) diff += 7
+  const start = new Date(today)
+  start.setDate(today.getDate() - diff + offset * 7)
+  start.setHours(0, 0, 0, 0)
+  return start
+}
+
+// 해당 주의 목요일 (주차 번호 계산용 — ISO 8601 식으로 일관성 유지)
+function getThursdayOfWeek(weekStart) {
+  const startDow = weekStartDow()
+  const thursday = new Date(weekStart)
+  // 월요일 시작이면 +3일, 목요일 시작이면 +0일
+  thursday.setDate(weekStart.getDate() + (4 - startDow + 7) % 7)
   return thursday
 }
 
@@ -30,16 +49,18 @@ export function getWeekOfMonth(thursday) {
   return Math.floor((thursday.getDate() - firstThursday) / 7) + 1
 }
 
-// 목요일~수요일 주간 데이터 생성 (실제 worklog 기반)
+// 주간 데이터 생성 (실제 worklog 기반)
+// 반환: { weekData: [...7일], weekStart, thursday }
 export function getWeekData(offset) {
   const today = new Date()
-  const thursday = getThursdayByOffset(offset)
+  const weekStart = getWeekStartByOffset(offset)
+  const thursday = getThursdayOfWeek(weekStart)
   const days = ['일', '월', '화', '수', '목', '금', '토']
   const weekData = []
 
   for (let i = 0; i < 7; i++) {
-    const d = new Date(thursday)
-    d.setDate(thursday.getDate() + i)
+    const d = new Date(weekStart)
+    d.setDate(weekStart.getDate() + i)
     const dateStr = toDateString(d)
     const minutes = getLogMinutes(dateStr)
     const dayOffType = getDayOff(dateStr)
@@ -57,18 +78,18 @@ export function getWeekData(offset) {
       weekend: dow === 0 || dow === 6,
     })
   }
-  return { weekData, thursday }
+  return { weekData, weekStart, thursday }
 }
 
 // 요약 탭에 필요한 월들의 워크로그 로딩
 export function ensureSummaryWorklogs() {
   if (!isLoggedIn() || !state.issuesLoaded) return
-  const thursday = getThursdayByOffset(state.summaryWeekOffset)
-  const wednesday = new Date(thursday)
-  wednesday.setDate(thursday.getDate() + 6)
-  loadWorklogs(thursday.getFullYear(), thursday.getMonth())
-  if (wednesday.getMonth() !== thursday.getMonth()) {
-    loadWorklogs(wednesday.getFullYear(), wednesday.getMonth())
+  const weekStart = getWeekStartByOffset(state.summaryWeekOffset)
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 6)
+  loadWorklogs(weekStart.getFullYear(), weekStart.getMonth())
+  if (weekEnd.getMonth() !== weekStart.getMonth()) {
+    loadWorklogs(weekEnd.getFullYear(), weekEnd.getMonth())
   }
 }
 
