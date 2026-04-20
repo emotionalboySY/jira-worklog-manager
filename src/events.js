@@ -1,7 +1,7 @@
 // 전체 이벤트 바인딩 + 타이머 업데이트
 import flatpickr from 'flatpickr'
 import { Korean } from 'flatpickr/dist/l10n/ko.js'
-import { state } from './state.js'
+import { state, NO_ISSUE_KEY, NO_ISSUE_SUMMARY } from './state.js'
 import { logout, isLoggedIn } from './auth.js'
 import {
   fetchIssueMeta,
@@ -54,6 +54,10 @@ import {
   renderManualKeyHint,
   selectManualKeyCandidate,
   updateManualKeyDropdown,
+  FINISH_KEY_CTX,
+  renderKeyHint,
+  updateKeyDropdown,
+  selectKeyCandidate,
 } from './views/modals.js'
 import { ensureSummaryWorklogs } from './views/summary.js'
 import { render } from './render.js'
@@ -75,6 +79,20 @@ function on(el, event, handler, options) {
 let globalKeyListenerRegistered = false
 
 function handleGlobalKeydown(e) {
+  // Ctrl/Cmd + Enter → 최상단 모달의 주 액션(Jira 기록 등) 트리거
+  // textarea에서도 작동해야 하므로 전역에서 가로챈다
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    // 우선순위: 가장 나중에 열린 모달 우선
+    let submitBtn = null
+    if (state.editingWorklog) submitBtn = document.getElementById('edit-worklog-submit')
+    else if (state.showManualLog) submitBtn = document.getElementById('manual-log-submit')
+    else if (state.showModal) submitBtn = document.getElementById('modal-submit')
+    if (submitBtn && !submitBtn.disabled) {
+      e.preventDefault()
+      submitBtn.click()
+    }
+    return
+  }
   if (e.key !== 'Escape') return
   const modalsOnly = { sections: ['modals'] }
   if (state.showSettings) { closeSettings(); return }
@@ -87,7 +105,12 @@ function handleGlobalKeydown(e) {
     return
   }
   if (state.showCancelConfirm) { state.showCancelConfirm = null; render(modalsOnly); return }
-  if (state.showModal) { state.showModal = null; render(modalsOnly); return }
+  if (state.showModal) {
+    state.showModal = null
+    state.finishIssueCheck = null
+    render(modalsOnly)
+    return
+  }
 }
 
 // ========== 설정 모달 헬퍼 ==========
@@ -639,6 +662,22 @@ export function bindEvents() {
     })
   })
 
+  // 일감 없이 작업 시작하기 (세션 목록이 비어있을 때만 노출)
+  const startNoIssueBtn = document.getElementById('btn-start-no-issue')
+  if (startNoIssueBtn) {
+    on(startNoIssueBtn, 'click', () => {
+      // 진행 중 세션이 전혀 없을 때만 이 버튼이 노출되지만, 방어적으로 한 번 더 확인
+      const sessions = loadSessions()
+      if (sessions.some(s => s.issueKey === NO_ISSUE_KEY)) {
+        showToast('이미 일감 미지정 세션이 진행 중입니다.', 'ℹ')
+        return
+      }
+      addSession(NO_ISSUE_KEY, NO_ISSUE_SUMMARY)
+      showToast('일감 미지정 작업을 시작했습니다. 종료 시 이슈를 지정해주세요.', '✓')
+      render()
+    })
+  }
+
   // 이슈 목록에서 작업 시작
   document.querySelectorAll('[data-action="start"]').forEach(btn => {
     on(btn, 'click', (e) => {
@@ -726,6 +765,8 @@ export function bindEvents() {
     on(btn, 'click', (e) => {
       e.stopPropagation()
       state.showModal = btn.dataset.key
+      state.finishIssueCheck = null
+      state.finishKeyActiveIdx = -1
       render({ sections: ['modals'] })
     })
   })
@@ -743,7 +784,91 @@ export function bindEvents() {
 
   const modalCancel = document.getElementById('modal-cancel')
   if (modalCancel) {
-    on(modalCancel, 'click', () => { state.showModal = null; render({ sections: ['modals'] }) })
+    on(modalCancel, 'click', () => {
+      state.showModal = null
+      state.finishIssueCheck = null
+      render({ sections: ['modals'] })
+    })
+  }
+
+  // 일감 미지정 세션 종료 모달의 이슈 키 입력: 자동완성 드롭다운 + blur 검증
+  const finishIssueInput = document.getElementById('finish-issue-key')
+  if (finishIssueInput) {
+    on(finishIssueInput, 'input', () => {
+      state.finishIssueCheck = null
+      renderKeyHint(FINISH_KEY_CTX)
+      updateKeyDropdown(FINISH_KEY_CTX)
+    })
+    on(finishIssueInput, 'focus', () => {
+      if (finishIssueInput.value.trim()) updateKeyDropdown(FINISH_KEY_CTX)
+    })
+    on(finishIssueInput, 'keydown', (e) => {
+      const dropdown = document.getElementById('finish-key-dropdown')
+      if (!dropdown || dropdown.style.display === 'none') return
+      const items = dropdown.querySelectorAll('.autocomplete-item')
+      if (items.length === 0) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        state.finishKeyActiveIdx = (state.finishKeyActiveIdx + 1) % items.length
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        state.finishKeyActiveIdx = (state.finishKeyActiveIdx - 1 + items.length) % items.length
+      } else if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
+        // Enter만 누르면 드롭다운 선택, Ctrl+Enter는 제출 (전역 핸들러로 위임)
+        if (state.finishKeyActiveIdx >= 0) {
+          e.preventDefault()
+          const el = items[state.finishKeyActiveIdx]
+          selectKeyCandidate(FINISH_KEY_CTX, el.dataset.key, el.dataset.summary || '')
+          return
+        }
+      } else if (e.key === 'Escape') {
+        state.finishKeyActiveIdx = -1
+        dropdown.style.display = 'none'
+        dropdown.innerHTML = ''
+        return
+      } else {
+        return
+      }
+      items.forEach((el, i) => el.classList.toggle('active', i === state.finishKeyActiveIdx))
+      if (state.finishKeyActiveIdx >= 0) items[state.finishKeyActiveIdx].scrollIntoView({ block: 'nearest' })
+    })
+    on(finishIssueInput, 'blur', async () => {
+      setTimeout(() => {
+        const dd = document.getElementById('finish-key-dropdown')
+        if (dd) { dd.style.display = 'none'; dd.innerHTML = '' }
+      }, 150)
+      const key = finishIssueInput.value.trim().toUpperCase()
+      finishIssueInput.value = key
+      if (!key) { state.finishIssueCheck = null; renderKeyHint(FINISH_KEY_CTX); return }
+      if (state.finishIssueCheck && state.finishIssueCheck.key === key
+          && (state.finishIssueCheck.status === 'ok' || state.finishIssueCheck.status === 'error')) {
+        return
+      }
+      if (!isValidIssueKeyFormat(key)) {
+        state.finishIssueCheck = { status: 'error', key, message: '올바른 형식이 아닙니다. 예: DKT-123' }
+        renderKeyHint(FINISH_KEY_CTX)
+        return
+      }
+      const local = findLoadedIssue(key)
+      if (local) {
+        state.finishIssueCheck = { status: 'ok', key, summary: local.summary }
+        renderKeyHint(FINISH_KEY_CTX)
+        return
+      }
+      state.finishIssueCheck = { status: 'checking', key }
+      renderKeyHint(FINISH_KEY_CTX)
+      try {
+        const meta = await fetchIssueMeta(key)
+        if (meta) {
+          state.finishIssueCheck = { status: 'ok', key: meta.key, summary: meta.summary }
+        } else {
+          state.finishIssueCheck = { status: 'error', key, message: '이슈를 찾을 수 없습니다.' }
+        }
+      } catch {
+        state.finishIssueCheck = { status: 'error', key, message: '이슈를 찾을 수 없거나 접근 권한이 없습니다.' }
+      }
+      renderKeyHint(FINISH_KEY_CTX)
+    })
   }
 
   const modalSubmit = document.getElementById('modal-submit')
@@ -753,6 +878,19 @@ export function bindEvents() {
       const sessions = loadSessions()
       const session = sessions.find(s => s.issueKey === state.showModal)
       if (!session) return
+
+      // 일감 미지정 세션이면 입력된 이슈 키가 유효한지 먼저 확인
+      const isIssueless = session.issueKey === NO_ISSUE_KEY
+      let targetIssueKey = session.issueKey
+      if (isIssueless) {
+        const input = document.getElementById('finish-issue-key')
+        const typed = (input?.value || '').trim().toUpperCase()
+        if (!typed) { alert('이슈 키를 입력해주세요.'); return }
+        if (!isValidIssueKeyFormat(typed)) { alert('이슈 키 형식이 올바르지 않습니다. 예: DKT-123'); return }
+        if (state.finishIssueCheck?.status === 'error') { alert('이슈 키를 확인해주세요.'); return }
+        if (state.finishIssueCheck?.status === 'checking') { alert('이슈 키를 확인 중입니다. 잠시만 기다려주세요.'); return }
+        targetIssueKey = typed
+      }
 
       const details = getSegmentDetails(session)
       const totalActual = details.reduce((sum, d) => sum + d.actualMinutes, 0)
@@ -785,7 +923,7 @@ export function bindEvents() {
         for (const seg of details) {
           if (seg.actualMinutes <= 0) continue
           const started = `${toDateString(seg.start)}T${String(seg.start.getHours()).padStart(2, '0')}:${String(seg.start.getMinutes()).padStart(2, '0')}:00.000${tzStr}`
-          await createWorklog(session.issueKey, {
+          await createWorklog(targetIssueKey, {
             started,
             timeSpentSeconds: seg.actualMinutes * 60,
             comment,
@@ -808,6 +946,7 @@ export function bindEvents() {
       // 성공 시에만 세션 삭제 + 캐시 무효화
       removeSession(session.issueKey)
       state.showModal = null
+      state.finishIssueCheck = null
       const invalidatedMonths = new Set()
       for (const d of details) {
         const monthStart = toDateString(new Date(d.start.getFullYear(), d.start.getMonth(), 1))
@@ -877,7 +1016,8 @@ export function bindEvents() {
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
         state.manualKeyActiveIdx = (state.manualKeyActiveIdx - 1 + items.length) % items.length
-      } else if (e.key === 'Enter') {
+      } else if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
+        // Enter만 누르면 드롭다운 선택, Ctrl+Enter는 전역 핸들러에서 제출
         if (state.manualKeyActiveIdx >= 0) {
           e.preventDefault()
           const el = items[state.manualKeyActiveIdx]

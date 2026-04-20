@@ -69,6 +69,11 @@ export const PREFERENCES_KEY = 'user_preferences'
 // 이슈 키 형식 검사 (예: DKT-123)
 export const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9]+-\d+$/
 
+// 일감 없이 시작된 작업 세션을 식별하는 센티넬 키
+// (Jira 키 패턴과 충돌하지 않도록 언더스코어 포함)
+export const NO_ISSUE_KEY = '__NO_ISSUE__'
+export const NO_ISSUE_SUMMARY = '(일감 미지정)'
+
 // ========== 초기값 계산 헬퍼 ==========
 function initialLogDate() {
   const d = new Date()
@@ -130,6 +135,12 @@ export const state = {
   manualKeySearchTimer: null,  // 이슈 키 자동완성 API debounce 타이머
   manualKeySearchController: null,  // 자동완성 in-flight 요청 취소용
   manualKeyActiveIdx: -1,      // 키보드 네비게이션 선택 인덱스
+
+  // 일감 미지정 세션의 종료 모달에서 이슈 키를 지정할 때 쓰는 상태 (manual-*과 동일 구조)
+  finishIssueCheck: null,
+  finishKeySearchTimer: null,
+  finishKeySearchController: null,
+  finishKeyActiveIdx: -1,
 
   // ----- 테마/패널 -----
   theme: localStorage.getItem('theme') || 'dark',

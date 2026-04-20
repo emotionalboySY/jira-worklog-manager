@@ -529,6 +529,32 @@ a.issue-key-link:hover {
   border-radius: var(--radius-lg);
   color: var(--text-dim);
   font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.no-session-start {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.no-session-start:hover {
+  background: var(--accent-bg);
+  color: var(--accent-hover);
+}
+
+/* 일감 미지정 세션 카드: 이슈 키 자리에 들어가는 배지 */
+.issue-key-noissue {
+  background: var(--bg-hover);
+  color: var(--text-dim);
+  font-weight: 500;
+  font-style: italic;
+}
+
+.session-card-noissue {
+  border-left: 3px dashed var(--border);
 }
 
 /* ========== 로딩 인디케이터 ========== */
@@ -1972,6 +1998,13 @@ span.flatpickr-weekday {
   color: var(--text-dim);
   margin-bottom: 6px;
   display: block;
+}
+
+.modal-label-note {
+  font-weight: 400;
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-left: 4px;
 }
 
 .modal-issue-info {

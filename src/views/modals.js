@@ -1,5 +1,5 @@
 // 모든 모달 + 이슈 키 자동완성 관련 로직
-import { state, ISSUE_KEY_PATTERN, LUNCH_START, LUNCH_END, WORKLOG_CACHE_KEY } from '../state.js'
+import { state, ISSUE_KEY_PATTERN, LUNCH_START, LUNCH_END, WORKLOG_CACHE_KEY, NO_ISSUE_KEY, NO_ISSUE_SUMMARY } from '../state.js'
 import {
   loadSessions,
   loadFavorites,
@@ -64,14 +64,45 @@ export function renderModal() {
 
   const fmtTime = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 
+  const isIssueless = session.issueKey === NO_ISSUE_KEY
+
+  // 일감 미지정 세션은 Jira 기록 시 이슈를 반드시 골라야 하므로 입력 필드로 대체
+  let issueBlockHtml
+  if (isIssueless) {
+    let keyStatusHtml = ''
+    if (state.finishIssueCheck) {
+      if (state.finishIssueCheck.status === 'checking') {
+        keyStatusHtml = `<div class="input-hint">확인 중...</div>`
+      } else if (state.finishIssueCheck.status === 'ok') {
+        keyStatusHtml = `<div class="input-hint ok">✓ ${escapeHtml(state.finishIssueCheck.summary || '')}</div>`
+      } else if (state.finishIssueCheck.status === 'error') {
+        keyStatusHtml = `<div class="input-hint error">⚠ ${escapeHtml(state.finishIssueCheck.message || '')}</div>`
+      }
+    }
+    issueBlockHtml = `
+      <div class="modal-field">
+        <label class="modal-label">이슈 키 <span class="modal-label-note">(일감 미지정 세션이므로 기록할 이슈를 선택하세요)</span></label>
+        <div class="autocomplete-wrapper">
+          <input type="text" class="modal-input" id="finish-issue-key" placeholder="예: DKT-123 또는 키워드" autocomplete="off" />
+          <div class="autocomplete-dropdown" id="finish-key-dropdown"></div>
+        </div>
+        ${keyStatusHtml}
+      </div>
+    `
+  } else {
+    issueBlockHtml = `
+      <div class="modal-issue-info">
+        <span class="issue-key">${session.issueKey}</span>
+        <span class="modal-issue-summary">${escapeHtml(session.summary || '')}</span>
+      </div>
+    `
+  }
+
   return `
     <div class="modal-overlay" id="modal-overlay">
       <div class="modal">
         <div class="modal-title">작업 종료</div>
-        <div class="modal-issue-info">
-          <span class="issue-key">${session.issueKey}</span>
-          <span class="modal-issue-summary">${escapeHtml(session.summary || '')}</span>
-        </div>
+        ${issueBlockHtml}
         <div class="modal-section-label">작업 구간 (${details.length}건)</div>
         ${details.map((seg, i) => `
           <div class="modal-info">
@@ -98,12 +129,15 @@ export function renderModal() {
 
 // ========== 취소 확인 모달 ==========
 export function renderCancelConfirm() {
+  const label = state.showCancelConfirm === NO_ISSUE_KEY
+    ? NO_ISSUE_SUMMARY
+    : state.showCancelConfirm
   return `
     <div class="modal-overlay" id="cancel-overlay">
       <div class="modal">
         <div class="modal-title">작업 로깅 취소</div>
         <p style="color: var(--text); margin-bottom: 20px;">
-          <strong style="color: var(--text-bright);">${state.showCancelConfirm}</strong> 작업에 대한 로깅을 취소하시겠습니까?<br>
+          <strong style="color: var(--text-bright);">${escapeHtml(label)}</strong> 작업에 대한 로깅을 취소하시겠습니까?<br>
           <span style="color: var(--text-dim); font-size: 12px;">기록되지 않은 작업 시간은 사라집니다.</span>
         </p>
         <div class="modal-actions">
@@ -268,17 +302,38 @@ export function findLocalIssueCandidates(query) {
     .slice(0, 15)
 }
 
-export function renderManualKeyDropdown(candidates, loading = false) {
-  const dropdown = document.getElementById('manual-key-dropdown')
+// 자동완성 컨텍스트: 수동 기록 모달 / 종료 모달(일감 미지정) 공용
+// 동일 로직을 DOM ID와 state 키만 바꿔 재사용
+export const MANUAL_KEY_CTX = {
+  inputId: 'manual-issue-key',
+  dropdownId: 'manual-key-dropdown',
+  checkKey: 'manualIssueCheck',
+  activeIdxKey: 'manualKeyActiveIdx',
+  timerKey: 'manualKeySearchTimer',
+  controllerKey: 'manualKeySearchController',
+}
+
+export const FINISH_KEY_CTX = {
+  inputId: 'finish-issue-key',
+  dropdownId: 'finish-key-dropdown',
+  checkKey: 'finishIssueCheck',
+  activeIdxKey: 'finishKeyActiveIdx',
+  timerKey: 'finishKeySearchTimer',
+  controllerKey: 'finishKeySearchController',
+}
+
+export function renderKeyDropdown(ctx, candidates, loading = false) {
+  const dropdown = document.getElementById(ctx.dropdownId)
   if (!dropdown) return
   if (candidates.length === 0 && !loading) {
     dropdown.style.display = 'none'
     dropdown.innerHTML = ''
     return
   }
+  const activeIdx = state[ctx.activeIdxKey]
   dropdown.style.display = 'block'
   const itemsHtml = candidates.map((c, idx) => `
-    <div class="autocomplete-item ${idx === state.manualKeyActiveIdx ? 'active' : ''}" data-key="${c.key}" data-summary="${escapeHtml(c.summary || '')}" data-idx="${idx}">
+    <div class="autocomplete-item ${idx === activeIdx ? 'active' : ''}" data-key="${c.key}" data-summary="${escapeHtml(c.summary || '')}" data-idx="${idx}">
       <span class="autocomplete-key">${c.key}</span>
       <span class="autocomplete-summary">${escapeHtml(c.summary || '')}</span>
     </div>
@@ -294,63 +349,63 @@ export function renderManualKeyDropdown(candidates, loading = false) {
     // mousedown은 blur보다 먼저 발생 → blur로 드롭다운 닫히기 전에 선택 처리
     el.addEventListener('mousedown', (e) => {
       e.preventDefault()
-      selectManualKeyCandidate(el.dataset.key, el.dataset.summary || '')
+      selectKeyCandidate(ctx, el.dataset.key, el.dataset.summary || '')
     })
     el.addEventListener('mouseenter', () => {
-      state.manualKeyActiveIdx = parseInt(el.dataset.idx)
+      state[ctx.activeIdxKey] = parseInt(el.dataset.idx)
       dropdown.querySelectorAll('.autocomplete-item').forEach((it, i) => {
-        it.classList.toggle('active', i === state.manualKeyActiveIdx)
+        it.classList.toggle('active', i === state[ctx.activeIdxKey])
       })
     })
   })
 }
 
-export function selectManualKeyCandidate(key, summary) {
-  const input = document.getElementById('manual-issue-key')
+export function selectKeyCandidate(ctx, key, summary) {
+  const input = document.getElementById(ctx.inputId)
   if (!input) return
   input.value = key
-  state.manualIssueCheck = { status: 'ok', key, summary }
-  renderManualKeyHint()
-  const dropdown = document.getElementById('manual-key-dropdown')
+  state[ctx.checkKey] = { status: 'ok', key, summary }
+  renderKeyHint(ctx)
+  const dropdown = document.getElementById(ctx.dropdownId)
   if (dropdown) { dropdown.style.display = 'none'; dropdown.innerHTML = '' }
-  state.manualKeyActiveIdx = -1
+  state[ctx.activeIdxKey] = -1
 }
 
-export function updateManualKeyDropdown() {
-  const input = document.getElementById('manual-issue-key')
+export function updateKeyDropdown(ctx) {
+  const input = document.getElementById(ctx.inputId)
   if (!input) return
   const query = input.value
   if (!query.trim()) {
-    renderManualKeyDropdown([])
+    renderKeyDropdown(ctx, [])
     return
   }
   const localCandidates = findLocalIssueCandidates(query)
-  state.manualKeyActiveIdx = -1
+  state[ctx.activeIdxKey] = -1
 
   // 이전 debounce/in-flight 요청 모두 취소 (네트워크/콜백 낭비 제거)
-  clearTimeout(state.manualKeySearchTimer)
-  if (state.manualKeySearchController) {
-    state.manualKeySearchController.abort()
-    state.manualKeySearchController = null
+  clearTimeout(state[ctx.timerKey])
+  if (state[ctx.controllerKey]) {
+    state[ctx.controllerKey].abort()
+    state[ctx.controllerKey] = null
   }
 
   const q = query.trim()
   if (q.length < 2) {
-    renderManualKeyDropdown(localCandidates)
+    renderKeyDropdown(ctx, localCandidates)
     return
   }
   // 즉시 로컬 후보 + 로딩 표시 (API 응답 대기 중)
-  renderManualKeyDropdown(localCandidates, true)
-  state.manualKeySearchTimer = setTimeout(async () => {
+  renderKeyDropdown(ctx, localCandidates, true)
+  state[ctx.timerKey] = setTimeout(async () => {
     const controller = new AbortController()
-    state.manualKeySearchController = controller
+    state[ctx.controllerKey] = controller
     try {
       const projectKeys = (state.realProjects && state.realProjects.length)
         ? state.realProjects.map(p => p.key)
         : ['DK', 'DKT', 'DD', 'RM']
       const apiResults = await searchIssuesByKey(q, projectKeys, { signal: controller.signal })
       if (controller.signal.aborted) return
-      const currentInput = document.getElementById('manual-issue-key')
+      const currentInput = document.getElementById(ctx.inputId)
       if (!currentInput || currentInput.value.trim() !== q) return
       const merged = [...localCandidates]
       for (const r of apiResults) {
@@ -359,40 +414,55 @@ export function updateManualKeyDropdown() {
         }
         if (merged.length >= 20) break
       }
-      renderManualKeyDropdown(merged, false)
+      renderKeyDropdown(ctx, merged, false)
     } catch (err) {
       if (err?.name === 'AbortError') return
       console.warn('자동완성 API 실패:', err)
-      const currentInput = document.getElementById('manual-issue-key')
+      const currentInput = document.getElementById(ctx.inputId)
       if (!currentInput || currentInput.value.trim() !== q) return
-      renderManualKeyDropdown(localCandidates, false)
+      renderKeyDropdown(ctx, localCandidates, false)
     } finally {
-      if (state.manualKeySearchController === controller) state.manualKeySearchController = null
+      if (state[ctx.controllerKey] === controller) state[ctx.controllerKey] = null
     }
   }, 300)
 }
 
 // 이슈 키 힌트 영역만 직접 업데이트 (모달 입력값 유지 위해 전체 리렌더 회피)
-export function renderManualKeyHint() {
-  const input = document.getElementById('manual-issue-key')
+export function renderKeyHint(ctx) {
+  const input = document.getElementById(ctx.inputId)
   if (!input) return
   const field = input.closest('.modal-field')
   if (!field) return
   const existing = field.querySelector('.input-hint')
   if (existing) existing.remove()
-  if (!state.manualIssueCheck) return
+  const check = state[ctx.checkKey]
+  if (!check) return
   const hint = document.createElement('div')
   hint.className = 'input-hint'
-  if (state.manualIssueCheck.status === 'checking') {
+  if (check.status === 'checking') {
     hint.textContent = '확인 중...'
-  } else if (state.manualIssueCheck.status === 'ok') {
+  } else if (check.status === 'ok') {
     hint.classList.add('ok')
-    hint.textContent = `✓ ${state.manualIssueCheck.summary || ''}`
+    hint.textContent = `✓ ${check.summary || ''}`
   } else {
     hint.classList.add('error')
-    hint.textContent = `⚠ ${state.manualIssueCheck.message || ''}`
+    hint.textContent = `⚠ ${check.message || ''}`
   }
   field.appendChild(hint)
+}
+
+// 기존 호출부 호환을 위한 수동 기록 모달용 얇은 래퍼
+export function renderManualKeyDropdown(candidates, loading = false) {
+  return renderKeyDropdown(MANUAL_KEY_CTX, candidates, loading)
+}
+export function selectManualKeyCandidate(key, summary) {
+  return selectKeyCandidate(MANUAL_KEY_CTX, key, summary)
+}
+export function updateManualKeyDropdown() {
+  return updateKeyDropdown(MANUAL_KEY_CTX)
+}
+export function renderManualKeyHint() {
+  return renderKeyHint(MANUAL_KEY_CTX)
 }
 
 // ========== 소요 시간 readout ==========
