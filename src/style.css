@@ -193,33 +193,44 @@ body.tab-logs .tab-content > .log-toolbar {
   flex-shrink: 0;
 }
 
-/* log-body: 항상 2열 그리드. 달력 닫힘 상태는 좌측 컬럼을 0으로 줄여 숨긴다.
-   grid-template-columns 전환은 크로미움 119+/파이어폭스 124+/사파리 17.4+ 에서 보간 지원. */
+/* log-body: flex 레이아웃. 달력의 width / padding / border / opacity를
+   동시에 transition해 달력이 좌측에서 접히고 펴지도록 한다.
+   flex + width 방식이 grid-template-columns 보간보다 브라우저 구현 상 더 매끄럽다. */
 body.tab-logs .tab-content > .log-body {
   flex: 1 1 auto;
   min-height: 0;
-  display: grid;
-  grid-template-columns: 0fr 1fr;
+  display: flex;
   gap: 0;
   overflow: hidden;
-  transition: grid-template-columns 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.05), gap 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.05);
+  transition: gap 0.28s ease;
 }
 
 body.tab-logs .log-body.with-calendar {
-  grid-template-columns: 380px 1fr;
   gap: 20px;
 }
 
 body.tab-logs .log-body > .calendar {
+  flex: 0 0 auto;
   align-self: start;
+  width: 380px;
   min-width: 0;
   min-height: 0;
   margin-bottom: 0;
   overflow: hidden;
+  transition: width 0.28s ease, padding 0.28s ease, border-width 0.28s ease, opacity 0.22s ease;
 }
 
-/* 달력이 닫힌 상태에서는 내부 요소가 hover/클릭되지 않도록 */
+body.tab-logs .log-body > .log-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 닫힌 상태: 달력 자체를 완전히 접어 좌측 잔상 제거 */
 body.tab-logs .log-body:not(.with-calendar) > .calendar {
+  width: 0;
+  padding: 0;
+  border-width: 0;
+  opacity: 0;
   pointer-events: none;
 }
 
