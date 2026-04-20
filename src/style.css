@@ -356,6 +356,20 @@ body.tab-logs .log-detail > .no-session {
   color: var(--text-bright);
 }
 
+/* 테마 토글 버튼: 이모지 아이콘이 호버/클릭 시 회전 */
+#btn-theme {
+  transition: background 0.15s, color 0.15s, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+#btn-theme:hover {
+  transform: rotate(25deg) scale(1.08);
+}
+
+#btn-theme:active {
+  transform: rotate(180deg) scale(0.95);
+  transition-duration: 0.1s;
+}
+
 /* ========== 프로젝트 선택 ========== */
 .project-selector {
   display: flex;
@@ -898,6 +912,16 @@ a.issue-key-link:hover {
 }
 
 /* ========== 플로팅 즐겨찾기 패널 ========== */
+@keyframes favorites-expand-in {
+  from { opacity: 0; transform: scale(0.92) translateY(-6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes favorites-collapse-in {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 .favorites-panel {
   position: fixed;
   right: 20px;
@@ -912,6 +936,12 @@ a.issue-key-link:hover {
 .favorites-panel.collapsed {
   padding: 0;
   border-radius: 50%;
+  animation: favorites-collapse-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+
+.favorites-panel.expanded {
+  transform-origin: top right;
+  animation: favorites-expand-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 body:has(#settings-overlay) .favorites-panel {
   z-index: 90;
@@ -1961,6 +1991,16 @@ span.flatpickr-weekday {
 }
 
 /* ========== 종료 모달 ========== */
+@keyframes modal-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-card-in {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -1969,6 +2009,7 @@ span.flatpickr-weekday {
   align-items: center;
   justify-content: center;
   z-index: 100;
+  animation: modal-overlay-in 0.15s ease-out;
 }
 
 .modal {
@@ -1979,6 +2020,7 @@ span.flatpickr-weekday {
   width: 440px;
   max-width: 90vw;
   box-shadow: var(--modal-shadow);
+  animation: modal-card-in 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
 .modal-title {
@@ -2445,6 +2487,11 @@ span.flatpickr-weekday {
 
 .btn-refresh svg {
   display: block;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-refresh:hover:not(:disabled) svg {
+  transform: rotate(-360deg);
 }
 
 /* ========== 버튼 내부 스피너 ========== */
@@ -2757,4 +2804,15 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 .settings-actions-right {
   display: flex;
   gap: 8px;
+}
+
+/* ========== 접근성: 모션 최소화 설정 시 애니메이션 축소 ========== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
