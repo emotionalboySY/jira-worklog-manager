@@ -16,8 +16,15 @@ export function toggleTheme() {
   state.theme = state.theme === 'dark' ? 'light' : 'dark'
   localStorage.setItem('theme', state.theme)
   applyTheme()
-  // 테마 아이콘만 바뀌므로 header 섹션만 갱신
-  render({ sections: ['header'] })
+  // 헤더 섹션을 교체하면 스위치 DOM이 재생성되어 노브 슬라이드 transition이 실행되지 않음.
+  // 테마 스위치 외에는 헤더에서 theme에 반응하는 요소가 없으므로 클래스만 토글.
+  const btn = document.getElementById('btn-theme')
+  if (btn) {
+    btn.classList.toggle('light', state.theme === 'light')
+    btn.classList.toggle('dark', state.theme === 'dark')
+    btn.setAttribute('aria-checked', state.theme === 'dark' ? 'true' : 'false')
+    btn.setAttribute('title', '테마 전환 (라이트 ↔ 다크)')
+  }
 }
 
 // ========== 사용자 설정 적용 ==========
