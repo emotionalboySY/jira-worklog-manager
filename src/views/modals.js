@@ -58,13 +58,14 @@ export function renderModal() {
   const session = sessions.find(s => s.issueKey === state.showModal)
   if (!session) return ''
 
-  // 진행 중 세션이면 마지막 구간 닫아서 계산
+  // 진행 중 세션이면 마지막 구간의 종료 시각은 '지금'으로 간주해 계산
   const details = getSegmentDetails(session)
-  const totalActual = details.reduce((sum, d) => sum + d.actualMinutes, 0)
 
   const fmtTime = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  const fmtDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
   const isIssueless = session.issueKey === NO_ISSUE_KEY
+  const isMulti = details.length > 1
 
   // 일감 미지정 세션은 Jira 기록 시 이슈를 반드시 골라야 하므로 입력 필드로 대체
   let issueBlockHtml
@@ -98,21 +99,37 @@ export function renderModal() {
     `
   }
 
+  // 구간별 편집 가능한 시작/종료 시간 UI (마지막 구간만 '지금' 버튼 제공)
+  const segmentsHtml = details.map((seg, i) => {
+    const startTime = fmtTime(seg.start)
+    const endTime = fmtTime(seg.end)
+    const dateStr = fmtDate(seg.start)
+    const lastIdx = details.length - 1
+    const showNowBtn = i === lastIdx
+    return `
+      <div class="modal-field finish-segment" data-seg-idx="${i}" data-seg-date="${dateStr}">
+        ${isMulti ? `<label class="modal-label">구간 ${i + 1}</label>` : ''}
+        <div class="finish-segment-row">
+          <input type="time" class="modal-input finish-seg-start" data-seg-idx="${i}" value="${startTime}" aria-label="시작 시간" />
+          <span class="finish-seg-arrow">→</span>
+          <input type="time" class="modal-input finish-seg-end" data-seg-idx="${i}" value="${endTime}" aria-label="종료 시간" />
+          ${showNowBtn ? `<button type="button" class="btn btn-sm finish-seg-now" data-seg-idx="${i}">지금</button>` : ''}
+        </div>
+        <div class="duration-readout finish-seg-duration" data-seg-idx="${i}">-</div>
+      </div>
+    `
+  }).join('')
+
   return `
     <div class="modal-overlay" id="modal-overlay">
       <div class="modal">
         <div class="modal-title">작업 종료</div>
         ${issueBlockHtml}
-        <div class="modal-section-label">작업 구간 (${details.length}건)</div>
-        ${details.map((seg, i) => `
-          <div class="modal-info">
-            <span class="modal-info-label">${fmtTime(seg.start)} → ${fmtTime(seg.end)}</span>
-            <span class="modal-info-value">${formatMinutes(seg.durationMinutes)}${seg.lunchMinutes > 0 ? ` <span class="deducted">(-${formatMinutes(seg.lunchMinutes)} 점심)</span>` : ''}</span>
-          </div>
-        `).join('')}
-        <div class="modal-info" style="border-top: 1px solid var(--border); margin-top: 4px; padding-top: 12px;">
+        ${isMulti ? `<div class="modal-section-label">작업 구간 (${details.length}건)</div>` : `<div class="modal-section-label">작업 시간</div>`}
+        ${segmentsHtml}
+        <div class="modal-info finish-total-row">
           <span class="modal-info-label">실 작업 시간 합계</span>
-          <span class="modal-info-value">${formatMinutes(totalActual)}</span>
+          <span class="modal-info-value" id="finish-total-readout">-</span>
         </div>
         <div class="modal-field">
           <label class="modal-label">작업 내용 (코멘트)</label>
@@ -125,6 +142,49 @@ export function renderModal() {
       </div>
     </div>
   `
+}
+
+// 종료 모달 구간별 소요시간 읽고 합계 readout 업데이트
+// - 모든 구간의 시작/종료 input값을 계산해 구간별 readout과 총 합계 readout을 갱신
+// - 유효하지 않은 구간은 error 클래스 + 안내 문구 표시
+// 반환: { valid, totalActual, perSegment: [{ valid, actualMinutes, startTime, endTime, date, message }] }
+export function updateFinishDurationReadouts() {
+  const modal = document.getElementById('modal-overlay')
+  if (!modal) return { valid: false, totalActual: 0, perSegment: [] }
+  const segRows = modal.querySelectorAll('.finish-segment')
+  const perSegment = []
+  let totalActual = 0
+  let anyInvalid = false
+  segRows.forEach(row => {
+    const i = parseInt(row.dataset.segIdx, 10)
+    const date = row.dataset.segDate
+    const startInput = row.querySelector('.finish-seg-start')
+    const endInput = row.querySelector('.finish-seg-end')
+    const readout = row.querySelector('.finish-seg-duration')
+    const startTime = startInput?.value || ''
+    const endTime = endInput?.value || ''
+    const dur = computeDurationFromTimes(startTime, endTime)
+    if (!dur.valid) {
+      anyInvalid = true
+      readout.textContent = dur.message || '-'
+      readout.classList.add('error')
+      perSegment[i] = { valid: false, actualMinutes: 0, startTime, endTime, date, message: dur.message }
+      return
+    }
+    readout.classList.remove('error')
+    const main = formatMinutes(dur.actualMinutes)
+    readout.textContent = dur.lunchMinutes > 0
+      ? `${main} (점심시간 ${formatMinutes(dur.lunchMinutes)} 제외)`
+      : main
+    totalActual += dur.actualMinutes
+    perSegment[i] = { valid: true, actualMinutes: dur.actualMinutes, startTime, endTime, date }
+  })
+  const totalEl = document.getElementById('finish-total-readout')
+  if (totalEl) {
+    totalEl.textContent = totalActual > 0 ? formatMinutes(totalActual) : '-'
+    totalEl.classList.toggle('error', anyInvalid)
+  }
+  return { valid: !anyInvalid, totalActual, perSegment }
 }
 
 // ========== 취소 확인 모달 ==========

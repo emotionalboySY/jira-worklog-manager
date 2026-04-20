@@ -17,7 +17,6 @@ import {
   pauseSession,
   resumeSession,
   removeSession,
-  getSegmentDetails,
   setDayOff,
   toggleFavorite,
   loadPreferences,
@@ -49,6 +48,7 @@ import {
   invalidateWorklogMonth,
   updateManualDurationReadout,
   updateEditDurationReadout,
+  updateFinishDurationReadouts,
   computeDurationFromTimes,
   renderManualKeyHint,
   selectManualKeyCandidate,
@@ -875,6 +875,28 @@ export function bindEvents() {
     })
   }
 
+  // 종료 모달: 구간별 시작/종료 시간 input → 실시간 소요 시간 readout 갱신
+  document.querySelectorAll('.finish-seg-start, .finish-seg-end').forEach(inp => {
+    on(inp, 'input', updateFinishDurationReadouts)
+  })
+
+  // 종료 모달: 마지막 구간의 '지금' 버튼 → 종료 시간을 현재 시각으로 + 재계산
+  document.querySelectorAll('.finish-seg-now').forEach(btn => {
+    on(btn, 'click', () => {
+      const i = btn.dataset.segIdx
+      const endInput = document.querySelector(`.finish-seg-end[data-seg-idx="${i}"]`)
+      if (!endInput) return
+      const now = new Date()
+      endInput.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      updateFinishDurationReadouts()
+    })
+  })
+
+  // 모달 열렸을 때 초기 readout 채움
+  if (document.getElementById('modal-overlay')) {
+    updateFinishDurationReadouts()
+  }
+
   const modalSubmit = document.getElementById('modal-submit')
   if (modalSubmit) {
     on(modalSubmit, 'click', async () => {
@@ -896,9 +918,13 @@ export function bindEvents() {
         targetIssueKey = typed
       }
 
-      const details = getSegmentDetails(session)
-      const totalActual = details.reduce((sum, d) => sum + d.actualMinutes, 0)
-      if (totalActual <= 0) {
+      // 편집된 구간 값 기반으로 검증 + 합계 계산
+      const result = updateFinishDurationReadouts()
+      if (!result.valid) {
+        alert('유효하지 않은 구간이 있습니다.\n\n종료 시간은 시작 시간보다 이후여야 하며, 점심시간 제외 후 실 작업 시간이 1분 이상이어야 합니다.')
+        return
+      }
+      if (result.totalActual <= 0) {
         alert(`기록 가능한 시간이 없습니다. 점심시간(${formatLunchRange()}) 제외 후 실제 작업 시간이 1분 이상이어야 합니다.`)
         return
       }
@@ -921,14 +947,11 @@ export function bindEvents() {
 
       let successCount = 0
       try {
-        // 구간별로 worklog 생성. 점심시간과 겹치면 buildWorklogSegments로 앞/뒤로 쪼개서
-        // Jira에도 원래 시작/종료 시각이 보존되도록 한다.
-        for (const seg of details) {
-          if (seg.actualMinutes <= 0) continue
-          const dateStr = toDateString(seg.start)
-          const startTime = `${String(seg.start.getHours()).padStart(2, '0')}:${String(seg.start.getMinutes()).padStart(2, '0')}`
-          const endTime = `${String(seg.end.getHours()).padStart(2, '0')}:${String(seg.end.getMinutes()).padStart(2, '0')}`
-          const subSegments = buildWorklogSegments(dateStr, startTime, endTime)
+        // 편집된 구간 값을 이용해 worklog 생성.
+        // 점심시간과 겹치면 buildWorklogSegments로 앞/뒤로 쪼개서 Jira에도 원래 시작/종료 시각 보존.
+        for (const seg of result.perSegment) {
+          if (!seg || !seg.valid || seg.actualMinutes <= 0) continue
+          const subSegments = buildWorklogSegments(seg.date, seg.startTime, seg.endTime)
           for (const ss of subSegments) {
             await createWorklog(targetIssueKey, {
               started: ss.started,
@@ -956,8 +979,9 @@ export function bindEvents() {
       state.showModal = null
       state.finishIssueCheck = null
       const invalidatedMonths = new Set()
-      for (const d of details) {
-        const monthStart = toDateString(new Date(d.start.getFullYear(), d.start.getMonth(), 1))
+      for (const seg of result.perSegment) {
+        if (!seg || !seg.date) continue
+        const monthStart = `${seg.date.substring(0, 7)}-01`
         if (!invalidatedMonths.has(monthStart)) {
           invalidatedMonths.add(monthStart)
           invalidateWorklogMonth(monthStart)
@@ -1376,15 +1400,28 @@ export function bindEvents() {
   }
 
   const deleteYes = document.getElementById('delete-worklog-yes')
+  const deleteNoBtn = document.getElementById('delete-worklog-no')
   if (deleteYes) {
     on(deleteYes, 'click', async () => {
+      if (deleteYes.disabled) return
+      // 버튼 스피너 + 중복 클릭 차단 (Jira 등록과 동일 패턴)
+      const originalLabel = deleteYes.innerHTML
+      deleteYes.disabled = true
+      deleteYes.classList.add('is-loading')
+      deleteYes.innerHTML = '<span class="btn-spinner"></span>'
+      if (deleteNoBtn) deleteNoBtn.disabled = true
       try {
         await deleteWorklog(state.deletingWorklog.issueKey, state.deletingWorklog.worklogId)
         state.deletingWorklog = null
+        // 성공 시 loadWorklogs → render가 호출되어 모달이 닫힘
         invalidateWorklogMonth(state.logDate)
       } catch (e) {
         console.error('작업 로그 삭제 실패:', e)
-        alert('작업 로그 삭제에 실패했습니다.')
+        alert(`작업 로그 삭제에 실패했습니다.\n\n${formatJiraError(e)}`)
+        deleteYes.disabled = false
+        deleteYes.classList.remove('is-loading')
+        deleteYes.innerHTML = originalLabel
+        if (deleteNoBtn) deleteNoBtn.disabled = false
       }
     })
   }
