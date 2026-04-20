@@ -356,18 +356,74 @@ body.tab-logs .log-detail > .no-session {
   color: var(--text-bright);
 }
 
-/* 테마 토글 버튼: 이모지 아이콘이 호버/클릭 시 회전 */
-#btn-theme {
-  transition: background 0.15s, color 0.15s, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+/* 테마 스위치: 왼쪽=라이트, 오른쪽=다크 */
+.theme-switch {
+  position: relative;
+  width: 56px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--bg-input);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.25s, border-color 0.25s;
 }
 
-#btn-theme:hover {
-  transform: rotate(25deg) scale(1.08);
+.theme-switch:hover {
+  border-color: var(--accent);
 }
 
-#btn-theme:active {
-  transform: rotate(180deg) scale(0.95);
-  transition-duration: 0.1s;
+.theme-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.25s;
+}
+
+.theme-switch.dark .theme-switch-knob {
+  transform: translateX(30px);
+  background: var(--accent);
+}
+
+.theme-switch-icon {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+  transition: opacity 0.25s, color 0.25s;
+  color: var(--text-dim);
+}
+
+.theme-switch-icon.icon-light {
+  left: 7px;
+}
+
+.theme-switch-icon.icon-dark {
+  right: 7px;
+}
+
+.theme-switch.dark .icon-light {
+  opacity: 0.35;
+}
+
+.theme-switch.light .icon-dark {
+  opacity: 0.35;
+}
+
+.theme-switch.light .icon-light {
+  color: #eab308;
+}
+
+.theme-switch.dark .icon-dark {
+  color: #fff;
 }
 
 /* ========== 프로젝트 선택 ========== */
@@ -2684,6 +2740,17 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   color: var(--accent);
   background: var(--bg-hover);
   transform: rotate(30deg);
+}
+
+.settings-fab.is-open {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  transform: rotate(60deg);
+}
+
+.settings-fab.is-open:hover {
+  transform: rotate(90deg);
 }
 
 /* ========== 설정 모달 ========== */

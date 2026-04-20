@@ -22,8 +22,10 @@ export function renderHeader() {
       </div>
       <div class="header-right">
         <span class="user-info">${getSavedUser()?.displayName || ''}</span>
-        <button class="btn-icon" id="btn-theme" title="테마 전환">
-          ${state.theme === 'dark' ? '☀️' : '🌙'}
+        <button class="theme-switch ${state.theme === 'dark' ? 'dark' : 'light'}" id="btn-theme" role="switch" aria-checked="${state.theme === 'dark'}" title="테마 전환 (라이트 ↔ 다크)">
+          <span class="theme-switch-icon icon-light" aria-hidden="true">☀︎</span>
+          <span class="theme-switch-icon icon-dark" aria-hidden="true">☾</span>
+          <span class="theme-switch-knob"></span>
         </button>
         <button class="btn btn-sm" id="btn-logout">로그아웃</button>
       </div>

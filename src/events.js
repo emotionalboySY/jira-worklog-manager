@@ -119,7 +119,7 @@ function closeSettings() {
   applyPreferences(state.userPrefs)
   state.showSettings = false
   state.settingsDraft = null
-  render({ sections: ['modals'] })
+  render({ sections: ['modals', 'settings-fab'] })
 }
 
 function hexToRgb(hex) {
@@ -167,14 +167,19 @@ export function bindEvents() {
     })
   }
 
-  // 설정 FAB 열기
+  // 설정 FAB: 모달 열림/닫힘 토글
   const settingsFab = document.getElementById('btn-open-settings')
   if (settingsFab) {
     on(settingsFab, 'click', () => {
-      // 현재 저장된 prefs를 draft로 복제
+      if (state.showSettings) {
+        // 이미 열려 있으면 닫기 (취소 버튼과 동일: 미리보기 롤백 포함)
+        closeSettings()
+        return
+      }
+      // 현재 저장된 prefs를 draft로 복제 후 열기
       state.settingsDraft = JSON.parse(JSON.stringify(state.userPrefs))
       state.showSettings = true
-      render({ sections: ['modals'] })
+      render({ sections: ['modals', 'settings-fab'] })
     })
   }
 
