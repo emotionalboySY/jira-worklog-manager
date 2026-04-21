@@ -650,7 +650,11 @@ export function bindEvents() {
   // 플로팅 패널 펼치기/접기
   const favToggle = document.getElementById('favorites-toggle')
   if (favToggle) {
-    on(favToggle, 'click', () => {
+    on(favToggle, 'click', (e) => {
+      // render 직후 DOM이 교체되면 e.target이 detach되어 handleGlobalClick의
+      // panel.contains(e.target) 검사를 통과하지 못하고 패널이 즉시 다시 닫히므로
+      // 여기서 전파를 멈춰 document 핸들러가 받지 못하게 한다.
+      e.stopPropagation()
       state.favoritesPanelCollapsed = !state.favoritesPanelCollapsed
       localStorage.setItem('favorites_collapsed', state.favoritesPanelCollapsed ? '1' : '0')
       render({ sections: ['favorites'] })
