@@ -1060,6 +1060,11 @@ a.issue-parent-link:hover {
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+@keyframes favorites-expand-out {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 0; transform: scale(0.92) translateY(6px); }
+}
+
 @keyframes favorites-collapse-in {
   from { opacity: 0; transform: scale(0.7); }
   to { opacity: 1; transform: scale(1); }
@@ -1085,6 +1090,12 @@ a.issue-parent-link:hover {
 .favorites-panel.expanded {
   transform-origin: bottom right;
   animation: favorites-expand-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+/* 닫히는 중: 펼침 애니메이션을 역방향으로 재생 후 상태 갱신 */
+.favorites-panel.expanded.is-closing {
+  animation: favorites-expand-out 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
 }
 body:has(#settings-overlay) .favorites-panel {
   z-index: 90;
@@ -1171,9 +1182,11 @@ body:has(#settings-overlay) .favorites-panel {
   border: none;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 14px;
-  padding: 2px 6px;
+  padding: 4px;
   border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: background 0.15s, color 0.15s;
 }
 

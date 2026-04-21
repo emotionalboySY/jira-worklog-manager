@@ -52,7 +52,9 @@ export function renderFavoritesPanel() {
           <span>즐겨찾는 이슈</span>
           ${favorites.length > 0 ? `<span class="favorites-count-inline">${favorites.length}</span>` : ''}
         </div>
-        <button class="favorites-collapse-btn" id="favorites-toggle" title="접기">▸</button>
+        <button class="favorites-collapse-btn" id="favorites-toggle" title="닫기" aria-label="닫기">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>
+        </button>
       </div>
       <div class="favorites-body">${body}</div>
     </div>

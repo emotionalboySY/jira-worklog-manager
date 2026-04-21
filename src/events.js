@@ -78,7 +78,32 @@ function on(el, event, handler, options) {
 let globalKeyListenerRegistered = false
 let globalClickListenerRegistered = false
 
-// 즐겨찾기 패널이 펼쳐져 있을 때 패널 바깥을 클릭하면 접기.
+// 즐겨찾기 패널을 닫힘 애니메이션과 함께 접기.
+// .is-closing 클래스로 역방향 애니메이션을 재생한 뒤 animationend에서 재렌더.
+function closeFavoritesPanel() {
+  if (state.favoritesPanelCollapsed) return
+  const panel = document.querySelector('.favorites-panel.expanded')
+  if (!panel || panel.classList.contains('is-closing')) {
+    state.favoritesPanelCollapsed = true
+    localStorage.setItem('favorites_collapsed', '1')
+    render({ sections: ['favorites'] })
+    return
+  }
+  panel.classList.add('is-closing')
+  let finished = false
+  const finish = () => {
+    if (finished) return
+    finished = true
+    state.favoritesPanelCollapsed = true
+    localStorage.setItem('favorites_collapsed', '1')
+    render({ sections: ['favorites'] })
+  }
+  panel.addEventListener('animationend', finish, { once: true })
+  // 안전장치: animationend가 발화하지 못하더라도 반드시 상태 전환
+  setTimeout(finish, 220)
+}
+
+// 즐겨찾기 패널이 펼쳐져 있을 때 패널 바깥을 클릭하면 접기 (애니메이션 포함).
 // 이슈 목록의 star/시작/수동기록 버튼은 stopPropagation을 호출하므로 여기로 전파되지 않아
 // 패널이 열린 상태에서 별을 눌러 즐겨찾기를 추가/해제해도 패널은 유지된다.
 function handleGlobalClick(e) {
@@ -86,9 +111,7 @@ function handleGlobalClick(e) {
   const panel = document.querySelector('.favorites-panel.expanded')
   if (!panel) return
   if (panel.contains(e.target)) return
-  state.favoritesPanelCollapsed = true
-  localStorage.setItem('favorites_collapsed', '1')
-  render({ sections: ['favorites'] })
+  closeFavoritesPanel()
 }
 
 function handleGlobalKeydown(e) {
@@ -655,9 +678,15 @@ export function bindEvents() {
       // panel.contains(e.target) 검사를 통과하지 못하고 패널이 즉시 다시 닫히므로
       // 여기서 전파를 멈춰 document 핸들러가 받지 못하게 한다.
       e.stopPropagation()
-      state.favoritesPanelCollapsed = !state.favoritesPanelCollapsed
-      localStorage.setItem('favorites_collapsed', state.favoritesPanelCollapsed ? '1' : '0')
-      render({ sections: ['favorites'] })
+      if (state.favoritesPanelCollapsed) {
+        // 펼치기 — 기존 즉시 렌더
+        state.favoritesPanelCollapsed = false
+        localStorage.setItem('favorites_collapsed', '0')
+        render({ sections: ['favorites'] })
+      } else {
+        // 접기 — 닫힘 애니메이션 경유
+        closeFavoritesPanel()
+      }
     })
   }
 
