@@ -2302,51 +2302,101 @@ span.flatpickr-weekday {
 /* ========== 토스트 알림 ========== */
 .toast-container {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 200;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   pointer-events: none;
 }
 
 .toast {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
+  gap: 12px;
+  padding: 12px 18px 12px 14px;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
   font-size: 13px;
-  color: var(--text);
+  line-height: 1.45;
+  color: var(--text-bright);
   pointer-events: auto;
-  animation: toast-in 0.25s ease-out;
-  max-width: 340px;
+  animation: toast-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  min-width: 260px;
+  max-width: 440px;
 }
 
 .toast.toast-out {
-  animation: toast-out 0.2s ease-in forwards;
+  animation: toast-out 0.24s ease-in forwards;
 }
 
+.toast-message {
+  flex: 1;
+  min-width: 0;
+  word-break: keep-all;
+}
+
+/* 상태별 아이콘 원형 배지 + 테두리/그라데이션 틴트 */
 .toast-icon {
   flex-shrink: 0;
-  font-size: 14px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
 }
 
+.toast.toast-success {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: linear-gradient(100deg, var(--green-bg), var(--bg-card) 55%);
+}
+.toast.toast-success .toast-icon { background: var(--green); }
+
+.toast.toast-error {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: linear-gradient(100deg, var(--red-bg), var(--bg-card) 55%);
+}
+.toast.toast-error .toast-icon { background: var(--red); }
+
+.toast.toast-warning {
+  border-color: rgba(234, 179, 8, 0.35);
+  background: linear-gradient(100deg, var(--yellow-bg), var(--bg-card) 55%);
+}
+.toast.toast-warning .toast-icon { background: var(--yellow); color: #1f1500; }
+
+.toast.toast-info {
+  border-color: rgba(99, 102, 241, 0.35);
+  background: linear-gradient(100deg, var(--accent-bg), var(--bg-card) 55%);
+}
+.toast.toast-info .toast-icon { background: var(--accent); }
+
+/* 상단 중앙에서 아래로 슬라이드 인, 다시 위로 슬라이드 아웃 */
 @keyframes toast-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(-32px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes toast-out {
   from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 0; transform: translateY(-32px); }
 }
 
 /* ========== 컨텍스트 메뉴 ========== */
+@keyframes context-menu-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .context-menu {
   position: fixed;
   z-index: 300;
@@ -2356,7 +2406,7 @@ span.flatpickr-weekday {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  animation: toast-in 0.12s ease-out;
+  animation: context-menu-in 0.12s ease-out;
 }
 
 .context-menu-item {

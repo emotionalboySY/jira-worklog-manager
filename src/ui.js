@@ -52,11 +52,19 @@ export function ensureToastContainer() {
   return document.getElementById('toast-container')
 }
 
-export function showToast(message, icon = 'ℹ') {
+// icon → type 매핑 (호출부 변경 없이 색상만 자동 적용)
+function inferToastType(icon) {
+  if (icon === '✓') return 'success'
+  if (icon === '⚠') return 'error'
+  if (icon === '!') return 'warning'
+  return 'info'
+}
+
+export function showToast(message, icon = 'ℹ', type = inferToastType(icon)) {
   const container = ensureToastContainer()
   const toast = document.createElement('div')
-  toast.className = 'toast'
-  toast.innerHTML = `<span class="toast-icon">${icon}</span><span>${message}</span>`
+  toast.className = `toast toast-${type}`
+  toast.innerHTML = `<span class="toast-icon">${icon}</span><span class="toast-message">${message}</span>`
   container.appendChild(toast)
   setTimeout(() => {
     toast.classList.add('toast-out')
