@@ -1,7 +1,20 @@
 // ========== Jira API 호출 모듈 ==========
 import { jiraFetch } from './auth.js'
 
-const FIELDS = 'summary,issuetype,status,priority,reporter,assignee,watches'
+const FIELDS = 'summary,issuetype,status,priority,reporter,assignee,watches,parent'
+
+// 이슈의 parent(상위 항목/에픽) 추출. 없으면 null
+function extractParent(fields) {
+  const p = fields?.parent
+  if (!p || !p.key) return null
+  const pf = p.fields || {}
+  return {
+    key: p.key,
+    summary: pf.summary || '',
+    type: pf.issuetype?.name || '',
+    typeIconUrl: pf.issuetype?.iconUrl || '',
+  }
+}
 
 // 모든 페이지 가져오기 (페이지네이션 처리)
 async function fetchAllPages(jql) {
@@ -60,6 +73,7 @@ export async function fetchMyIssues() {
       statusCategory: fields.status?.statusCategory?.key || 'new',
       priority: fields.priority?.name || '',
       priorityIconUrl: fields.priority?.iconUrl || '',
+      parent: extractParent(fields),
       role,
     }
   })
@@ -118,6 +132,7 @@ export async function searchIssuesByKey(query, projectKeys, { signal } = {}) {
       statusCategory: fields.status?.statusCategory?.key || 'new',
       priority: fields.priority?.name || '',
       priorityIconUrl: fields.priority?.iconUrl || '',
+      parent: extractParent(fields),
       role,
     }
   })

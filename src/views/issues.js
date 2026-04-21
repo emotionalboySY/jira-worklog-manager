@@ -9,6 +9,7 @@ import {
   getTypeIcon,
   getTypeLabel,
   renderIssueKeyLink,
+  renderParentLink,
   getFilteredIssues,
   getProjectIssues,
   getProjectFromKey,
@@ -98,6 +99,7 @@ export function renderIssuesTab() {
             <span class="issue-summary">${escapeHtml(issue.summary || '')}</span>
           </div>
           <div class="issue-right">
+            ${renderParentLink(issue.parent)}
             <button class="btn-star ${isFavorite(issue.key) ? 'is-favorite' : ''}" data-action="toggle-favorite" data-key="${issue.key}" title="${isFavorite(issue.key) ? '즐겨찾기 해제' : '즐겨찾기 추가'}">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="${isFavorite(issue.key) ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>
             </button>

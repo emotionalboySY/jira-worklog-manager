@@ -912,6 +912,42 @@ a.issue-key-link:hover {
   margin-left: 12px;
 }
 
+/* 상위 항목(에픽 등) 뱃지 — 클릭 시 Jira 페이지 새 탭 */
+.issue-parent {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  text-decoration: none;
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+a.issue-parent-link:hover {
+  color: var(--text-bright);
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.issue-parent-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.issue-parent-key {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .issue-tag {
   font-size: 10px;
   font-weight: 600;

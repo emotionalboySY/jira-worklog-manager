@@ -205,6 +205,20 @@ export function renderIssueKeyLink(issueKey) {
   return `<a class="issue-key issue-key-link" data-project="${project}" href="${url}" target="_blank" rel="noopener noreferrer" title="Jira에서 열기">${issueKey}</a>`
 }
 
+// 상위 항목(에픽/스토리 등) 링크 렌더. 없으면 빈 문자열
+// title에 이슈 타입 + 키 + 요약을 담아 호버로 확인 가능 (카드에는 키만 노출)
+export function renderParentLink(parent) {
+  if (!parent || !parent.key) return ''
+  const url = getJiraIssueUrl(parent.key)
+  const title = `${parent.type || '상위 항목'} · ${parent.key}${parent.summary ? ` · ${parent.summary}` : ''}`
+  const iconHtml = parent.typeIconUrl
+    ? `<img class="issue-parent-icon" src="${parent.typeIconUrl}" alt="${escapeHtml(parent.type || '')}" />`
+    : ''
+  const inner = `${iconHtml}<span class="issue-parent-key">${parent.key}</span>`
+  if (!url) return `<span class="issue-parent" title="${escapeHtml(title)}">${inner}</span>`
+  return `<a class="issue-parent issue-parent-link" href="${url}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(title)}">${inner}</a>`
+}
+
 // ========== 이슈 필터/정렬 ==========
 export function getActiveIssues() {
   return state.realIssues
