@@ -2356,27 +2356,29 @@ span.flatpickr-weekday {
   line-height: 1;
 }
 
+/* 그라데이션은 반투명한 --*-bg를 쓰므로, 뒤 콘텐츠가 비치지 않도록
+   불투명 --bg-card 레이어를 그라데이션 아래에 함께 쌓는다. */
 .toast.toast-success {
   border-color: rgba(34, 197, 94, 0.35);
-  background: linear-gradient(100deg, var(--green-bg), var(--bg-card) 55%);
+  background: linear-gradient(100deg, var(--green-bg), transparent 55%), var(--bg-card);
 }
 .toast.toast-success .toast-icon { background: var(--green); }
 
 .toast.toast-error {
   border-color: rgba(239, 68, 68, 0.35);
-  background: linear-gradient(100deg, var(--red-bg), var(--bg-card) 55%);
+  background: linear-gradient(100deg, var(--red-bg), transparent 55%), var(--bg-card);
 }
 .toast.toast-error .toast-icon { background: var(--red); }
 
 .toast.toast-warning {
   border-color: rgba(234, 179, 8, 0.35);
-  background: linear-gradient(100deg, var(--yellow-bg), var(--bg-card) 55%);
+  background: linear-gradient(100deg, var(--yellow-bg), transparent 55%), var(--bg-card);
 }
 .toast.toast-warning .toast-icon { background: var(--yellow); color: #1f1500; }
 
 .toast.toast-info {
   border-color: rgba(99, 102, 241, 0.35);
-  background: linear-gradient(100deg, var(--accent-bg), var(--bg-card) 55%);
+  background: linear-gradient(100deg, var(--accent-bg), transparent 55%), var(--bg-card);
 }
 .toast.toast-info .toast-icon { background: var(--accent); }
 
