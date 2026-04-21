@@ -76,6 +76,20 @@ function on(el, event, handler, options) {
 // 오버레이 바깥 클릭 닫기는 textarea 드래그 선택이 밖에서 끝날 때 오탐하므로 제거.
 // 취소/X 버튼과 ESC로만 닫는다.
 let globalKeyListenerRegistered = false
+let globalClickListenerRegistered = false
+
+// 즐겨찾기 패널이 펼쳐져 있을 때 패널 바깥을 클릭하면 접기.
+// 이슈 목록의 star/시작/수동기록 버튼은 stopPropagation을 호출하므로 여기로 전파되지 않아
+// 패널이 열린 상태에서 별을 눌러 즐겨찾기를 추가/해제해도 패널은 유지된다.
+function handleGlobalClick(e) {
+  if (state.favoritesPanelCollapsed) return
+  const panel = document.querySelector('.favorites-panel.expanded')
+  if (!panel) return
+  if (panel.contains(e.target)) return
+  state.favoritesPanelCollapsed = true
+  localStorage.setItem('favorites_collapsed', '1')
+  render({ sections: ['favorites'] })
+}
 
 function handleGlobalKeydown(e) {
   // Ctrl/Cmd + Enter → 최상단 모달의 주 액션(Jira 기록 등) 트리거
@@ -149,6 +163,10 @@ export function bindEvents() {
   if (!globalKeyListenerRegistered) {
     on(document, 'keydown', handleGlobalKeydown)
     globalKeyListenerRegistered = true
+  }
+  if (!globalClickListenerRegistered) {
+    on(document, 'click', handleGlobalClick)
+    globalClickListenerRegistered = true
   }
 
   // 테마 토글

@@ -608,9 +608,15 @@ a.issue-key-link:hover {
   border-radius: 10px;
 }
 
+@keyframes status-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
 .session-status.active {
   color: var(--green);
   background: var(--green-bg);
+  animation: status-blink 1.6s ease-in-out infinite;
 }
 
 .session-status.paused {
@@ -1002,6 +1008,10 @@ a.issue-parent-link:hover {
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 
+.session-active-finish .active-label {
+  animation: status-blink 1.6s ease-in-out infinite;
+}
+
 .session-active-finish .finish-label {
   display: none;
 }
@@ -1046,7 +1056,7 @@ a.issue-parent-link:hover {
 
 /* ========== 플로팅 즐겨찾기 패널 ========== */
 @keyframes favorites-expand-in {
-  from { opacity: 0; transform: scale(0.92) translateY(-6px); }
+  from { opacity: 0; transform: scale(0.92) translateY(6px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
@@ -1058,7 +1068,7 @@ a.issue-parent-link:hover {
 .favorites-panel {
   position: fixed;
   right: 20px;
-  top: 88px;
+  bottom: 20px;
   z-index: 150;
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -1073,7 +1083,7 @@ a.issue-parent-link:hover {
 }
 
 .favorites-panel.expanded {
-  transform-origin: top right;
+  transform-origin: bottom right;
   animation: favorites-expand-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 body:has(#settings-overlay) .favorites-panel {
@@ -1120,7 +1130,7 @@ body:has(#settings-overlay) .favorites-panel {
 
 .favorites-panel.expanded {
   width: 300px;
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
 }
@@ -1254,7 +1264,6 @@ body:has(#settings-overlay) .favorites-panel {
 @media (max-width: 900px) {
   .favorites-panel {
     right: 12px;
-    top: auto;
     bottom: 16px;
   }
   .favorites-panel.expanded {
