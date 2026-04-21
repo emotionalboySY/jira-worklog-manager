@@ -84,6 +84,18 @@ export function render(options = {}) {
     state.flatpickrInstance = null
   }
 
+  // 이미 열려 있는 모달/패널은 재렌더 시 CSS 애니메이션이 다시 재생되면
+  // "모달이 다시 로드되는 것처럼" 보인다. 재생성 직전에 상태를 기록해두고
+  // 재생성 직후 같은 상태라면 애니메이션을 꺼 준다.
+  const MODAL_OVERLAY_IDS = [
+    'modal-overlay',
+    'cancel-overlay',
+    'edit-worklog-overlay',
+    'delete-worklog-overlay',
+    'manual-log-overlay',
+    'settings-overlay',
+  ]
+
   for (const name of sections) {
     const spec = SECTIONS[name]
     if (!spec) continue
@@ -97,11 +109,40 @@ export function render(options = {}) {
       if (modal) settingsScroll = modal.scrollTop
     }
 
+    // 재렌더 전 오픈 상태 캡처 (애니메이션 재생 방지용)
+    const wasMountedOverlays = new Set()
+    let prevFavState = null
+    if (name === 'modals') {
+      for (const id of MODAL_OVERLAY_IDS) {
+        if (container.querySelector('#' + id)) wasMountedOverlays.add(id)
+      }
+    } else if (name === 'favorites') {
+      const panel = container.querySelector('.favorites-panel')
+      if (panel) prevFavState = panel.classList.contains('expanded') ? 'expanded' : 'collapsed'
+    }
+
     container.innerHTML = spec.render()
 
     if (settingsScroll !== null) {
       const modal = container.querySelector('.modal-settings')
       if (modal) modal.scrollTop = settingsScroll
+    }
+
+    // 재렌더 전후 동일하게 떠 있는 모달/패널은 애니메이션 끔
+    if (name === 'modals') {
+      for (const id of wasMountedOverlays) {
+        const overlay = container.querySelector('#' + id)
+        if (!overlay) continue
+        overlay.style.animation = 'none'
+        const card = overlay.querySelector('.modal')
+        if (card) card.style.animation = 'none'
+      }
+    } else if (name === 'favorites' && prevFavState) {
+      const panel = container.querySelector('.favorites-panel')
+      if (panel) {
+        const newState = panel.classList.contains('expanded') ? 'expanded' : 'collapsed'
+        if (newState === prevFavState) panel.style.animation = 'none'
+      }
     }
   }
 
