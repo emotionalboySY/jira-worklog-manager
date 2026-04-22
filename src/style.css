@@ -269,8 +269,7 @@ body.tab-logs .log-main > .log-detail {
 }
 
 /* log-detail 내부 고정 영역: 연반차 토글, 합계 */
-body.tab-logs .log-detail > .day-off-toggle,
-body.tab-logs .log-detail > .log-summary {
+body.tab-logs .log-detail > .day-off-toggle {
   flex-shrink: 0;
 }
 
@@ -1986,26 +1985,28 @@ span.flatpickr-weekday {
   flex-shrink: 0;
 }
 
-.log-summary {
-  margin-top: 16px;
-  padding: 14px 18px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+/* 연반차 토글 바 오른쪽 끝에 얹는 총 작업 시간 인라인 표시
+   (기존 하단 log-summary 박스가 즐겨찾기 FAB와 겹치는 문제를 해결) */
+.log-total-inline {
+  margin-left: auto;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
 }
 
-.log-summary-label {
-  font-size: 13px;
+.log-total-inline-label {
+  font-size: 11px;
+  font-weight: 600;
   color: var(--text-dim);
+  letter-spacing: 0.3px;
 }
 
-.log-summary-value {
-  font-size: 20px;
+.log-total-inline-value {
+  font-size: 16px;
   font-weight: 700;
   color: var(--text-bright);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ========== 요약 (대시보드) ========== */

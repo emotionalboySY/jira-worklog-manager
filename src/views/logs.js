@@ -139,7 +139,7 @@ export function renderDateNav() {
   `
 }
 
-export function renderDayOffToggle() {
+export function renderDayOffToggle(totalMinutes = 0) {
   const current = getDayOff(state.logDate)
   const options = [
     { value: 'none', label: '없음' },
@@ -155,6 +155,12 @@ export function renderDayOffToggle() {
           <button class="day-off-btn ${(current || 'none') === o.value ? 'active' : ''}" data-day-off="${o.value}">${o.label}</button>
         `).join('')}
       </div>
+      ${totalMinutes > 0 ? `
+        <div class="log-total-inline">
+          <span class="log-total-inline-label">총 작업 시간</span>
+          <span class="log-total-inline-value">${formatMinutes(totalMinutes)}</span>
+        </div>
+      ` : ''}
     </div>
   `
 }
@@ -165,7 +171,7 @@ export function renderLogDetail() {
 
   return `
     <div class="log-detail">
-      ${renderDayOffToggle()}
+      ${renderDayOffToggle(totalMinutes)}
       ${state.worklogsLoading && logs.length === 0 ? `
         <div class="loading-container">
           <div class="loading-spinner"></div>
@@ -195,10 +201,6 @@ export function renderLogDetail() {
               ` : ''}
             </div>
           `).join('')}
-        </div>
-        <div class="log-summary">
-          <span class="log-summary-label">총 작업 시간</span>
-          <span class="log-summary-value">${formatMinutes(totalMinutes)}</span>
         </div>
       `}
     </div>
