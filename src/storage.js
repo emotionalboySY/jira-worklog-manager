@@ -18,6 +18,13 @@ import { calcLunchOverlap } from './utils.js'
 // ========== 세션 관리 (segments 기반) ==========
 // 세션 구조: { issueKey, summary, status, segments: [{ start, end }] }
 // segments: 실제 작업한 구간 목록. end=null이면 현재 진행 중
+
+// 1분 미만의 짧은 활동은 별도 구간으로 기록하지 않고 합치거나 버림.
+// - 재개: 직전 구간을 이어서 (새 구간 push 하지 않음)
+// - 다른 일감 시작: 현재 active 구간이 1분 미만이면 마지막 구간을 제거
+//   (유일 구간이면 세션 전체 삭제 = 일감 변경과 동일)
+const SEGMENT_MERGE_THRESHOLD_MS = 60 * 1000
+
 export function loadSessions() {
   try {
     const raw = localStorage.getItem(SESSIONS_KEY)
@@ -36,14 +43,39 @@ export function saveSessions(sessions) {
   localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
 }
 
-// 현재 active 세션의 마지막 segment를 닫음
+// 현재 active 세션의 마지막 segment를 닫음.
+// 단, 마지막 구간이 시작된 지 1분 미만이면 그 구간을 기록 없이 버린다.
+// (짧은 오클릭/빠른 전환을 "일감 변경"처럼 처리 — 유일 구간이면 세션 전체 삭제)
 export function pauseActiveSession(sessions) {
-  const active = sessions.find(s => s.status === 'active')
-  if (active) {
-    active.status = 'paused'
-    const lastSeg = active.segments[active.segments.length - 1]
-    if (lastSeg && !lastSeg.end) lastSeg.end = new Date()
+  const activeIdx = sessions.findIndex(s => s.status === 'active')
+  if (activeIdx < 0) return
+  const active = sessions[activeIdx]
+  const lastSeg = active.segments[active.segments.length - 1]
+  if (!lastSeg) return
+  const segAge = Date.now() - lastSeg.start.getTime()
+  if (segAge < SEGMENT_MERGE_THRESHOLD_MS) {
+    // 1분 미만의 구간 → 없던 일로
+    if (active.segments.length === 1) {
+      sessions.splice(activeIdx, 1)
+    } else {
+      active.segments.pop()
+      active.status = 'paused'
+    }
+    return
   }
+  active.status = 'paused'
+  if (!lastSeg.end) lastSeg.end = new Date()
+}
+
+// 재개 시 직전 구간이 1분 미만 전에 닫혔으면 새 구간을 만들지 않고 그 구간을 다시 연다.
+function reopenOrPushSegment(session) {
+  const lastSeg = session.segments[session.segments.length - 1]
+  const now = new Date()
+  if (lastSeg && lastSeg.end && (now.getTime() - lastSeg.end.getTime()) < SEGMENT_MERGE_THRESHOLD_MS) {
+    lastSeg.end = null
+    return
+  }
+  session.segments.push({ start: now, end: null })
 }
 
 export function addSession(issueKey, summary) {
@@ -54,12 +86,12 @@ export function addSession(issueKey, summary) {
     if (existing.status === 'paused') {
       pauseActiveSession(sessions)
       existing.status = 'active'
-      existing.segments.push({ start: new Date(), end: null })
+      reopenOrPushSegment(existing)
     }
     saveSessions(sessions)
     return true
   }
-  // 기존 active 세션 자동 중단
+  // 기존 active 세션 자동 중단 (1분 미만이면 덮어쓰기)
   pauseActiveSession(sessions)
   sessions.push({
     issueKey,
@@ -85,10 +117,10 @@ export function resumeSession(issueKey) {
   const sessions = loadSessions()
   const s = sessions.find(s => s.issueKey === issueKey)
   if (!s || s.status !== 'paused') return
-  // 기존 active 세션 자동 중단
+  // 기존 active 세션 자동 중단 (1분 미만이면 덮어쓰기)
   pauseActiveSession(sessions)
   s.status = 'active'
-  s.segments.push({ start: new Date(), end: null })
+  reopenOrPushSegment(s)
   saveSessions(sessions)
 }
 
