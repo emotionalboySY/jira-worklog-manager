@@ -103,7 +103,7 @@ export function renderIssuesTab() {
             <button class="btn-star ${isFavorite(issue.key) ? 'is-favorite' : ''}" data-action="toggle-favorite" data-key="${issue.key}" title="${isFavorite(issue.key) ? '즐겨찾기 해제' : '즐겨찾기 추가'}">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="${isFavorite(issue.key) ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>
             </button>
-            <span class="issue-status ${statusCss}" title="${rawStatus}">${statusLabel}</span>
+            ${renderStatusButton(issue, statusCss, statusLabel, rawStatus)}
             ${renderAssigneeAvatar(issue.assignee)}
             ${issue.role && issue.role !== 'none'
               ? `<span class="issue-tag ${issue.role}">${{ assignee: '할당', reporter: '보고', watcher: '워칭' }[issue.role]}</span>`
@@ -125,6 +125,17 @@ export function renderIssuesTab() {
     </div>
     ${!isSearchMode ? renderPagination(filtered.length) : ''}
   `
+}
+
+// 상태 버튼 — 클릭 시 전이 드롭다운 토글. statusTransitioning에 이슈 키가 있으면
+// 스피너 + disabled. 이슈별 독립 로딩이라 다른 이슈 버튼은 영향받지 않음.
+function renderStatusButton(issue, statusCss, statusLabel, rawStatus) {
+  const isLoading = state.statusTransitioning.has(issue.key)
+  if (isLoading) {
+    return `<button type="button" class="issue-status ${statusCss} is-loading" disabled aria-label="상태 변경 중"><span class="btn-spinner"></span></button>`
+  }
+  const titleSafe = escapeHtml(rawStatus || '-')
+  return `<button type="button" class="issue-status ${statusCss}" data-action="toggle-status-menu" data-key="${issue.key}" title="${titleSafe} · 클릭하여 상태 변경">${statusLabel}</button>`
 }
 
 // 담당자 원형 프로필. 미할당이면 SVG 실루엣 기본 아이콘

@@ -154,6 +154,15 @@ export const state = {
   swapKeySearchController: null,
   swapKeyActiveIdx: -1,
 
+  // 이슈 상태 전이: 이슈별 독립 로딩 트래킹 (전이 조회 OR 실행 중인 키 집합)
+  // 한 이슈가 로딩 중이어도 다른 이슈의 전이 시도는 독립적으로 가능
+  statusTransitioning: new Set(),
+  // 상태 드롭다운: { issueKey, rect, transitions, loading } | null
+  statusDropdown: null,
+  // 추가 필드(resolution 등)를 요구하는 전이용 2차 모달:
+  // { issueKey, transition, values, submitting } | null
+  transitionFieldsModal: null,
+
   // ----- 테마/패널 -----
   theme: localStorage.getItem('theme') || 'dark',
   favoritesPanelCollapsed: (localStorage.getItem('favorites_collapsed') === '1'),

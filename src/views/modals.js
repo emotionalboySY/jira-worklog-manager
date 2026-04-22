@@ -12,6 +12,8 @@ import {
   escapeHtml,
   formatMinutes,
   getActiveIssues,
+  getStatusCss,
+  getShortStatusLabel,
 } from '../utils.js'
 import { loadWorklogs } from '../data.js'
 
@@ -195,6 +197,135 @@ export function updateFinishDurationReadouts() {
     totalEl.classList.toggle('error', anyInvalid)
   }
   return { valid: !anyInvalid, totalActual, perSegment }
+}
+
+// ========== 이슈 상태 전이 드롭다운 ==========
+// position: fixed로 화면 좌표 기준 배치. 이슈 목록 스크롤 / ESC / 바깥 클릭 시 닫힘.
+// transitions=null이면 로딩 중 (전이 조회 API 대기)
+export function renderStatusDropdown() {
+  const dd = state.statusDropdown
+  if (!dd) return ''
+  const { rect, transitions, loading } = dd
+  // 우측 정렬 (상태 버튼 오른쪽 끝에 맞춤) + 아래로 펼침
+  const top = Math.round(rect.bottom + 4)
+  const right = Math.max(8, Math.round(window.innerWidth - rect.right))
+  const style = `top:${top}px; right:${right}px;`
+
+  if (loading) {
+    return `
+      <div class="status-dropdown" id="status-dropdown" style="${style}">
+        <div class="status-dropdown-loading"><span class="btn-spinner"></span><span>상태 조회 중...</span></div>
+      </div>
+    `
+  }
+
+  if (!transitions || transitions.length === 0) {
+    return `
+      <div class="status-dropdown" id="status-dropdown" style="${style}">
+        <div class="status-dropdown-empty">전환 가능한 상태가 없습니다.</div>
+      </div>
+    `
+  }
+
+  const itemsHtml = transitions.map(t => {
+    const categoryCss = getStatusCss(t.to?.statusCategory?.key || 'new')
+    const label = getShortStatusLabel(t.to?.name || t.name || '-')
+    const needsFields = hasRequiredFields(t)
+    return `
+      <button type="button" class="status-dropdown-item" data-action="apply-transition" data-transition-id="${escapeHtml(String(t.id))}" data-needs-fields="${needsFields ? '1' : '0'}">
+        <span class="issue-status ${categoryCss}">${escapeHtml(label)}</span>
+        <span class="status-dropdown-transition-name">${escapeHtml(t.name || '')}</span>
+        ${needsFields ? '<span class="status-dropdown-screen-badge" title="추가 정보 입력 필요">⚠</span>' : ''}
+      </button>
+    `
+  }).join('')
+
+  return `
+    <div class="status-dropdown" id="status-dropdown" style="${style}">
+      ${itemsHtml}
+    </div>
+  `
+}
+
+// 전이에 필수 필드(resolution 등)가 있는지 검사
+export function hasRequiredFields(transition) {
+  const fields = transition.fields || {}
+  return Object.values(fields).some(f => f && f.required)
+}
+
+// ========== 상태 전이 필드 모달 (resolution 등 추가 입력용) ==========
+export function renderTransitionFieldsModal() {
+  const ctx = state.transitionFieldsModal
+  if (!ctx) return ''
+  const { issueKey, transition, values, submitting } = ctx
+  const requiredEntries = Object.entries(transition.fields || {}).filter(([, f]) => f && f.required)
+
+  const fieldsHtml = requiredEntries.map(([key, field]) => {
+    const label = field.name || key
+    const allowed = Array.isArray(field.allowedValues) ? field.allowedValues : []
+    const currentVal = values[key] ?? ''
+
+    if (allowed.length > 0) {
+      const options = allowed.map(v => {
+        const optVal = v.id ?? v.value ?? v.name ?? ''
+        const optLabel = v.name ?? v.value ?? v.id ?? ''
+        const selected = String(currentVal) === String(optVal) ? 'selected' : ''
+        return `<option value="${escapeHtml(String(optVal))}" ${selected}>${escapeHtml(String(optLabel))}</option>`
+      }).join('')
+      return `
+        <div class="modal-field">
+          <label class="modal-label">${escapeHtml(label)} *</label>
+          <select class="modal-input transition-field" data-field-key="${escapeHtml(key)}" data-field-shape="select">
+            <option value="">선택...</option>
+            ${options}
+          </select>
+        </div>
+      `
+    }
+    // 텍스트 입력 (단순 string)
+    return `
+      <div class="modal-field">
+        <label class="modal-label">${escapeHtml(label)} *</label>
+        <textarea class="modal-textarea transition-field" data-field-key="${escapeHtml(key)}" data-field-shape="text">${escapeHtml(String(currentVal))}</textarea>
+      </div>
+    `
+  }).join('')
+
+  return `
+    <div class="modal-overlay" id="transition-fields-overlay">
+      <div class="modal">
+        <div class="modal-title">${escapeHtml(issueKey)} 상태 전환</div>
+        <div class="modal-section-label">
+          <strong>${escapeHtml(transition.to?.name || transition.name || '')}</strong> 상태로 전환하려면 다음 정보가 필요합니다.
+        </div>
+        ${fieldsHtml}
+        <div class="modal-actions">
+          <button class="btn" id="transition-fields-cancel" ${submitting ? 'disabled' : ''}>취소</button>
+          <button class="btn btn-primary ${submitting ? 'is-loading' : ''}" id="transition-fields-submit" ${submitting ? 'disabled' : ''}>
+            ${submitting ? '<span class="btn-spinner"></span>' : '전환'}
+          </button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// 전이 필드 값에서 Jira API body용 fields 오브젝트 생성
+// 간단 필드만 지원: allowedValues 있으면 { id } 참조, 없으면 string
+export function buildTransitionFieldsPayload(transition, values) {
+  const payload = {}
+  for (const [key, field] of Object.entries(transition.fields || {})) {
+    if (!field.required) continue
+    const v = values[key]
+    if (v === undefined || v === null || v === '') continue
+    const allowed = Array.isArray(field.allowedValues) ? field.allowedValues : []
+    if (allowed.length > 0) {
+      payload[key] = { id: String(v) }
+    } else {
+      payload[key] = v
+    }
+  }
+  return payload
 }
 
 // ========== 세션 일감 교체 모달 ==========

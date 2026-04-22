@@ -9,6 +9,9 @@ import {
   createWorklog,
   updateWorklog,
   deleteWorklog,
+  fetchTransitions,
+  transitionIssue,
+  fetchIssueStatus,
 } from './jira.js'
 import {
   loadSessions,
@@ -24,6 +27,7 @@ import {
   loadPreferences,
   savePreferences,
   resetPreferences,
+  saveIssuesCache,
 } from './storage.js'
 import {
   toDateString,
@@ -60,6 +64,8 @@ import {
   renderKeyHint,
   updateKeyDropdown,
   selectKeyCandidate,
+  hasRequiredFields,
+  buildTransitionFieldsPayload,
 } from './views/modals.js'
 import { ensureSummaryWorklogs } from './views/summary.js'
 import { render, resetIssueListScroll } from './render.js'
@@ -110,6 +116,16 @@ function closeFavoritesPanel() {
 // 이슈 목록의 star/시작/수동기록 버튼은 stopPropagation을 호출하므로 여기로 전파되지 않아
 // 패널이 열린 상태에서 별을 눌러 즐겨찾기를 추가/해제해도 패널은 유지된다.
 function handleGlobalClick(e) {
+  // 상태 드롭다운: 드롭다운 바깥 + 상태 버튼 바깥을 클릭하면 닫음
+  if (state.statusDropdown) {
+    const dd = document.getElementById('status-dropdown')
+    const clickedOnTrigger = e.target.closest?.('[data-action="toggle-status-menu"]')
+    if (dd && !dd.contains(e.target) && !clickedOnTrigger) {
+      state.statusDropdown = null
+      render({ sections: ['modals'] })
+    }
+  }
+
   if (state.favoritesPanelCollapsed) return
   const panel = document.querySelector('.favorites-panel.expanded')
   if (!panel) return
@@ -123,7 +139,8 @@ function handleGlobalKeydown(e) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     // 우선순위: 가장 나중에 열린 모달 우선
     let submitBtn = null
-    if (state.showSwapIssue) submitBtn = document.getElementById('swap-issue-submit')
+    if (state.transitionFieldsModal) submitBtn = document.getElementById('transition-fields-submit')
+    else if (state.showSwapIssue) submitBtn = document.getElementById('swap-issue-submit')
     else if (state.editingWorklog) submitBtn = document.getElementById('edit-worklog-submit')
     else if (state.showManualLog) submitBtn = document.getElementById('manual-log-submit')
     else if (state.showModal) submitBtn = document.getElementById('modal-submit')
@@ -135,6 +152,17 @@ function handleGlobalKeydown(e) {
   }
   if (e.key !== 'Escape') return
   const modalsOnly = { sections: ['modals'] }
+  if (state.transitionFieldsModal) {
+    if (state.transitionFieldsModal.submitting) return
+    state.transitionFieldsModal = null
+    render(modalsOnly)
+    return
+  }
+  if (state.statusDropdown) {
+    state.statusDropdown = null
+    render(modalsOnly)
+    return
+  }
   if (state.showSwapIssue) {
     state.showSwapIssue = null
     state.swapIssueCheck = null
@@ -188,6 +216,51 @@ function deriveProjectColors(hex) {
     fg,
     bg: `rgba(${r}, ${g}, ${b}, 0.14)`,
   }
+}
+
+// ========== 상태 전이 실행 ==========
+// 이슈별 독립 로딩: state.statusTransitioning에 키를 추가/제거.
+// 여러 이슈의 전이가 동시에 진행돼도 각자 독립 스피너가 돌아감.
+// fields=null이면 필드 없는 단순 전이, 객체면 해당 필드들을 함께 전송.
+async function performTransition(issueKey, transition, fields) {
+  state.statusTransitioning.add(issueKey)
+  // 해당 이슈의 상태 버튼만 스피너로 갱신
+  render({ sections: ['content'] })
+  try {
+    await transitionIssue(issueKey, transition.id, fields)
+    // 전이 후 실제 status 재조회 (워크플로우에 따라 전이의 to.name과 실제 이동값이 다를 수 있음)
+    const latest = await fetchIssueStatus(issueKey)
+    if (latest) {
+      updateIssueStatusInState(issueKey, latest)
+    } else {
+      // 폴백: transition 정의대로 낙관적 업데이트
+      updateIssueStatusInState(issueKey, {
+        status: transition.to?.name || '',
+        statusCategory: transition.to?.statusCategory?.key || 'new',
+      })
+    }
+    showToast(`${issueKey} → ${transition.to?.name || transition.name}`, '✓')
+  } catch (e) {
+    console.error('상태 전이 실패:', e)
+    showToast(`상태 변경 실패: ${formatJiraError(e)}`, '⚠')
+  } finally {
+    state.statusTransitioning.delete(issueKey)
+    render({ sections: ['content'] })
+  }
+}
+
+// realIssues / searchResults에서 이슈의 status/statusCategory 갱신 + 캐시 동기화
+function updateIssueStatusInState(issueKey, { status, statusCategory }) {
+  const apply = (arr) => {
+    if (!Array.isArray(arr)) return
+    const idx = arr.findIndex(i => i.key === issueKey)
+    if (idx >= 0) {
+      arr[idx] = { ...arr[idx], status, statusCategory }
+    }
+  }
+  apply(state.realIssues)
+  apply(state.searchResults)
+  try { saveIssuesCache(state.realIssues, state.realProjects) } catch {}
 }
 
 // ========== 이벤트 바인딩 ==========
@@ -766,6 +839,132 @@ export function bindEvents() {
       addSession(NO_ISSUE_KEY, NO_ISSUE_SUMMARY)
       showToast('일감 미지정 작업을 시작했습니다. 종료 시 이슈를 지정해주세요.', '✓')
       render()
+    })
+  }
+
+  // 이슈 상태 버튼 → 전이 드롭다운 토글
+  document.querySelectorAll('[data-action="toggle-status-menu"]').forEach(btn => {
+    on(btn, 'click', async (e) => {
+      e.stopPropagation()
+      const key = btn.dataset.key
+      if (!key) return
+      // 이미 이 이슈에 대해 드롭다운이 열려있으면 닫기 (토글)
+      if (state.statusDropdown && state.statusDropdown.issueKey === key) {
+        state.statusDropdown = null
+        render({ sections: ['modals'] })
+        return
+      }
+      const rect = btn.getBoundingClientRect()
+      state.statusDropdown = {
+        issueKey: key,
+        rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+        transitions: null,
+        loading: true,
+      }
+      render({ sections: ['modals'] })
+      try {
+        const transitions = await fetchTransitions(key)
+        // 로딩 중 사용자가 다른 이슈로 드롭다운을 전환했을 수 있음
+        if (state.statusDropdown && state.statusDropdown.issueKey === key) {
+          state.statusDropdown.transitions = transitions
+          state.statusDropdown.loading = false
+          render({ sections: ['modals'] })
+        }
+      } catch (err) {
+        console.error('전이 조회 실패:', err)
+        if (state.statusDropdown && state.statusDropdown.issueKey === key) {
+          state.statusDropdown = null
+          render({ sections: ['modals'] })
+        }
+        showToast(`상태 조회 실패: ${formatJiraError(err)}`, '⚠')
+      }
+    })
+  })
+
+  // 드롭다운의 전이 항목 선택 → 필드 필요하면 2차 모달, 아니면 즉시 실행
+  document.querySelectorAll('[data-action="apply-transition"]').forEach(btn => {
+    on(btn, 'click', async (e) => {
+      e.stopPropagation()
+      const dd = state.statusDropdown
+      if (!dd) return
+      const transitionId = btn.dataset.transitionId
+      const needsFields = btn.dataset.needsFields === '1'
+      const transition = (dd.transitions || []).find(t => String(t.id) === String(transitionId))
+      if (!transition) return
+      const issueKey = dd.issueKey
+      // 드롭다운 닫기
+      state.statusDropdown = null
+
+      if (needsFields) {
+        // 필수 필드 있는 전이 → 2차 모달
+        state.transitionFieldsModal = { issueKey, transition, values: {}, submitting: false }
+        render({ sections: ['modals'] })
+        return
+      }
+      render({ sections: ['modals'] })
+      await performTransition(issueKey, transition, null)
+    })
+  })
+
+  // 필드 모달: 입력값을 state.values에 실시간 반영 (재렌더로 값 날아가지 않도록)
+  document.querySelectorAll('.transition-field').forEach(input => {
+    on(input, 'input', () => {
+      if (!state.transitionFieldsModal) return
+      const key = input.dataset.fieldKey
+      state.transitionFieldsModal.values[key] = input.value
+    })
+    on(input, 'change', () => {
+      if (!state.transitionFieldsModal) return
+      const key = input.dataset.fieldKey
+      state.transitionFieldsModal.values[key] = input.value
+    })
+  })
+
+  // 필드 모달 취소
+  const transitionFieldsCancel = document.getElementById('transition-fields-cancel')
+  if (transitionFieldsCancel) {
+    on(transitionFieldsCancel, 'click', () => {
+      if (state.transitionFieldsModal?.submitting) return
+      state.transitionFieldsModal = null
+      render({ sections: ['modals'] })
+    })
+  }
+
+  // 필드 모달 제출 → 전이 실행
+  const transitionFieldsSubmit = document.getElementById('transition-fields-submit')
+  if (transitionFieldsSubmit) {
+    on(transitionFieldsSubmit, 'click', async () => {
+      const ctx = state.transitionFieldsModal
+      if (!ctx || ctx.submitting) return
+      const { issueKey, transition, values } = ctx
+      // 필수 필드 검증
+      const missing = Object.entries(transition.fields || {})
+        .filter(([, f]) => f.required)
+        .filter(([key]) => {
+          const v = values[key]
+          return v === undefined || v === null || v === ''
+        })
+      if (missing.length > 0) {
+        alert(`다음 필드를 입력해주세요:\n- ${missing.map(([, f]) => f.name || '-').join('\n- ')}`)
+        return
+      }
+      ctx.submitting = true
+      render({ sections: ['modals'] })
+      const fieldsPayload = buildTransitionFieldsPayload(transition, values)
+      await performTransition(issueKey, transition, fieldsPayload)
+      state.transitionFieldsModal = null
+      render({ sections: ['modals'] })
+    })
+  }
+
+  // 이슈 목록 스크롤 시 드롭다운 닫기 (fixed position이라 스크롤 따라가지 않음)
+  const issueListEl = document.querySelector('.issue-list')
+  if (issueListEl) {
+    on(issueListEl, 'scroll', () => {
+      if (state.statusDropdown) {
+        state.statusDropdown = null
+        render({ sections: ['modals'] })
+      }
     })
   }
 

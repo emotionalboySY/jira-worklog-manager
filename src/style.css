@@ -887,6 +887,33 @@ a.issue-key-link:hover {
   text-align: center;
 }
 
+/* 상태 버튼(<button class="issue-status">)은 상태 전이 트리거 */
+button.issue-status {
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+  transition: filter 0.15s, border-color 0.15s;
+}
+
+button.issue-status:hover:not(:disabled) {
+  filter: brightness(1.12);
+  border-color: currentColor;
+}
+
+button.issue-status.is-loading,
+button.issue-status:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+button.issue-status .btn-spinner {
+  width: 11px;
+  height: 11px;
+  border-width: 1.5px;
+  vertical-align: middle;
+}
+
 .issue-status.todo {
   color: var(--text-dim);
   background: var(--bg-hover);
@@ -3161,6 +3188,68 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 .settings-segmented-btn.active {
   background: var(--accent);
   color: #ffffff;
+}
+
+/* ========== 이슈 상태 전이 드롭다운 ========== */
+.status-dropdown {
+  position: fixed;
+  z-index: 200;
+  min-width: 180px;
+  max-width: 280px;
+  padding: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  animation: status-dropdown-in 0.12s ease-out;
+}
+
+@keyframes status-dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.status-dropdown-loading,
+.status-dropdown-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.status-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.status-dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.status-dropdown-transition-name {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.status-dropdown-screen-badge {
+  font-size: 11px;
+  color: var(--yellow);
+  flex-shrink: 0;
 }
 
 /* ========== 접근성: 모션 최소화 설정 시 애니메이션 축소 ========== */

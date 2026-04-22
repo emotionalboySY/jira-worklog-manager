@@ -16,6 +16,8 @@ import {
   renderDeleteWorklogConfirm,
   renderManualLogModal,
   renderSwapIssueModal,
+  renderStatusDropdown,
+  renderTransitionFieldsModal,
 } from './views/modals.js'
 import { renderSettingsFab, renderSettingsModal } from './views/settings.js'
 import { bindEvents, startTimerUpdate } from './events.js'
@@ -31,6 +33,8 @@ function renderModalsHtml() {
     ${state.showManualLog ? renderManualLogModal() : ''}
     ${state.showSettings ? renderSettingsModal() : ''}
     ${state.showSwapIssue ? renderSwapIssueModal() : ''}
+    ${state.statusDropdown ? renderStatusDropdown() : ''}
+    ${state.transitionFieldsModal ? renderTransitionFieldsModal() : ''}
   `
 }
 
@@ -108,6 +112,7 @@ export function render(options = {}) {
     'manual-log-overlay',
     'settings-overlay',
     'swap-issue-overlay',
+    'transition-fields-overlay',
   ]
 
   for (const name of sections) {

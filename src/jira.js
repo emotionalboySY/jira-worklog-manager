@@ -292,6 +292,40 @@ export async function fetchActiveSprintIssueKeys() {
 }
 
 // 이슈 단일 조회 (요약 미리보기 및 유효성 검사용)
+// 이슈에 대해 현재 가능한 상태 전이 목록 조회 (프로젝트/워크플로우마다 다름)
+// expand=transitions.fields로 각 전이의 필수 필드(resolution 등)까지 함께 가져옴
+export async function fetchTransitions(issueKey, { signal } = {}) {
+  const data = await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}/transitions?expand=transitions.fields`,
+    { signal }
+  )
+  return data?.transitions || []
+}
+
+// 전이 실행. fields는 transition에 필요한 추가 데이터 (예: { resolution: { id: '10000' } })
+export async function transitionIssue(issueKey, transitionId, fields = null) {
+  const body = { transition: { id: String(transitionId) } }
+  if (fields && Object.keys(fields).length > 0) body.fields = fields
+  return jiraFetch(`/issue/${encodeURIComponent(issueKey)}/transitions`, {
+    method: 'POST',
+    body,
+  })
+}
+
+// 전이 후 최신 status/statusCategory 읽기 (낙관적 업데이트 후 서버 값으로 보정)
+export async function fetchIssueStatus(issueKey, { signal } = {}) {
+  const data = await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}?fields=status`,
+    { signal }
+  )
+  const s = data?.fields?.status
+  if (!s) return null
+  return {
+    status: s.name || '',
+    statusCategory: s.statusCategory?.key || 'new',
+  }
+}
+
 export async function fetchIssueMeta(issueKey, { signal } = {}) {
   const data = await jiraFetch(
     `/issue/${encodeURIComponent(issueKey)}?fields=summary,issuetype,status`,
