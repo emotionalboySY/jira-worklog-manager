@@ -1,9 +1,8 @@
 // 비동기 데이터 로더 / 검색
-import { state, WORKLOG_CACHE_KEY } from './state.js'
+import { state } from './state.js'
 import {
   loadIssuesCache,
   saveIssuesCache,
-  loadWorklogCache,
   saveWorklogCache,
   getCachedMonth,
   mergeLogs,
@@ -64,6 +63,10 @@ export async function loadIssues() {
     }
   } catch (e) {
     console.error('이슈 로드 실패:', e)
+    // 초기 로드(캐시 없음)에서 실패하면 화면이 빈 상태로만 남아 사용자가 상황을 모름
+    if (!cached) {
+      showToast('이슈 목록을 불러오지 못했습니다. 새로고침 버튼을 눌러 다시 시도해 주세요.', '⚠')
+    }
   }
 
   state.issuesLoading = false
@@ -232,26 +235,37 @@ export async function refreshWorklogs() {
 }
 
 export async function performSearch() {
-  if (!state.searchQuery.trim()) return
+  const query = state.searchQuery.trim()
+  if (!query) return
   state.searchLoading = true
   render()
   // 렌더 후 포커스 복원
   const input = document.getElementById('issue-search')
   if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length) }
 
+  let results
   try {
     const projectKeys = state.realProjects.length > 0
       ? state.realProjects.map(p => p.key)
       : ['DK', 'DKT', 'DD', 'RM']
-    state.searchResults = await searchIssuesByKey(state.searchQuery.trim(), projectKeys)
+    results = await searchIssuesByKey(query, projectKeys)
   } catch (e) {
     console.error('검색 실패:', e)
-    state.searchResults = []
+    results = []
   }
 
+  // race 가드: API 응답이 돌아올 때쯤 사용자가 검색어를 바꿨거나 지운 경우
+  // 이전 쿼리 결과가 최신 상태를 덮어쓰지 않도록 현재 state.searchQuery와 비교
+  const currentQuery = state.searchQuery.trim()
+  if (currentQuery !== query) {
+    // 검색어가 비워졌거나(취소) 다른 쿼리로 바뀐 상태면 조용히 버림.
+    // 후자는 더 새로운 performSearch가 진행 중이라 그쪽이 결과를 반영할 것.
+    return
+  }
+
+  state.searchResults = results
   state.searchLoading = false
   render()
-  // 검색 결과는 새로운 리스트이므로 상단부터 보여줌
   resetIssueListScroll()
   document.getElementById('issue-search')?.focus()
 }

@@ -208,10 +208,11 @@ export function isLoggedIn() {
   return !!localStorage.getItem('jira_access_token')
 }
 
-// 저장된 사용자 정보
+// 저장된 사용자 정보 (손상된 JSON이 있어도 throw하지 않음 → 호출부 방어적 처리 생략 가능)
 export function getSavedUser() {
   const raw = localStorage.getItem('jira_user')
-  return raw ? JSON.parse(raw) : null
+  if (!raw) return null
+  try { return JSON.parse(raw) } catch { return null }
 }
 
 // 사용자 정보 저장

@@ -1,6 +1,6 @@
 // 테마 / 토스트 / 컨텍스트 메뉴
 import { state } from './state.js'
-import { getJiraIssueUrl } from './utils.js'
+import { getJiraIssueUrl, escapeHtml } from './utils.js'
 import { render } from './render.js'
 
 // ========== 테마 ==========
@@ -64,7 +64,16 @@ export function showToast(message, icon = 'ℹ', type = inferToastType(icon)) {
   const container = ensureToastContainer()
   const toast = document.createElement('div')
   toast.className = `toast toast-${type}`
-  toast.innerHTML = `<span class="toast-icon">${icon}</span><span class="toast-message">${message}</span>`
+  // message에는 사용자 입력(이슈 키, Jira 에러 본문 등)이 섞여 들어올 수 있어
+  // textContent로 안전하게 삽입. 아이콘은 호출부에서 넘어오는 고정 문자이므로 그대로 사용.
+  const iconEl = document.createElement('span')
+  iconEl.className = 'toast-icon'
+  iconEl.textContent = icon
+  const msgEl = document.createElement('span')
+  msgEl.className = 'toast-message'
+  msgEl.textContent = String(message)
+  toast.appendChild(iconEl)
+  toast.appendChild(msgEl)
   container.appendChild(toast)
   setTimeout(() => {
     toast.classList.add('toast-out')
@@ -80,10 +89,11 @@ export function showContextMenu(e, issueKey, summary) {
 
   const menu = document.createElement('div')
   menu.className = 'context-menu'
+  // issueKey는 이론상 Jira 응답에서만 오지만 defense-in-depth로 escape
   menu.innerHTML = `
     <div class="context-menu-item" data-ctx="manual-log">이 이슈에 수동 기록</div>
     <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-ctx="key">이슈 키(${issueKey}) 복사</div>
+    <div class="context-menu-item" data-ctx="key">이슈 키(${escapeHtml(issueKey)}) 복사</div>
     <div class="context-menu-item" data-ctx="summary">이슈 요약 복사</div>
     <div class="context-menu-item" data-ctx="link">이슈 링크 복사</div>
   `

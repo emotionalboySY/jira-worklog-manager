@@ -1024,6 +1024,17 @@ a.issue-parent-link:hover {
   height: 16px;
 }
 
+/* img 로드 실패 시 깨진 아이콘 대신 실루엣 SVG 배경으로 표시 */
+img.assignee-avatar.broken {
+  font-size: 0;
+  color: transparent;
+  background-color: var(--bg-hover);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='8' r='3.5'/><path d='M5 20c0-3.5 3-6 7-6s7 2.5 7 6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 16px 16px;
+}
+
 .issue-tag {
   font-size: 10px;
   font-weight: 600;

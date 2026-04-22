@@ -24,7 +24,6 @@ import {
   swapSessionIssue,
   setDayOff,
   toggleFavorite,
-  loadPreferences,
   savePreferences,
   resetPreferences,
   saveIssuesCache,
@@ -64,7 +63,6 @@ import {
   renderKeyHint,
   updateKeyDropdown,
   selectKeyCandidate,
-  hasRequiredFields,
   buildTransitionFieldsPayload,
 } from './views/modals.js'
 import { ensureSummaryWorklogs } from './views/summary.js'

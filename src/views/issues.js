@@ -143,7 +143,8 @@ function renderStatusButton(issue, statusCss, statusLabel, rawStatus) {
 function renderAssigneeAvatar(assignee) {
   if (assignee && assignee.avatarUrl) {
     const title = escapeHtml(assignee.displayName || '담당자')
-    return `<img class="assignee-avatar" src="${escapeHtml(assignee.avatarUrl)}" alt="${title}" title="${title}" loading="lazy" />`
+    // onerror: Jira 아바타 URL 로드 실패 시 'broken' 클래스로 전환해 실루엣 배경이 보이도록
+    return `<img class="assignee-avatar" src="${escapeHtml(assignee.avatarUrl)}" alt="${title}" title="${title}" loading="lazy" onerror="this.classList.add('broken')" />`
   }
   return `
     <span class="assignee-avatar assignee-avatar-empty" title="미할당" aria-label="미할당">
