@@ -857,6 +857,7 @@ export function bindEvents() {
       const rect = btn.getBoundingClientRect()
       state.statusDropdown = {
         issueKey: key,
+        currentStatus: btn.dataset.currentStatus || '',
         rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
         transitions: null,
         loading: true,

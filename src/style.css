@@ -3246,12 +3246,6 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   flex: 1;
 }
 
-.status-dropdown-screen-badge {
-  font-size: 11px;
-  color: var(--yellow);
-  flex-shrink: 0;
-}
-
 /* ========== 접근성: 모션 최소화 설정 시 애니메이션 축소 ========== */
 @media (prefers-reduced-motion: reduce) {
   *,

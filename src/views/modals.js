@@ -205,7 +205,7 @@ export function updateFinishDurationReadouts() {
 export function renderStatusDropdown() {
   const dd = state.statusDropdown
   if (!dd) return ''
-  const { rect, transitions, loading } = dd
+  const { rect, transitions, loading, currentStatus } = dd
   // 우측 정렬 (상태 버튼 오른쪽 끝에 맞춤) + 아래로 펼침
   const top = Math.round(rect.bottom + 4)
   const right = Math.max(8, Math.round(window.innerWidth - rect.right))
@@ -219,7 +219,12 @@ export function renderStatusDropdown() {
     `
   }
 
-  if (!transitions || transitions.length === 0) {
+  // 일부 워크플로우(예: DK)는 현재 상태로 되돌아가는 self-loop 전이가 정의돼 있어
+  // Jira API가 그 항목까지 돌려준다. 사용자가 실제로 쓸 일 없고 헷갈리므로 제외.
+  // (Jira 웹 UI도 같은 방식으로 필터링함)
+  const visible = (transitions || []).filter(t => t.to?.name && t.to.name !== currentStatus)
+
+  if (visible.length === 0) {
     return `
       <div class="status-dropdown" id="status-dropdown" style="${style}">
         <div class="status-dropdown-empty">전환 가능한 상태가 없습니다.</div>
@@ -227,7 +232,7 @@ export function renderStatusDropdown() {
     `
   }
 
-  const itemsHtml = transitions.map(t => {
+  const itemsHtml = visible.map(t => {
     const categoryCss = getStatusCss(t.to?.statusCategory?.key || 'new')
     const label = getShortStatusLabel(t.to?.name || t.name || '-')
     const needsFields = hasRequiredFields(t)
@@ -235,7 +240,6 @@ export function renderStatusDropdown() {
       <button type="button" class="status-dropdown-item" data-action="apply-transition" data-transition-id="${escapeHtml(String(t.id))}" data-needs-fields="${needsFields ? '1' : '0'}">
         <span class="issue-status ${categoryCss}">${escapeHtml(label)}</span>
         <span class="status-dropdown-transition-name">${escapeHtml(t.name || '')}</span>
-        ${needsFields ? '<span class="status-dropdown-screen-badge" title="추가 정보 입력 필요">⚠</span>' : ''}
       </button>
     `
   }).join('')

@@ -135,7 +135,8 @@ function renderStatusButton(issue, statusCss, statusLabel, rawStatus) {
     return `<button type="button" class="issue-status ${statusCss} is-loading" disabled aria-label="상태 변경 중"><span class="btn-spinner"></span></button>`
   }
   const titleSafe = escapeHtml(rawStatus || '-')
-  return `<button type="button" class="issue-status ${statusCss}" data-action="toggle-status-menu" data-key="${issue.key}" title="${titleSafe} · 클릭하여 상태 변경">${statusLabel}</button>`
+  const currentStatusAttr = escapeHtml(issue.status || '')
+  return `<button type="button" class="issue-status ${statusCss}" data-action="toggle-status-menu" data-key="${issue.key}" data-current-status="${currentStatusAttr}" title="${titleSafe} · 클릭하여 상태 변경">${statusLabel}</button>`
 }
 
 // 담당자 원형 프로필. 미할당이면 SVG 실루엣 기본 아이콘
