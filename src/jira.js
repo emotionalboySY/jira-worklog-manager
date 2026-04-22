@@ -16,6 +16,19 @@ function extractParent(fields) {
   }
 }
 
+// 담당자 정보 추출. 미할당이면 null
+// avatarUrls는 Jira가 24/32/48px 버전을 모두 제공 — 목록에 쓸 32px 우선, 없으면 fallback
+function extractAssignee(fields) {
+  const a = fields?.assignee
+  if (!a || !a.accountId) return null
+  const urls = a.avatarUrls || {}
+  return {
+    accountId: a.accountId,
+    displayName: a.displayName || '',
+    avatarUrl: urls['32x32'] || urls['48x48'] || urls['24x24'] || urls['16x16'] || '',
+  }
+}
+
 // 모든 페이지 가져오기 (페이지네이션 처리)
 async function fetchAllPages(jql) {
   const allIssues = []
@@ -74,6 +87,7 @@ export async function fetchMyIssues() {
       priority: fields.priority?.name || '',
       priorityIconUrl: fields.priority?.iconUrl || '',
       parent: extractParent(fields),
+      assignee: extractAssignee(fields),
       role,
     }
   })
@@ -133,6 +147,7 @@ export async function searchIssuesByKey(query, projectKeys, { signal } = {}) {
       priority: fields.priority?.name || '',
       priorityIconUrl: fields.priority?.iconUrl || '',
       parent: extractParent(fields),
+      assignee: extractAssignee(fields),
       role,
     }
   })

@@ -104,6 +104,7 @@ export function renderIssuesTab() {
               <svg width="15" height="15" viewBox="0 0 16 16" fill="${isFavorite(issue.key) ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>
             </button>
             <span class="issue-status ${statusCss}" title="${rawStatus}">${statusLabel}</span>
+            ${renderAssigneeAvatar(issue.assignee)}
             ${issue.role && issue.role !== 'none'
               ? `<span class="issue-tag ${issue.role}">${{ assignee: '할당', reporter: '보고', watcher: '워칭' }[issue.role]}</span>`
               : `<span class="issue-tag placeholder" aria-hidden="true">·</span>`
@@ -123,6 +124,22 @@ export function renderIssuesTab() {
       }).join('')}
     </div>
     ${!isSearchMode ? renderPagination(filtered.length) : ''}
+  `
+}
+
+// 담당자 원형 프로필. 미할당이면 SVG 실루엣 기본 아이콘
+function renderAssigneeAvatar(assignee) {
+  if (assignee && assignee.avatarUrl) {
+    const title = escapeHtml(assignee.displayName || '담당자')
+    return `<img class="assignee-avatar" src="${escapeHtml(assignee.avatarUrl)}" alt="${title}" title="${title}" loading="lazy" />`
+  }
+  return `
+    <span class="assignee-avatar assignee-avatar-empty" title="미할당" aria-label="미할당">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="8" r="3.5"/>
+        <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/>
+      </svg>
+    </span>
   `
 }
 

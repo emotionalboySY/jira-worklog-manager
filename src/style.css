@@ -975,6 +975,28 @@ a.issue-parent-link:hover {
   text-overflow: ellipsis;
 }
 
+/* 담당자 원형 아바타 (이슈 상태 오른쪽).
+   img: Jira가 제공한 32x32 아바타. 미할당은 .assignee-avatar-empty로 SVG 실루엣 */
+.assignee-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  object-fit: cover;
+  color: var(--text-dim);
+}
+
+.assignee-avatar-empty svg {
+  width: 16px;
+  height: 16px;
+}
+
 .issue-tag {
   font-size: 10px;
   font-weight: 600;
