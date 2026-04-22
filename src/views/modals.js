@@ -95,6 +95,7 @@ export function renderModal() {
       <div class="modal-issue-info">
         <span class="issue-key">${session.issueKey}</span>
         <span class="modal-issue-summary">${escapeHtml(session.summary || '')}</span>
+        <button type="button" class="btn-link modal-issue-swap" data-action="swap-issue" data-key="${escapeHtml(session.issueKey)}" data-summary="${escapeHtml(session.summary || '')}">일감 교체</button>
       </div>
     `
   }
@@ -185,6 +186,49 @@ export function updateFinishDurationReadouts() {
     totalEl.classList.toggle('error', anyInvalid)
   }
   return { valid: !anyInvalid, totalActual, perSegment }
+}
+
+// ========== 세션 일감 교체 모달 ==========
+export function renderSwapIssueModal() {
+  const ctx = state.showSwapIssue
+  if (!ctx) return ''
+  const isIssueless = ctx.oldKey === NO_ISSUE_KEY
+  const currentLabel = isIssueless
+    ? `<span class="issue-key issue-key-noissue">${escapeHtml(NO_ISSUE_SUMMARY)}</span>`
+    : `<span class="issue-key">${escapeHtml(ctx.oldKey)}</span><span class="modal-issue-summary">${escapeHtml(ctx.summary || '')}</span>`
+
+  let keyStatusHtml = ''
+  if (state.swapIssueCheck) {
+    if (state.swapIssueCheck.status === 'checking') {
+      keyStatusHtml = `<div class="input-hint">확인 중...</div>`
+    } else if (state.swapIssueCheck.status === 'ok') {
+      keyStatusHtml = `<div class="input-hint ok">✓ ${escapeHtml(state.swapIssueCheck.summary || '')}</div>`
+    } else if (state.swapIssueCheck.status === 'error') {
+      keyStatusHtml = `<div class="input-hint error">⚠ ${escapeHtml(state.swapIssueCheck.message || '')}</div>`
+    }
+  }
+
+  return `
+    <div class="modal-overlay" id="swap-issue-overlay">
+      <div class="modal">
+        <div class="modal-title">일감 교체</div>
+        <div class="modal-section-label">현재 일감</div>
+        <div class="modal-issue-info">${currentLabel}</div>
+        <div class="modal-field">
+          <label class="modal-label">새 이슈 키 <span class="modal-label-note">(세션은 그대로 유지되고 일감만 바뀝니다)</span></label>
+          <div class="autocomplete-wrapper">
+            <input type="text" class="modal-input" id="swap-issue-key" placeholder="예: DKT-123 또는 키워드" autocomplete="off" />
+            <div class="autocomplete-dropdown" id="swap-key-dropdown"></div>
+          </div>
+          ${keyStatusHtml}
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="swap-issue-cancel">취소</button>
+          <button class="btn btn-primary" id="swap-issue-submit">교체</button>
+        </div>
+      </div>
+    </div>
+  `
 }
 
 // ========== 취소 확인 모달 ==========
@@ -380,6 +424,15 @@ export const FINISH_KEY_CTX = {
   activeIdxKey: 'finishKeyActiveIdx',
   timerKey: 'finishKeySearchTimer',
   controllerKey: 'finishKeySearchController',
+}
+
+export const SWAP_KEY_CTX = {
+  inputId: 'swap-issue-key',
+  dropdownId: 'swap-key-dropdown',
+  checkKey: 'swapIssueCheck',
+  activeIdxKey: 'swapKeyActiveIdx',
+  timerKey: 'swapKeySearchTimer',
+  controllerKey: 'swapKeySearchController',
 }
 
 export function renderKeyDropdown(ctx, candidates, loading = false) {

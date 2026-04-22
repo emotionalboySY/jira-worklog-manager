@@ -15,6 +15,7 @@ import {
   renderEditWorklogModal,
   renderDeleteWorklogConfirm,
   renderManualLogModal,
+  renderSwapIssueModal,
 } from './views/modals.js'
 import { renderSettingsFab, renderSettingsModal } from './views/settings.js'
 import { bindEvents, startTimerUpdate } from './events.js'
@@ -29,6 +30,7 @@ function renderModalsHtml() {
     ${state.deletingWorklog ? renderDeleteWorklogConfirm() : ''}
     ${state.showManualLog ? renderManualLogModal() : ''}
     ${state.showSettings ? renderSettingsModal() : ''}
+    ${state.showSwapIssue ? renderSwapIssueModal() : ''}
   `
 }
 
@@ -94,6 +96,7 @@ export function render(options = {}) {
     'delete-worklog-overlay',
     'manual-log-overlay',
     'settings-overlay',
+    'swap-issue-overlay',
   ]
 
   for (const name of sections) {

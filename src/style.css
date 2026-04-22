@@ -2220,6 +2220,13 @@ span.flatpickr-weekday {
   line-height: 1.4;
 }
 
+/* 종료 모달 내 '일감 교체' 링크는 우측 정렬 */
+.modal-issue-info .modal-issue-swap {
+  margin-left: auto;
+  white-space: nowrap;
+  align-self: center;
+}
+
 .modal-section-label {
   font-size: 12px;
   font-weight: 600;

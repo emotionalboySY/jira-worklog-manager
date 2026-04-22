@@ -146,6 +146,14 @@ export const state = {
   finishKeySearchController: null,
   finishKeyActiveIdx: -1,
 
+  // 세션 일감 교체 모달: { oldKey, summary } | null
+  // (oldKey는 교체 대상 세션을 식별하고, 교체 완료 후 showModal/showCancelConfirm이 oldKey를 가리키고 있으면 새 키로 갱신)
+  showSwapIssue: null,
+  swapIssueCheck: null,
+  swapKeySearchTimer: null,
+  swapKeySearchController: null,
+  swapKeyActiveIdx: -1,
+
   // ----- 테마/패널 -----
   theme: localStorage.getItem('theme') || 'dark',
   favoritesPanelCollapsed: (localStorage.getItem('favorites_collapsed') === '1'),

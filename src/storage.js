@@ -97,6 +97,23 @@ export function removeSession(issueKey) {
   saveSessions(sessions)
 }
 
+// 세션의 이슈 키/요약을 교체. segments/status는 유지.
+// 대상 키의 세션이 이미 존재하면 실패 (병합은 복잡도 커서 지원 안 함).
+export function swapSessionIssue(oldKey, newKey, newSummary) {
+  if (!oldKey || !newKey) return { ok: false, error: '잘못된 요청입니다.' }
+  if (oldKey === newKey) return { ok: true, unchanged: true }
+  const sessions = loadSessions()
+  const target = sessions.find(s => s.issueKey === oldKey)
+  if (!target) return { ok: false, error: '세션을 찾을 수 없습니다.' }
+  if (sessions.some(s => s.issueKey === newKey)) {
+    return { ok: false, error: '이미 해당 이슈로 진행 중/중단된 세션이 있어요.' }
+  }
+  target.issueKey = newKey
+  target.summary = newSummary || ''
+  saveSessions(sessions)
+  return { ok: true }
+}
+
 // 세션의 첫 시작 시각
 export function getSessionStartedAt(session) {
   return session.segments.length > 0 ? session.segments[0].start : new Date()

@@ -39,6 +39,7 @@ export function renderActiveSessions() {
           </span>
           <span class="session-started-at">${startedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 시작${segCount > 1 ? ` · ${segCount}구간` : ''}</span>
           <button class="btn-link session-adjust-start" data-action="adjust-session-start" data-key="${escapeHtml(session.issueKey)}" title="직전 작업 로그 종료 시간으로 시작 시간 변경">직전 종료 시간으로</button>
+          <button class="btn-link session-swap-issue" data-action="swap-issue" data-key="${escapeHtml(session.issueKey)}" data-summary="${escapeHtml(session.summary || '')}" title="현재 세션의 일감을 다른 이슈로 교체">일감 교체</button>
         </div>
       </div>
       <div class="session-actions">

@@ -17,6 +17,7 @@ import {
   pauseSession,
   resumeSession,
   removeSession,
+  swapSessionIssue,
   setDayOff,
   toggleFavorite,
   loadPreferences,
@@ -54,6 +55,7 @@ import {
   selectManualKeyCandidate,
   updateManualKeyDropdown,
   FINISH_KEY_CTX,
+  SWAP_KEY_CTX,
   renderKeyHint,
   updateKeyDropdown,
   selectKeyCandidate,
@@ -120,7 +122,8 @@ function handleGlobalKeydown(e) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     // 우선순위: 가장 나중에 열린 모달 우선
     let submitBtn = null
-    if (state.editingWorklog) submitBtn = document.getElementById('edit-worklog-submit')
+    if (state.showSwapIssue) submitBtn = document.getElementById('swap-issue-submit')
+    else if (state.editingWorklog) submitBtn = document.getElementById('edit-worklog-submit')
     else if (state.showManualLog) submitBtn = document.getElementById('manual-log-submit')
     else if (state.showModal) submitBtn = document.getElementById('modal-submit')
     if (submitBtn && !submitBtn.disabled) {
@@ -131,6 +134,12 @@ function handleGlobalKeydown(e) {
   }
   if (e.key !== 'Escape') return
   const modalsOnly = { sections: ['modals'] }
+  if (state.showSwapIssue) {
+    state.showSwapIssue = null
+    state.swapIssueCheck = null
+    render(modalsOnly)
+    return
+  }
   if (state.showSettings) { closeSettings(); return }
   if (state.deletingWorklog) { state.deletingWorklog = null; render(modalsOnly); return }
   if (state.editingWorklog) { state.editingWorklog = null; render(modalsOnly); return }
@@ -1057,6 +1066,167 @@ export function bindEvents() {
       }
       showToast(`Jira에 ${successCount}건 기록했습니다.`, '✓')
       render()
+    })
+  }
+
+  // 일감 교체 버튼 → 교체 모달
+  // 세션 카드 + 종료 모달의 modal-issue-info 안 양쪽 모두에서 동일 액션 사용
+  document.querySelectorAll('[data-action="swap-issue"]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      const oldKey = btn.dataset.key
+      const summary = btn.dataset.summary || ''
+      if (!oldKey) return
+      state.showSwapIssue = { oldKey, summary }
+      state.swapIssueCheck = null
+      state.swapKeyActiveIdx = -1
+      render({ sections: ['modals'] })
+    })
+  })
+
+  // 일감 교체 모달: 취소
+  const swapCancel = document.getElementById('swap-issue-cancel')
+  if (swapCancel) {
+    on(swapCancel, 'click', () => {
+      state.showSwapIssue = null
+      state.swapIssueCheck = null
+      render({ sections: ['modals'] })
+    })
+  }
+
+  // 일감 교체 모달: 이슈 키 입력 (자동완성 + blur 검증)
+  const swapInput = document.getElementById('swap-issue-key')
+  if (swapInput) {
+    on(swapInput, 'input', () => {
+      state.swapIssueCheck = null
+      renderKeyHint(SWAP_KEY_CTX)
+      updateKeyDropdown(SWAP_KEY_CTX)
+    })
+    on(swapInput, 'focus', () => {
+      if (swapInput.value.trim()) updateKeyDropdown(SWAP_KEY_CTX)
+    })
+    on(swapInput, 'keydown', (e) => {
+      const dropdown = document.getElementById('swap-key-dropdown')
+      if (!dropdown || dropdown.style.display === 'none') return
+      const items = dropdown.querySelectorAll('.autocomplete-item')
+      if (items.length === 0) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        state.swapKeyActiveIdx = (state.swapKeyActiveIdx + 1) % items.length
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        state.swapKeyActiveIdx = (state.swapKeyActiveIdx - 1 + items.length) % items.length
+      } else if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
+        if (state.swapKeyActiveIdx >= 0) {
+          e.preventDefault()
+          const el = items[state.swapKeyActiveIdx]
+          selectKeyCandidate(SWAP_KEY_CTX, el.dataset.key, el.dataset.summary || '')
+          return
+        }
+      } else if (e.key === 'Escape') {
+        state.swapKeyActiveIdx = -1
+        dropdown.style.display = 'none'
+        dropdown.innerHTML = ''
+        return
+      } else {
+        return
+      }
+      items.forEach((el, i) => el.classList.toggle('active', i === state.swapKeyActiveIdx))
+      if (state.swapKeyActiveIdx >= 0) items[state.swapKeyActiveIdx].scrollIntoView({ block: 'nearest' })
+    })
+    on(swapInput, 'blur', async () => {
+      setTimeout(() => {
+        const dd = document.getElementById('swap-key-dropdown')
+        if (dd) { dd.style.display = 'none'; dd.innerHTML = '' }
+      }, 150)
+      const key = swapInput.value.trim().toUpperCase()
+      swapInput.value = key
+      if (!key) { state.swapIssueCheck = null; renderKeyHint(SWAP_KEY_CTX); return }
+      if (state.swapIssueCheck && state.swapIssueCheck.key === key
+          && (state.swapIssueCheck.status === 'ok' || state.swapIssueCheck.status === 'error')) {
+        return
+      }
+      if (!isValidIssueKeyFormat(key)) {
+        state.swapIssueCheck = { status: 'error', key, message: '올바른 형식이 아닙니다. 예: DKT-123' }
+        renderKeyHint(SWAP_KEY_CTX)
+        return
+      }
+      const local = findLoadedIssue(key)
+      if (local) {
+        state.swapIssueCheck = { status: 'ok', key, summary: local.summary }
+        renderKeyHint(SWAP_KEY_CTX)
+        return
+      }
+      state.swapIssueCheck = { status: 'checking', key }
+      renderKeyHint(SWAP_KEY_CTX)
+      try {
+        const meta = await fetchIssueMeta(key)
+        if (meta) {
+          state.swapIssueCheck = { status: 'ok', key: meta.key, summary: meta.summary }
+        } else {
+          state.swapIssueCheck = { status: 'error', key, message: '이슈를 찾을 수 없습니다.' }
+        }
+      } catch {
+        state.swapIssueCheck = { status: 'error', key, message: '이슈를 찾을 수 없거나 접근 권한이 없습니다.' }
+      }
+      renderKeyHint(SWAP_KEY_CTX)
+    })
+  }
+
+  // 일감 교체 모달: 제출
+  const swapSubmit = document.getElementById('swap-issue-submit')
+  if (swapSubmit) {
+    on(swapSubmit, 'click', () => {
+      if (swapSubmit.disabled) return
+      const ctx = state.showSwapIssue
+      if (!ctx) return
+      const input = document.getElementById('swap-issue-key')
+      const typed = (input?.value || '').trim().toUpperCase()
+      if (!typed) { alert('이슈 키를 입력해주세요.'); return }
+      if (!isValidIssueKeyFormat(typed)) { alert('이슈 키 형식이 올바르지 않습니다. 예: DKT-123'); return }
+      if (state.swapIssueCheck?.status === 'error') { alert('이슈 키를 확인해주세요.'); return }
+      if (state.swapIssueCheck?.status === 'checking') { alert('이슈 키를 확인 중입니다. 잠시만 기다려주세요.'); return }
+      if (typed === ctx.oldKey) {
+        // 동일 키면 변경 없음 — 모달만 닫기
+        state.showSwapIssue = null
+        state.swapIssueCheck = null
+        render({ sections: ['modals'] })
+        return
+      }
+      const newSummary = state.swapIssueCheck?.summary || findLoadedIssue(typed)?.summary || ''
+      const result = swapSessionIssue(ctx.oldKey, typed, newSummary)
+      if (!result.ok) {
+        alert(result.error || '일감 교체에 실패했습니다.')
+        return
+      }
+      state.showSwapIssue = null
+      state.swapIssueCheck = null
+
+      // swap 오버레이만 수동 제거 → 종료 모달 재렌더 방지해 코멘트/시간 입력 보존
+      const swapOverlay = document.getElementById('swap-issue-overlay')
+      if (swapOverlay) swapOverlay.remove()
+
+      // 종료 모달이 이 세션을 참조 중이면 state와 issue-info DOM만 새 키로 갱신
+      if (state.showModal === ctx.oldKey) {
+        state.showModal = typed
+        const finishIssueInfo = document.querySelector('#modal-overlay .modal-issue-info')
+        if (finishIssueInfo) {
+          const keyEl = finishIssueInfo.querySelector('.issue-key')
+          const sumEl = finishIssueInfo.querySelector('.modal-issue-summary')
+          const btnEl = finishIssueInfo.querySelector('[data-action="swap-issue"]')
+          if (keyEl) keyEl.textContent = typed
+          if (sumEl) sumEl.textContent = newSummary
+          if (btnEl) {
+            btnEl.dataset.key = typed
+            btnEl.dataset.summary = newSummary
+          }
+        }
+      }
+      if (state.showCancelConfirm === ctx.oldKey) state.showCancelConfirm = typed
+
+      showToast(`일감을 ${typed}(으)로 교체했습니다.`, '✓')
+      // 상단 현재 작업 카드만 재렌더 (종료 모달이 유지되어야 하므로 modals 섹션은 건드리지 않음)
+      render({ sections: ['sessions'] })
     })
   }
 
