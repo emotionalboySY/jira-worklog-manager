@@ -624,6 +624,28 @@ a.issue-key-link:hover {
   background: var(--yellow-bg);
 }
 
+/* 중단됨 상태의 일시정지 아이콘 — currentColor로 노란색 상속 */
+.pause-icon {
+  display: inline-block;
+  position: relative;
+  width: 8px;
+  height: 10px;
+}
+
+.pause-icon::before,
+.pause-icon::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2.5px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.pause-icon::before { left: 1px; }
+.pause-icon::after { right: 1px; }
+
 .session-actions {
   display: flex;
   align-items: center;

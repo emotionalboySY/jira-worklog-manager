@@ -35,7 +35,7 @@ export function renderActiveSessions() {
         </div>
         <div class="session-meta">
           <span class="session-status ${session.status}">
-            ${session.status === 'active' ? '● 진행 중' : '⏸ 중단됨'}
+            ${session.status === 'active' ? '● 진행 중' : '<span class="pause-icon" aria-hidden="true"></span>중단됨'}
           </span>
           <span class="session-started-at">${startedAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 시작${segCount > 1 ? ` · ${segCount}구간` : ''}</span>
           <button class="btn-link session-adjust-start" data-action="adjust-session-start" data-key="${escapeHtml(session.issueKey)}" title="직전 작업 로그 종료 시간으로 시작 시간 변경">직전 종료 시간으로</button>
