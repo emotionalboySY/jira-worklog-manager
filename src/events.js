@@ -17,6 +17,7 @@ import {
   pauseSession,
   resumeSession,
   removeSession,
+  deleteSessionSegment,
   swapSessionIssue,
   setDayOff,
   toggleFavorite,
@@ -955,6 +956,23 @@ export function bindEvents() {
   // 종료 모달: 구간별 시작/종료 시간 input → 실시간 소요 시간 readout 갱신
   document.querySelectorAll('.finish-seg-start, .finish-seg-end').forEach(inp => {
     on(inp, 'input', updateFinishDurationReadouts)
+  })
+
+  // 종료 모달: 구간 삭제 버튼 (다중 구간일 때만 노출)
+  // 주의: 재렌더 시 사용자가 편집 중이던 시간 input 값은 리셋됨 (편집 후 삭제는 드문 조합이라 단순화)
+  document.querySelectorAll('[data-action="delete-segment"]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      const segIdx = parseInt(btn.dataset.segIdx, 10)
+      if (!Number.isFinite(segIdx)) return
+      if (!confirm(`구간 ${segIdx + 1}을(를) 삭제할까요?\n이 구간의 작업 시간은 Jira에 기록되지 않습니다.`)) return
+      const result = deleteSessionSegment(state.showModal, segIdx)
+      if (!result.ok) {
+        alert(result.error || '구간 삭제에 실패했습니다.')
+        return
+      }
+      render({ sections: ['sessions', 'modals'] })
+    })
   })
 
   // 종료 모달: 마지막 구간의 '지금' 버튼 → 종료 시간을 현재 시각으로 + 재계산

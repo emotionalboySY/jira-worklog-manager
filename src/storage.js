@@ -129,6 +129,22 @@ export function removeSession(issueKey) {
   saveSessions(sessions)
 }
 
+// 세션의 특정 구간을 삭제. 마지막 남은 1구간은 삭제 불가(세션 전체 삭제는 '취소'로).
+// active 세션에서 열린 구간(end=null)을 삭제한 경우 paused로 전환.
+export function deleteSessionSegment(issueKey, segIdx) {
+  const sessions = loadSessions()
+  const s = sessions.find(x => x.issueKey === issueKey)
+  if (!s) return { ok: false, error: '세션을 찾을 수 없습니다.' }
+  if (s.segments.length <= 1) return { ok: false, error: '마지막 구간은 삭제할 수 없습니다.' }
+  if (segIdx < 0 || segIdx >= s.segments.length) return { ok: false, error: '잘못된 구간입니다.' }
+  s.segments.splice(segIdx, 1)
+  if (s.status === 'active' && !s.segments.some(seg => !seg.end)) {
+    s.status = 'paused'
+  }
+  saveSessions(sessions)
+  return { ok: true }
+}
+
 // 세션의 이슈 키/요약을 교체. segments/status는 유지.
 // 대상 키의 세션이 이미 존재하면 실패 (병합은 복잡도 커서 지원 안 함).
 export function swapSessionIssue(oldKey, newKey, newSummary) {

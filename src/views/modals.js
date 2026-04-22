@@ -101,15 +101,24 @@ export function renderModal() {
   }
 
   // 구간별 편집 가능한 시작/종료 시간 UI (마지막 구간만 '지금' 버튼 제공)
+  // 다중 구간일 때만 각 구간을 개별 삭제할 수 있음
   const segmentsHtml = details.map((seg, i) => {
     const startTime = fmtTime(seg.start)
     const endTime = fmtTime(seg.end)
     const dateStr = fmtDate(seg.start)
     const lastIdx = details.length - 1
     const showNowBtn = i === lastIdx
+    const headRow = isMulti
+      ? `
+        <div class="finish-segment-head">
+          <label class="modal-label">구간 ${i + 1}</label>
+          <button type="button" class="btn-link finish-seg-delete" data-action="delete-segment" data-seg-idx="${i}" title="이 구간을 삭제 (Jira에 기록되지 않음)">구간 삭제</button>
+        </div>
+      `
+      : ''
     return `
       <div class="modal-field finish-segment" data-seg-idx="${i}" data-seg-date="${dateStr}">
-        ${isMulti ? `<label class="modal-label">구간 ${i + 1}</label>` : ''}
+        ${headRow}
         <div class="finish-segment-row">
           <input type="time" class="modal-input finish-seg-start" data-seg-idx="${i}" value="${startTime}" aria-label="시작 시간" />
           <span class="finish-seg-arrow">→</span>

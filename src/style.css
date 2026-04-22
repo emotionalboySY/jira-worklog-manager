@@ -2691,6 +2691,22 @@ span.flatpickr-weekday {
 }
 
 /* ========== 종료 모달: 구간 편집 UI ========== */
+.finish-segment-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.finish-segment-head .modal-label {
+  margin-bottom: 0;
+}
+
+.finish-seg-delete {
+  color: var(--red);
+  font-size: 11px;
+}
+
 .finish-segment-row {
   display: flex;
   align-items: center;
