@@ -62,7 +62,7 @@ import {
   selectKeyCandidate,
 } from './views/modals.js'
 import { ensureSummaryWorklogs } from './views/summary.js'
-import { render } from './render.js'
+import { render, resetIssueListScroll } from './render.js'
 
 // 중복 바인딩 방지 헬퍼.
 // 부분 렌더링 도입 후 bindEvents가 여러 번 호출돼도 동일 element에 같은 이벤트는 한 번만 바인드.
@@ -379,6 +379,7 @@ export function bindEvents() {
       state.searchQuery = ''
       state.searchResults = null
       render()
+      resetIssueListScroll()
     })
   })
 
@@ -405,6 +406,7 @@ export function bindEvents() {
       state.searchQuery = ''
       state.searchResults = null
       render()
+      resetIssueListScroll()
     })
   })
 
@@ -419,6 +421,7 @@ export function bindEvents() {
         state.searchResults = null
         state.searchLoading = false
         render()
+        resetIssueListScroll()
         // 렌더 후 포커스 복원
         document.getElementById('issue-search')?.focus()
         return
@@ -434,6 +437,7 @@ export function bindEvents() {
         state.searchQuery = ''
         state.searchResults = null
         render()
+        resetIssueListScroll()
       }
     })
   }
@@ -444,6 +448,7 @@ export function bindEvents() {
       state.searchQuery = ''
       state.searchResults = null
       render()
+      resetIssueListScroll()
       document.getElementById('issue-search')?.focus()
     })
   }
@@ -455,6 +460,7 @@ export function bindEvents() {
       state.showClosedIssues = e.target.checked
       state.currentPage = 1
       render()
+      resetIssueListScroll()
     })
   }
 
@@ -478,6 +484,7 @@ export function bindEvents() {
         state.sprintLoading = false
       }
       render()
+      resetIssueListScroll()
     })
   }
 
@@ -488,6 +495,7 @@ export function bindEvents() {
       state.pageSize = parseInt(e.target.value)
       state.currentPage = 1
       render()
+      resetIssueListScroll()
     })
   }
 
@@ -497,6 +505,7 @@ export function bindEvents() {
       state.currentPage = parseInt(btn.dataset.page)
       render()
       // 이슈 목록 상단으로 스크롤
+      resetIssueListScroll()
       document.querySelector('.issue-list')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     })
   })

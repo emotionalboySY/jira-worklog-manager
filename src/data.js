@@ -17,7 +17,7 @@ import {
   searchIssuesByKey,
 } from './jira.js'
 import { showToast } from './ui.js'
-import { render } from './render.js'
+import { render, resetIssueListScroll } from './render.js'
 
 export async function loadIssues() {
   if (state.issuesLoading) return
@@ -251,5 +251,7 @@ export async function performSearch() {
 
   state.searchLoading = false
   render()
+  // 검색 결과는 새로운 리스트이므로 상단부터 보여줌
+  resetIssueListScroll()
   document.getElementById('issue-search')?.focus()
 }

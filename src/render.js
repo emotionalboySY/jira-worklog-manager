@@ -86,6 +86,17 @@ export function render(options = {}) {
     state.flatpickrInstance = null
   }
 
+  // 이슈 목록은 자체 스크롤 컨테이너(.issue-list: overflow-y:auto)라 content 섹션을
+  // 재렌더하면 scrollTop이 0으로 초기화됨. 시작/종료/즐겨찾기 등의 액션에서
+  // 스크롤 위치가 튀는 것을 막기 위해 재렌더 전 scrollTop을 캡처해 복원.
+  // 페이지 이동/필터 변경처럼 목록 상단부터 보여줘야 하는 경우는 호출 측에서
+  // 렌더 후 resetIssueListScroll()로 명시적으로 0으로 되돌린다.
+  let savedIssueListScrollTop = null
+  if (sections.includes('content') && state.currentMainTab === 'issues') {
+    const existingList = document.querySelector('.issue-list')
+    if (existingList) savedIssueListScrollTop = existingList.scrollTop
+  }
+
   // 이미 열려 있는 모달/패널은 재렌더 시 CSS 애니메이션이 다시 재생되면
   // "모달이 다시 로드되는 것처럼" 보인다. 재생성 직전에 상태를 기록해두고
   // 재생성 직후 같은 상태라면 애니메이션을 꺼 준다.
@@ -149,8 +160,20 @@ export function render(options = {}) {
     }
   }
 
+  // 이슈 목록 스크롤 복원 (캡처된 경우에만)
+  if (savedIssueListScrollTop !== null) {
+    const newList = document.querySelector('.issue-list')
+    if (newList) newList.scrollTop = savedIssueListScrollTop
+  }
+
   // 이벤트 재바인딩: on() 헬퍼가 이미 바인드된 element는 자동 스킵하므로
   // 갱신된 섹션의 새 element에만 리스너가 추가된다.
   bindEvents()
   startTimerUpdate()
+}
+
+// 페이지 이동/필터 변경 등에서 호출: 이슈 목록을 상단으로 강제 스크롤
+export function resetIssueListScroll() {
+  const list = document.querySelector('.issue-list')
+  if (list) list.scrollTop = 0
 }
