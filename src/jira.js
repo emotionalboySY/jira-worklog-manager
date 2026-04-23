@@ -30,14 +30,14 @@ function extractAssignee(fields) {
 }
 
 // 모든 페이지 가져오기 (페이지네이션 처리)
-async function fetchAllPages(jql) {
+async function fetchAllPages(jql, fields = FIELDS) {
   const allIssues = []
   let startAt = 0
   const maxResults = 100
 
   while (true) {
     const data = await jiraFetch(
-      `/search/jql?jql=${encodeURIComponent(jql)}&fields=${FIELDS}&maxResults=${maxResults}&startAt=${startAt}`
+      `/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=${maxResults}&startAt=${startAt}`
     )
     if (!data || !data.issues) break
 
@@ -203,26 +203,47 @@ export async function fetchMyWorklogs(startDate, endDate) {
   const myAccountId = currentUser?.accountId
   if (!myAccountId) return {}
 
-  // 1. 해당 기간에 내가 worklog를 남긴 이슈 검색
+  // 1. 해당 기간에 내가 worklog를 남긴 이슈 검색 + worklog 필드 동봉
+  //    (search에 worklog를 포함하면 이슈당 최대 20개 worklog가 같이 옴)
   const jql = `worklogAuthor = currentUser() AND worklogDate >= "${startDate}" AND worklogDate <= "${endDate}" ORDER BY updated DESC`
-  const issues = await fetchAllPages(jql)
+  const issues = await fetchAllPages(jql, 'summary,worklog')
 
-  // 2. 각 이슈의 worklog 조회 (병렬)
   const rangeStart = new Date(startDate + 'T00:00:00')
   const rangeEnd = new Date(endDate + 'T23:59:59.999')
   // startedAfter/Before는 exclusive이므로 1ms 조정
   const startMs = rangeStart.getTime() - 1
   const endMs = rangeEnd.getTime() + 1
 
+  // worklog가 maxResults를 초과하는 이슈만 개별 조회로 fallback
+  // (일반적으로 월별 조회에서 한 이슈에 worklog가 20개를 넘는 경우는 드묾)
+  const worklogsByIssue = new Map()
+  const overflowIssues = []
+  for (const issue of issues) {
+    const wl = issue.fields?.worklog
+    const total = wl?.total ?? 0
+    const maxResults = wl?.maxResults ?? 20
+    const list = wl?.worklogs || []
+    if (total > maxResults) {
+      overflowIssues.push(issue)
+    } else {
+      worklogsByIssue.set(issue.key, list)
+    }
+  }
+
+  if (overflowIssues.length > 0) {
+    await Promise.all(overflowIssues.map(async (issue) => {
+      const data = await jiraFetch(
+        `/issue/${issue.key}/worklog?startedAfter=${startMs}&startedBefore=${endMs}`
+      )
+      worklogsByIssue.set(issue.key, data?.worklogs || [])
+    }))
+  }
+
   const worklogsByDate = {}
 
-  await Promise.all(issues.map(async (issue) => {
-    const data = await jiraFetch(
-      `/issue/${issue.key}/worklog?startedAfter=${startMs}&startedBefore=${endMs}`
-    )
-    if (!data || !data.worklogs) return
-
-    data.worklogs
+  for (const issue of issues) {
+    const list = worklogsByIssue.get(issue.key) || []
+    list
       .filter(w => {
         if (w.author?.accountId !== myAccountId) return false
         const started = new Date(w.started)
@@ -248,7 +269,7 @@ export async function fetchMyWorklogs(startDate, endDate) {
         if (!worklogsByDate[dateStr]) worklogsByDate[dateStr] = []
         worklogsByDate[dateStr].push(entry)
       })
-  }))
+  }
 
   // 각 날짜별 시작시간순 정렬
   for (const date in worklogsByDate) {
