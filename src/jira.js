@@ -103,28 +103,36 @@ function determineRole(fields, myAccountId, { assumeWatcher = false } = {}) {
   return assumeWatcher ? 'watcher' : 'none'
 }
 
-// 이슈 키 검색
+// 이슈 키 또는 요약 텍스트 검색
 export async function searchIssuesByKey(query, projectKeys, { signal } = {}) {
   const userRaw = localStorage.getItem('jira_user')
   const currentUser = userRaw ? JSON.parse(userRaw) : null
   const myAccountId = currentUser?.accountId
 
+  const myFilter = '(assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser())'
+
   let jql
-  const isNumeric = /^\d+$/.test(query.trim())
+  const trimmed = query.trim()
+  const isNumeric = /^\d+$/.test(trimmed)
 
   if (isNumeric) {
-    // 숫자만 입력: 모든 프로젝트에서 검색
-    const keys = projectKeys.map(p => `"${p}-${query.trim()}"`)
+    // 숫자만 입력: 모든 프로젝트에서 키 매칭
+    const keys = projectKeys.map(p => `"${p}-${trimmed}"`)
     jql = `key in (${keys.join(',')}) ORDER BY key ASC`
   } else {
-    // 프로젝트 키 포함 (예: DKT-123, DKT)
-    const q = query.trim().toUpperCase()
-    if (q.includes('-')) {
-      // 정확한 키 또는 부분 매치
-      jql = `key = "${q}" ORDER BY key ASC`
+    const qUpper = trimmed.toUpperCase()
+    const keyPattern = /^[A-Z][A-Z0-9]*-\d+$/
+    if (keyPattern.test(qUpper)) {
+      // 이슈 키 정확 매칭 (예: DKT-123)
+      jql = `key = "${qUpper}" ORDER BY key ASC`
+    } else if (projectKeys.includes(qUpper)) {
+      // 프로젝트 키만 입력 (예: DKT): 프로젝트 내 내 이슈
+      jql = `project = "${qUpper}" AND ${myFilter} ORDER BY updated DESC`
     } else {
-      // 프로젝트 접두어만 입력 (예: DKT)
-      jql = `project = "${q}" AND (assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser()) ORDER BY updated DESC`
+      // 요약 텍스트 검색 (내 이슈 범위)
+      // JQL 문자열 안의 큰따옴표/백슬래시 이스케이프
+      const escaped = trimmed.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      jql = `summary ~ "${escaped}" AND ${myFilter} ORDER BY updated DESC`
     }
   }
 

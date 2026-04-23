@@ -40,7 +40,7 @@ export function renderIssuesTab() {
 
   return `
     <div class="search-bar">
-      <input type="text" class="search-input" id="issue-search" placeholder="이슈 키 검색 (예: 123, DKT-123)" value="${state.searchQuery}" />
+      <input type="text" class="search-input" id="issue-search" placeholder="이슈 키 또는 요약 검색 (예: DKT-123, 키워드)" value="${state.searchQuery}" />
       ${state.searchQuery ? `<button class="search-clear" id="search-clear">✕</button>` : ''}
       ${state.searchLoading ? `<span class="search-spinner"></span>` : ''}
     </div>
