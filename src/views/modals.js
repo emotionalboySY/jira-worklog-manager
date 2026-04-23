@@ -206,10 +206,37 @@ export function renderStatusDropdown() {
   const dd = state.statusDropdown
   if (!dd) return ''
   const { rect, transitions, loading, currentStatus } = dd
-  // 우측 정렬 (상태 버튼 오른쪽 끝에 맞춤) + 아래로 펼침
-  const top = Math.round(rect.bottom + 4)
-  const right = Math.max(8, Math.round(window.innerWidth - rect.right))
-  const style = `top:${top}px; right:${right}px;`
+
+  // 일부 워크플로우(예: DK)는 현재 상태로 되돌아가는 self-loop 전이가 정의돼 있어
+  // Jira API가 그 항목까지 돌려준다. 사용자가 실제로 쓸 일 없고 헷갈리므로 제외.
+  // (Jira 웹 UI도 같은 방식으로 필터링함)
+  const visible = (transitions || []).filter(t => t.to?.name && t.to.name !== currentStatus)
+
+  // 드롭다운 높이 추정 (뷰포트 초과 여부 판단용)
+  // 실제 DOM 높이는 모르므로 항목당 대략 36px + 컨테이너 패딩/보더 감안
+  const ITEM_H = 36
+  const CHROME = 10
+  let estHeight
+  if (loading || visible.length === 0) {
+    estHeight = 40 + CHROME
+  } else {
+    estHeight = visible.length * ITEM_H + CHROME
+  }
+
+  const GAP = 4
+  const EDGE = 8
+  const spaceBelow = window.innerHeight - rect.bottom - EDGE
+  const spaceAbove = rect.top - EDGE
+  const openUp = estHeight > spaceBelow && spaceAbove > spaceBelow
+  // 펼치는 방향에서 사용할 수 있는 최대 높이 (뷰포트 밖으로 나가지 않도록)
+  const available = openUp ? spaceAbove : spaceBelow
+  const maxHeight = Math.max(120, available - GAP)
+
+  const right = Math.max(EDGE, Math.round(window.innerWidth - rect.right))
+  const vertical = openUp
+    ? `bottom:${Math.round(window.innerHeight - rect.top + GAP)}px;`
+    : `top:${Math.round(rect.bottom + GAP)}px;`
+  const style = `${vertical} right:${right}px; max-height:${maxHeight}px;`
 
   if (loading) {
     return `
@@ -218,11 +245,6 @@ export function renderStatusDropdown() {
       </div>
     `
   }
-
-  // 일부 워크플로우(예: DK)는 현재 상태로 되돌아가는 self-loop 전이가 정의돼 있어
-  // Jira API가 그 항목까지 돌려준다. 사용자가 실제로 쓸 일 없고 헷갈리므로 제외.
-  // (Jira 웹 UI도 같은 방식으로 필터링함)
-  const visible = (transitions || []).filter(t => t.to?.name && t.to.name !== currentStatus)
 
   if (visible.length === 0) {
     return `

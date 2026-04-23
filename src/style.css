@@ -3213,6 +3213,7 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   border-radius: var(--radius);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   animation: status-dropdown-in 0.12s ease-out;
+  overflow-y: auto;
 }
 
 @keyframes status-dropdown-in {
