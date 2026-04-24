@@ -3260,9 +3260,9 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 
 /* ========== 이슈 상세 모달 ========== */
 .modal-issue-detail {
-  width: 640px;
-  max-width: 92vw;
-  max-height: 86vh;
+  width: 880px;
+  max-width: 94vw;
+  max-height: 88vh;
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -3448,12 +3448,17 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   margin: 8px 0;
 }
 
-.detail-description code {
+.detail-description code,
+.detail-description tt,
+.detail-description .code-quote {
+  display: inline;
   background: var(--bg);
   padding: 1px 5px;
   border-radius: 3px;
   font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: normal;
+  color: var(--text-bright);
 }
 
 .detail-description pre {
@@ -3462,6 +3467,15 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   border-radius: var(--radius);
   overflow-x: auto;
   font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detail-description pre code {
+  display: block;
+  padding: 0;
+  background: transparent;
+  white-space: pre-wrap;
 }
 
 .detail-description img {
@@ -3495,13 +3509,54 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 .detail-description table {
   border-collapse: collapse;
   margin: 8px 0;
+  width: 100%;
+  max-width: 100%;
+  display: table;
+  table-layout: auto;
+}
+
+.detail-description thead,
+.detail-description tbody,
+.detail-description tr {
+  display: table-row-group;
+}
+
+.detail-description tr {
+  display: table-row;
 }
 
 .detail-description th,
-.detail-description td {
+.detail-description td,
+.detail-description .confluenceTh,
+.detail-description .confluenceTd {
+  display: table-cell;
   border: 1px solid var(--border);
   padding: 6px 10px;
   font-size: 12px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.detail-description th,
+.detail-description .confluenceTh {
+  background: var(--bg);
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+/* Jira Wiki Renderer 특수 클래스: 패널/노트/정보 박스 */
+.detail-description .panel,
+.detail-description .aui-message {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 8px 0;
+  background: var(--bg);
+}
+
+.detail-description .panelHeader {
+  font-weight: 600;
+  margin-bottom: 6px;
 }
 
 .detail-section-label {
