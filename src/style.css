@@ -3690,6 +3690,78 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   border-top: 1px solid var(--border);
 }
 
+/* 편집 모드 진입 힌트: 설명 영역 호버 시 살짝 강조 */
+.detail-description {
+  cursor: text;
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  margin: -6px -8px;
+  transition: background 0.15s, outline-color 0.15s;
+  outline: 1px solid transparent;
+}
+
+.detail-description:hover {
+  background: var(--bg);
+  outline-color: var(--border);
+}
+
+.detail-edit-textarea {
+  width: 100%;
+  min-height: 300px;
+  max-height: 60vh;
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-bright);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.detail-edit-textarea:focus {
+  border-color: var(--accent);
+}
+
+.detail-edit-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 6px;
+  line-height: 1.6;
+}
+
+.detail-edit-hint code {
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--text-bright);
+}
+
+.detail-edit-warn {
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: var(--radius);
+  color: #f59e0b;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.detail-edit-error {
+  padding: 10px 12px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: var(--radius);
+  color: #ef4444;
+  font-size: 12px;
+  margin-top: 10px;
+}
+
 /* ========== 접근성: 모션 최소화 설정 시 애니메이션 축소 ========== */
 @media (prefers-reduced-motion: reduce) {
   *,

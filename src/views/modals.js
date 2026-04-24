@@ -863,14 +863,6 @@ export function renderIssueDetailModal() {
       return `<div class="detail-error">상세 정보를 불러오지 못했습니다: ${escapeHtml(m.error)}</div>`
     }
 
-    // ADF → HTML. 첨부 ID 맵을 context로 넘겨 media 노드가 해결되게 함
-    const attachmentsById = {}
-    for (const a of (d.attachments || [])) attachmentsById[a.id] = a
-    const rendered = d.descriptionAdf ? renderAdf(d.descriptionAdf, { attachmentsById }) : ''
-
-    const descHtml = rendered
-      ? `<div class="detail-description">${rendered}</div>`
-      : `<div class="detail-description detail-description-empty">(설명 없음)</div>`
     const attachmentsHtml = (d.attachments && d.attachments.length > 0)
       ? `
         <div class="detail-section-label">첨부파일 (${d.attachments.length})</div>
@@ -879,12 +871,53 @@ export function renderIssueDetailModal() {
         </div>
       `
       : ''
+
+    // 편집 모드
+    if (m.editing) {
+      const lossyWarn = (m.lossyFeatures && m.lossyFeatures.length > 0)
+        ? `<div class="detail-edit-warn">⚠ 이 이슈의 설명에는 Markdown으로 표현할 수 없는 요소(${escapeHtml(m.lossyFeatures.join(', '))})가 있어, 저장하면 해당 요소가 사라질 수 있습니다. 복잡한 편집이 필요하다면 Jira에서 직접 편집하세요.</div>`
+        : ''
+      const saveErrHtml = m.saveError
+        ? `<div class="detail-edit-error">저장 실패: ${escapeHtml(m.saveError)}</div>`
+        : ''
+      return `
+        ${lossyWarn}
+        <textarea class="detail-edit-textarea" id="issue-detail-edit">${escapeHtml(m.editBuffer || '')}</textarea>
+        <div class="detail-edit-hint">
+          Markdown 지원: <code># 제목</code>, <code>**굵게**</code>, <code>*이탤릭*</code>, <code>\`코드\`</code>, <code>- 목록</code>, <code>1. 번호</code>, <code>[링크](url)</code>, <code>\`\`\`코드블록\`\`\`</code>, 표(GFM) 등
+        </div>
+        ${saveErrHtml}
+        ${attachmentsHtml}
+      `
+    }
+
+    // 보기 모드: ADF → HTML
+    const attachmentsById = {}
+    for (const a of (d.attachments || [])) attachmentsById[a.id] = a
+    const rendered = d.descriptionAdf ? renderAdf(d.descriptionAdf, { attachmentsById }) : ''
+
+    const descHtml = rendered
+      ? `<div class="detail-description" id="issue-detail-description" title="클릭하여 편집">${rendered}</div>`
+      : `<div class="detail-description detail-description-empty" id="issue-detail-description" title="클릭하여 편집">(설명 없음 — 클릭하여 추가)</div>`
     return `${descHtml}${attachmentsHtml}`
   })()
 
   const openJiraBtn = jiraUrl
     ? `<a class="btn" href="${jiraUrl}" target="_blank" rel="noopener noreferrer">Jira에서 열기</a>`
     : ''
+
+  const footerHtml = m.editing
+    ? `
+      ${openJiraBtn}
+      <button class="btn" id="issue-detail-edit-cancel" ${m.saving ? 'disabled' : ''}>취소</button>
+      <button class="btn btn-primary" id="issue-detail-edit-save" ${m.saving ? 'disabled' : ''}>
+        ${m.saving ? '<span class="btn-spinner"></span> 저장 중…' : '저장'}
+      </button>
+    `
+    : `
+      ${openJiraBtn}
+      <button class="btn btn-primary" id="issue-detail-close-footer">닫기</button>
+    `
 
   return `
     <div class="modal-overlay" id="issue-detail-overlay">
@@ -912,8 +945,7 @@ export function renderIssueDetailModal() {
           ${descriptionSection}
         </div>
         <div class="detail-footer">
-          ${openJiraBtn}
-          <button class="btn btn-primary" id="issue-detail-close-footer">닫기</button>
+          ${footerHtml}
         </div>
       </div>
     </div>

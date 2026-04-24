@@ -429,6 +429,14 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
   }
 }
 
+// 이슈 설명 업데이트. adfDoc은 ADF doc 객체 또는 null(설명 비우기)
+export async function updateIssueDescription(issueKey, adfDoc) {
+  await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}`,
+    { method: 'PUT', body: { fields: { description: adfDoc } } }
+  )
+}
+
 function extractReporter(fields) {
   const r = fields?.reporter
   if (!r || !r.accountId) return null

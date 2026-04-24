@@ -14,7 +14,10 @@ import {
   fetchIssueStatus,
   fetchIssueDetail,
   fetchAttachmentBlobUrl,
+  updateIssueDescription,
 } from './jira.js'
+import { adfToMarkdown, detectLossyFeatures } from './adfToMarkdown.js'
+import { markdownToAdf } from './markdownToAdf.js'
 import {
   loadSessions,
   saveSessions,
@@ -143,6 +146,7 @@ function handleGlobalKeydown(e) {
     else if (state.showSwapIssue) submitBtn = document.getElementById('swap-issue-submit')
     else if (state.editingWorklog) submitBtn = document.getElementById('edit-worklog-submit')
     else if (state.showManualLog) submitBtn = document.getElementById('manual-log-submit')
+    else if (state.issueDetailModal?.editing) submitBtn = document.getElementById('issue-detail-edit-save')
     else if (state.showModal) submitBtn = document.getElementById('modal-submit')
     if (submitBtn && !submitBtn.disabled) {
       e.preventDefault()
@@ -186,7 +190,12 @@ function handleGlobalKeydown(e) {
     return
   }
   if (state.issueDetailModal) {
-    closeIssueDetailModal()
+    // 편집 중이면 ESC로 편집만 취소 (모달은 유지)
+    if (state.issueDetailModal.editing) {
+      cancelIssueDetailEdit()
+    } else {
+      closeIssueDetailModal()
+    }
     return
   }
 }
@@ -194,6 +203,10 @@ function handleGlobalKeydown(e) {
 // 이슈 상세 모달 닫기 + Blob URL 해제
 function closeIssueDetailModal() {
   const m = state.issueDetailModal
+  // 편집 중이고 변경사항이 있으면 확인
+  if (m?.editing && m.editBuffer !== m.editInitial) {
+    if (!window.confirm('편집 중인 내용이 있습니다. 닫으시겠습니까?')) return
+  }
   if (m?.blobUrls) {
     for (const url of m.blobUrls) {
       try { URL.revokeObjectURL(url) } catch {}
@@ -201,6 +214,67 @@ function closeIssueDetailModal() {
   }
   state.issueDetailModal = null
   render({ sections: ['modals'] })
+}
+
+// 설명 영역을 편집 모드로 전환: 현재 ADF를 Markdown으로 변환해 버퍼에 채움
+function enterIssueDetailEditMode() {
+  const m = state.issueDetailModal
+  if (!m || m.editing || m.loading) return
+  const adf = m.data?.descriptionAdf
+  const md = adf ? adfToMarkdown(adf) : ''
+  const lossy = adf ? detectLossyFeatures(adf) : []
+  m.editing = true
+  m.editBuffer = md
+  m.editInitial = md
+  m.lossyFeatures = lossy
+  m.saveError = null
+  render({ sections: ['modals'] })
+}
+
+function cancelIssueDetailEdit() {
+  const m = state.issueDetailModal
+  if (!m) return
+  if (m.editBuffer !== m.editInitial) {
+    if (!window.confirm('변경사항이 저장되지 않습니다. 취소하시겠습니까?')) return
+  }
+  m.editing = false
+  m.editBuffer = null
+  m.editInitial = null
+  m.saveError = null
+  render({ sections: ['modals'] })
+}
+
+async function saveIssueDetailEdit() {
+  const m = state.issueDetailModal
+  if (!m || !m.editing || m.saving) return
+  const md = m.editBuffer || ''
+  // 빈 문자열이면 description을 null로 보내 비움 처리
+  const adfDoc = md.trim() === '' ? null : markdownToAdf(md)
+  m.saving = true
+  m.saveError = null
+  render({ sections: ['modals'] })
+
+  try {
+    await updateIssueDescription(m.key, adfDoc)
+    // 다시 상세 조회해 최신 상태 반영
+    const fresh = await fetchIssueDetail(m.key)
+    if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
+    state.issueDetailModal.data = fresh || {}
+    state.issueDetailModal.editing = false
+    state.issueDetailModal.editBuffer = null
+    state.issueDetailModal.editInitial = null
+    state.issueDetailModal.saving = false
+    state.issueDetailModal.saveError = null
+    state.issueDetailModal.lossyFeatures = null
+    render({ sections: ['modals'] })
+    loadIssueDetailImages()
+    showToast('이슈 설명이 저장되었습니다.', '✓')
+  } catch (err) {
+    if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
+    state.issueDetailModal.saving = false
+    state.issueDetailModal.saveError = err?.message || '알 수 없는 오류'
+    render({ sections: ['modals'] })
+  }
 }
 
 // 이슈 상세 모달 열기 + 상세 데이터 비동기 로드
@@ -1204,6 +1278,34 @@ export function bindEvents() {
       }
     })
   })
+
+  // 설명 영역 클릭 → 편집 모드 진입
+  const detailDescEl = document.getElementById('issue-detail-description')
+  if (detailDescEl) {
+    on(detailDescEl, 'click', (e) => {
+      // 설명 내부 링크/이미지 클릭은 기본 동작 유지
+      if (e.target.closest('a, img')) return
+      enterIssueDetailEditMode()
+    })
+  }
+
+  // 편집 textarea: 입력 추적 (저장 시 editBuffer 사용)
+  const detailEditTa = document.getElementById('issue-detail-edit')
+  if (detailEditTa) {
+    on(detailEditTa, 'input', (e) => {
+      if (state.issueDetailModal) state.issueDetailModal.editBuffer = e.target.value
+    })
+    // 포커스 이동 및 커서 끝으로
+    detailEditTa.focus()
+    const v = detailEditTa.value
+    detailEditTa.setSelectionRange(v.length, v.length)
+  }
+
+  // 편집 취소/저장 버튼
+  const detailEditCancelBtn = document.getElementById('issue-detail-edit-cancel')
+  if (detailEditCancelBtn) on(detailEditCancelBtn, 'click', cancelIssueDetailEdit)
+  const detailEditSaveBtn = document.getElementById('issue-detail-edit-save')
+  if (detailEditSaveBtn) on(detailEditSaveBtn, 'click', saveIssueDetailEdit)
 
   // 일감 미지정 세션 종료 모달의 이슈 키 입력: 자동완성 드롭다운 + blur 검증
   const finishIssueInput = document.getElementById('finish-issue-key')
