@@ -11,6 +11,7 @@ import { getSavedUser } from './auth.js'
 import {
   fetchMyIssues,
   fetchProjects,
+  debugListCustomFields,
   fetchMyWorklogs,
   fetchActiveSprintIssueKeys,
   searchIssuesByKey,
@@ -45,6 +46,9 @@ export async function loadIssues() {
       fetchMyIssues(),
       fetchProjects(),
     ])
+
+    // [임시] 스프린트 커스텀 필드 ID 확인용 — 콘솔에서 결과 확인 후 제거 예정
+    debugListCustomFields()
 
     // 변경 감지
     const hasChanged = !cached || JSON.stringify(freshIssues.map(i => i.key).sort()) !== JSON.stringify((cached.issues || []).map(i => i.key).sort())

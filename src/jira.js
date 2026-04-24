@@ -381,3 +381,28 @@ export async function fetchProjects() {
     name: p.name,
   }))
 }
+
+// [임시 디버그] 스프린트 등 커스텀 필드 ID 확인용. 사용 후 제거 예정
+export async function debugListCustomFields() {
+  try {
+    const fields = await jiraFetch('/field')
+    if (!Array.isArray(fields)) {
+      console.warn('[debug] /field 응답이 배열이 아닙니다.', fields)
+      return
+    }
+    const sprintFields = fields.filter(f =>
+      (f.name || '').toLowerCase().includes('sprint') ||
+      (f.schema?.custom || '').toLowerCase().includes('sprint')
+    )
+    console.log('[debug] Sprint 관련 필드:', sprintFields)
+    console.log('[debug] 전체 커스텀 필드 수:', fields.filter(f => f.custom).length)
+    console.table(sprintFields.map(f => ({
+      id: f.id,
+      name: f.name,
+      custom: f.custom,
+      schema: f.schema?.custom || '',
+    })))
+  } catch (e) {
+    console.error('[debug] 커스텀 필드 조회 실패:', e)
+  }
+}
