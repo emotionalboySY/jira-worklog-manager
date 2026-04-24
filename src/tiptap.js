@@ -12,15 +12,15 @@ let currentEditor = null
 export function createEditor(mountEl, adfContent) {
   destroyEditor()
   const content = adfToPm(adfContent)
+
   currentEditor = new Editor({
     element: mountEl,
     extensions: [
       StarterKit.configure({
-        // codeBlock는 StarterKit에 포함. 언어 속성 유지.
         codeBlock: { HTMLAttributes: { class: 'tiptap-code-block' } },
       }),
       Link.configure({
-        openOnClick: false,   // 편집 중엔 클릭으로 이동 금지
+        openOnClick: false,
         autolink: true,
         HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
       }),
@@ -29,7 +29,6 @@ export function createEditor(mountEl, adfContent) {
       TableHeader,
       TableCell,
     ],
-    content,
     editorProps: {
       attributes: {
         class: 'tiptap-content',
@@ -37,7 +36,21 @@ export function createEditor(mountEl, adfContent) {
       },
     },
   })
-  // 포커스는 약간 지연 (모달 애니메이션 종료 후)
+
+  // 생성 후 명시적으로 content 주입 (생성자 content 옵션이 일부 환경에서 무시되는 케이스 방지)
+  if (content && content.content && content.content.length > 0) {
+    try {
+      currentEditor.commands.setContent(content, { emitUpdate: false })
+    } catch (e) {
+      // 스키마 검증 실패 시 HTML로 폴백 시도 (거의 없지만 안전망)
+      console.warn('[tiptap] setContent JSON 실패, HTML 폴백:', e)
+      try {
+        const html = currentEditor.storage?.doc?.toHTML?.() ?? ''
+        currentEditor.commands.setContent(html || '<p></p>', { emitUpdate: false })
+      } catch {}
+    }
+  }
+
   setTimeout(() => {
     try { currentEditor?.commands.focus('end') } catch {}
   }, 50)

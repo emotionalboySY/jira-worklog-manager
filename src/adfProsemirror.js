@@ -22,6 +22,9 @@ const LOSSY_NODES = new Set([
 ])
 const LOSSY_MARKS = new Set(['subsup', 'textColor', 'backgroundColor', 'underline'])
 
+// tiptap(StarterKit + Link)이 인식하는 mark 목록. 이 외의 mark는 알 수 없는 타입으로 판단하여 제거.
+const SUPPORTED_PM_MARKS = new Set(['bold', 'italic', 'strike', 'code', 'link', 'strong', 'em'])
+
 // ADF → ProseMirror(tiptap) 호환 JSON
 export function adfToPm(adf) {
   if (!adf) return emptyPmDoc()
@@ -91,7 +94,10 @@ function transform(node, typeMap, lossyHandler) {
     out.marks = node.marks
       .map(m => {
         if (lossyHandler && LOSSY_MARKS.has(m.type)) return null
-        return { type: typeMap[m.type] || m.type, ...(m.attrs ? { attrs: { ...m.attrs } } : {}) }
+        const mapped = typeMap[m.type] || m.type
+        // PM(tiptap) 방향이면 지원 mark만 허용 (ADF 방향은 그대로 통과)
+        if (lossyHandler && !SUPPORTED_PM_MARKS.has(mapped)) return null
+        return { type: mapped, ...(m.attrs ? { attrs: { ...m.attrs } } : {}) }
       })
       .filter(Boolean)
     if (out.marks.length === 0) delete out.marks
