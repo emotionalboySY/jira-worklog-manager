@@ -36,6 +36,34 @@ const LOSSY_MARKS = new Set(['subsup', 'textColor', 'backgroundColor', 'underlin
 // tiptap(StarterKit)이 인식하는 mark 목록. 이 외의 mark는 알 수 없는 타입으로 판단하여 제거.
 const SUPPORTED_PM_MARKS = new Set(['bold', 'italic', 'strike', 'code', 'link'])
 
+// ADF 스키마에서 각 노드/마크가 허용하는 attr 화이트리스트
+// 이외의 attr는 Jira가 INVALID_INPUT으로 거부할 수 있으므로 제거
+// null/빈 배열은 "attrs 자체 허용 안 됨" → 전부 제거
+const ADF_NODE_ATTRS = {
+  paragraph: [],
+  heading: ['level'],
+  bulletList: [],
+  orderedList: ['order'],
+  listItem: [],
+  codeBlock: ['language'],
+  blockquote: [],
+  rule: [],
+  hardBreak: [],
+  text: [],
+  table: ['isNumberColumnEnabled', 'layout', 'localId', 'width', 'displayMode'],
+  tableRow: [],
+  tableCell: ['colspan', 'rowspan', 'colwidth', 'background'],
+  tableHeader: ['colspan', 'rowspan', 'colwidth', 'background'],
+}
+
+const ADF_MARK_ATTRS = {
+  strong: [],
+  em: [],
+  strike: [],
+  code: [],
+  link: ['href', 'title', 'id', 'collection', 'occurrenceKey'],
+}
+
 // ADF → ProseMirror(tiptap) 호환 JSON
 export function adfToPm(adf) {
   if (!adf) return emptyPmDoc()
@@ -50,7 +78,52 @@ export function pmToAdf(pm) {
   if (!pm) return emptyAdfDoc()
   const result = transform(pm, PM_TO_ADF_NODE, PM_TO_ADF_MARK, null)
   if (result && result.type === 'doc') result.version = 1
-  return result
+  return sanitizeAdfAttrs(result)
+}
+
+// ADF 노드/마크의 attrs를 허용된 키만 남기도록 정리 (tiptap이 추가한 불필요 attr 제거)
+function sanitizeAdfAttrs(node) {
+  if (!node || typeof node !== 'object') return node
+
+  // attrs 정리
+  if (node.attrs) {
+    const allowed = ADF_NODE_ATTRS[node.type]
+    if (allowed) {
+      const cleaned = {}
+      for (const key of allowed) {
+        const v = node.attrs[key]
+        if (v !== undefined && v !== null) cleaned[key] = v
+      }
+      if (Object.keys(cleaned).length > 0) node.attrs = cleaned
+      else delete node.attrs
+    }
+    // 화이트리스트에 없는 type이면 attrs 원본 유지 (확장 노드 보호)
+  }
+
+  // marks 정리
+  if (Array.isArray(node.marks)) {
+    node.marks = node.marks.map(m => {
+      if (!m || !m.attrs) return m
+      const allowed = ADF_MARK_ATTRS[m.type]
+      if (!allowed) return m
+      const cleaned = {}
+      for (const key of allowed) {
+        const v = m.attrs[key]
+        if (v !== undefined && v !== null) cleaned[key] = v
+      }
+      const out = { type: m.type }
+      if (Object.keys(cleaned).length > 0) out.attrs = cleaned
+      return out
+    })
+    if (node.marks.length === 0) delete node.marks
+  }
+
+  // content 재귀
+  if (Array.isArray(node.content)) {
+    node.content.forEach(sanitizeAdfAttrs)
+  }
+
+  return node
 }
 
 // ADF 트리에서 손실 대상 노드/마크 수집
