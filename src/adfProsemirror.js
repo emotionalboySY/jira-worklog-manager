@@ -10,6 +10,17 @@ const PM_TO_ADF_NODE = {
   horizontalRule: 'rule',
 }
 
+// mark 이름: ADF는 strong/em, tiptap은 bold/italic 사용
+const ADF_TO_PM_MARK = {
+  strong: 'bold',
+  em: 'italic',
+}
+
+const PM_TO_ADF_MARK = {
+  bold: 'strong',
+  italic: 'em',
+}
+
 // ADF 중 Markdown/tiptap MVP로 표현 못 하는 요소 (경고 대상)
 const LOSSY_NODES = new Set([
   'panel', 'mention', 'status', 'date', 'emoji',
@@ -22,13 +33,13 @@ const LOSSY_NODES = new Set([
 ])
 const LOSSY_MARKS = new Set(['subsup', 'textColor', 'backgroundColor', 'underline'])
 
-// tiptap(StarterKit + Link)이 인식하는 mark 목록. 이 외의 mark는 알 수 없는 타입으로 판단하여 제거.
-const SUPPORTED_PM_MARKS = new Set(['bold', 'italic', 'strike', 'code', 'link', 'strong', 'em'])
+// tiptap(StarterKit)이 인식하는 mark 목록. 이 외의 mark는 알 수 없는 타입으로 판단하여 제거.
+const SUPPORTED_PM_MARKS = new Set(['bold', 'italic', 'strike', 'code', 'link'])
 
 // ADF → ProseMirror(tiptap) 호환 JSON
 export function adfToPm(adf) {
   if (!adf) return emptyPmDoc()
-  const result = transform(adf, ADF_TO_PM_NODE, stripLossyForPm)
+  const result = transform(adf, ADF_TO_PM_NODE, ADF_TO_PM_MARK, stripLossyForPm)
   // ProseMirror doc 루트는 version 없이 type="doc"
   if (result && result.type === 'doc') delete result.version
   return result || emptyPmDoc()
@@ -37,7 +48,7 @@ export function adfToPm(adf) {
 // ProseMirror(tiptap) JSON → ADF
 export function pmToAdf(pm) {
   if (!pm) return emptyAdfDoc()
-  const result = transform(pm, PM_TO_ADF_NODE, null)
+  const result = transform(pm, PM_TO_ADF_NODE, PM_TO_ADF_MARK, null)
   if (result && result.type === 'doc') result.version = 1
   return result
 }
@@ -74,18 +85,17 @@ function walk(node, cb) {
   }
 }
 
-// 재귀 변환: type 매핑 + 하위 노드 처리 + (선택) 손실 노드 제거/평탄화
-function transform(node, typeMap, lossyHandler) {
+// 재귀 변환: node type과 mark type 매핑 + 하위 노드 처리 + (선택) 손실 노드 평탄화
+function transform(node, nodeMap, markMap, lossyHandler) {
   if (!node) return null
 
-  // ADF → PM 변환에서 손실 노드를 tiptap이 모르는 상태로 남기면 에디터가 파싱 실패.
-  // 평탄화 콜백에 위임.
+  // ADF → PM에서 손실 노드는 tiptap 스키마에 없음 → 텍스트로 평탄화
   if (lossyHandler && LOSSY_NODES.has(node.type)) {
     return lossyHandler(node)
   }
 
   const out = {}
-  out.type = typeMap[node.type] || node.type
+  out.type = nodeMap[node.type] || node.type
   if (node.attrs && Object.keys(node.attrs).length > 0) {
     out.attrs = { ...node.attrs }
   }
@@ -94,7 +104,7 @@ function transform(node, typeMap, lossyHandler) {
     out.marks = node.marks
       .map(m => {
         if (lossyHandler && LOSSY_MARKS.has(m.type)) return null
-        const mapped = typeMap[m.type] || m.type
+        const mapped = markMap[m.type] || m.type
         // PM(tiptap) 방향이면 지원 mark만 허용 (ADF 방향은 그대로 통과)
         if (lossyHandler && !SUPPORTED_PM_MARKS.has(mapped)) return null
         return { type: mapped, ...(m.attrs ? { attrs: { ...m.attrs } } : {}) }
@@ -103,7 +113,7 @@ function transform(node, typeMap, lossyHandler) {
     if (out.marks.length === 0) delete out.marks
   }
   if (Array.isArray(node.content)) {
-    const children = node.content.map(c => transform(c, typeMap, lossyHandler)).filter(Boolean).flat()
+    const children = node.content.map(c => transform(c, nodeMap, markMap, lossyHandler)).filter(Boolean).flat()
     if (children.length > 0) out.content = children
   }
   return out

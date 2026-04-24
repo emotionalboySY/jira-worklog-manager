@@ -3,7 +3,6 @@
 
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
-import { Link } from '@tiptap/extension-link'
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
 import { adfToPm, pmToAdf } from './adfProsemirror.js'
 
@@ -18,11 +17,11 @@ export function createEditor(mountEl, adfContent) {
     extensions: [
       StarterKit.configure({
         codeBlock: { HTMLAttributes: { class: 'tiptap-code-block' } },
-      }),
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
+        link: {
+          openOnClick: false,
+          autolink: true,
+          HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
+        },
       }),
       Table.configure({ resizable: false }),
       TableRow,
