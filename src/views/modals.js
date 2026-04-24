@@ -874,18 +874,24 @@ export function renderIssueDetailModal() {
 
     // 편집 모드
     if (m.editing) {
+      if (m.saving) {
+        return `
+          <div class="detail-saving">
+            <div class="loading-spinner"></div>
+            <span>저장 중…</span>
+          </div>
+        `
+      }
       const lossyWarn = (m.lossyFeatures && m.lossyFeatures.length > 0)
-        ? `<div class="detail-edit-warn">⚠ 이 이슈의 설명에는 Markdown으로 표현할 수 없는 요소(${escapeHtml(m.lossyFeatures.join(', '))})가 있어, 저장하면 해당 요소가 사라질 수 있습니다. 복잡한 편집이 필요하다면 Jira에서 직접 편집하세요.</div>`
+        ? `<div class="detail-edit-warn">⚠ 이 이슈의 설명에는 에디터가 지원하지 않는 요소(${escapeHtml(m.lossyFeatures.join(', '))})가 있어, 저장 시 해당 요소가 텍스트로 변환되거나 제거됩니다. 복잡한 편집은 Jira에서 진행하세요.</div>`
         : ''
       const saveErrHtml = m.saveError
         ? `<div class="detail-edit-error">저장 실패: ${escapeHtml(m.saveError)}</div>`
         : ''
       return `
         ${lossyWarn}
-        <textarea class="detail-edit-textarea" id="issue-detail-edit">${escapeHtml(m.editBuffer || '')}</textarea>
-        <div class="detail-edit-hint">
-          Markdown 지원: <code># 제목</code>, <code>**굵게**</code>, <code>*이탤릭*</code>, <code>\`코드\`</code>, <code>- 목록</code>, <code>1. 번호</code>, <code>[링크](url)</code>, <code>\`\`\`코드블록\`\`\`</code>, 표(GFM) 등
-        </div>
+        ${renderTiptapToolbar()}
+        <div class="tiptap-editor-mount" id="issue-detail-edit-editor"></div>
         ${saveErrHtml}
         ${attachmentsHtml}
       `
@@ -948,6 +954,36 @@ export function renderIssueDetailModal() {
           ${footerHtml}
         </div>
       </div>
+    </div>
+  `
+}
+
+function renderTiptapToolbar() {
+  const btn = (cmd, label, title, args = '') =>
+    `<button type="button" class="tiptap-tb-btn" data-tt-cmd="${cmd}"${args ? ` data-tt-args='${args}'` : ''} title="${title}">${label}</button>`
+  return `
+    <div class="tiptap-toolbar" id="issue-detail-edit-toolbar">
+      ${btn('toggleBold', '<b>B</b>', '굵게 (Ctrl+B)')}
+      ${btn('toggleItalic', '<i>I</i>', '이탤릭 (Ctrl+I)')}
+      ${btn('toggleStrike', '<span style="text-decoration:line-through">S</span>', '취소선 (Ctrl+Shift+X)')}
+      ${btn('toggleCode', '<code>&lt;&gt;</code>', '인라인 코드 (Ctrl+E)')}
+      <span class="tiptap-tb-sep"></span>
+      ${btn('setHeading', 'H1', '제목 1', JSON.stringify({ level: 1 }))}
+      ${btn('setHeading', 'H2', '제목 2', JSON.stringify({ level: 2 }))}
+      ${btn('setHeading', 'H3', '제목 3', JSON.stringify({ level: 3 }))}
+      ${btn('setParagraph', 'P', '본문 문단')}
+      <span class="tiptap-tb-sep"></span>
+      ${btn('toggleBulletList', '•', '불릿 목록')}
+      ${btn('toggleOrderedList', '1.', '번호 목록')}
+      ${btn('toggleBlockquote', '❝', '인용')}
+      ${btn('toggleCodeBlock', '{ }', '코드 블록')}
+      ${btn('setHorizontalRule', '―', '구분선')}
+      <span class="tiptap-tb-sep"></span>
+      <button type="button" class="tiptap-tb-btn" data-tt-cmd="__link" title="링크 (Ctrl+K)">🔗</button>
+      <button type="button" class="tiptap-tb-btn" data-tt-cmd="unsetLink" title="링크 제거">🔗✕</button>
+      <span class="tiptap-tb-sep"></span>
+      ${btn('undo', '↶', '실행 취소 (Ctrl+Z)')}
+      ${btn('redo', '↷', '다시 실행 (Ctrl+Shift+Z)')}
     </div>
   `
 }

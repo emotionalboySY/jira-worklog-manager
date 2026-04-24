@@ -12,7 +12,11 @@
     "vite": "^8.0.4"
   },
   "dependencies": {
-    "flatpickr": "^4.6.13",
-    "marked": "^18.0.2"
+    "@tiptap/core": "^3.22.4",
+    "@tiptap/extension-link": "^3.22.4",
+    "@tiptap/extension-table": "^3.22.4",
+    "@tiptap/pm": "^3.22.4",
+    "@tiptap/starter-kit": "^3.22.4",
+    "flatpickr": "^4.6.13"
   }
 }

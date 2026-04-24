@@ -16,8 +16,8 @@ import {
   fetchAttachmentBlobUrl,
   updateIssueDescription,
 } from './jira.js'
-import { adfToMarkdown, detectLossyFeatures } from './adfToMarkdown.js'
-import { markdownToAdf } from './markdownToAdf.js'
+import { detectLossyFeatures, isEmptyAdf } from './adfProsemirror.js'
+import { createEditor, destroyEditor, getCurrentAdf, runCommand } from './tiptap.js'
 import {
   loadSessions,
   saveSessions,
@@ -200,13 +200,14 @@ function handleGlobalKeydown(e) {
   }
 }
 
-// 이슈 상세 모달 닫기 + Blob URL 해제
+// 이슈 상세 모달 닫기 + Blob URL 해제 + 에디터 파괴
 function closeIssueDetailModal() {
   const m = state.issueDetailModal
-  // 편집 중이고 변경사항이 있으면 확인
-  if (m?.editing && m.editBuffer !== m.editInitial) {
+  // 편집 중이면 에디터 내용으로 dirty 판정
+  if (m?.editing && isEditorDirty()) {
     if (!window.confirm('편집 중인 내용이 있습니다. 닫으시겠습니까?')) return
   }
+  destroyEditor()
   if (m?.blobUrls) {
     for (const url of m.blobUrls) {
       try { URL.revokeObjectURL(url) } catch {}
@@ -216,17 +217,14 @@ function closeIssueDetailModal() {
   render({ sections: ['modals'] })
 }
 
-// 설명 영역을 편집 모드로 전환: 현재 ADF를 Markdown으로 변환해 버퍼에 채움
+// 편집 진입: editAdf에 현재 본문 복사 후 render → ensureTiptap이 마운트
 function enterIssueDetailEditMode() {
   const m = state.issueDetailModal
   if (!m || m.editing || m.loading) return
   const adf = m.data?.descriptionAdf
-  const md = adf ? adfToMarkdown(adf) : ''
-  const lossy = adf ? detectLossyFeatures(adf) : []
   m.editing = true
-  m.editBuffer = md
-  m.editInitial = md
-  m.lossyFeatures = lossy
+  m.editAdf = adf ? JSON.parse(JSON.stringify(adf)) : null
+  m.lossyFeatures = adf ? detectLossyFeatures(adf) : []
   m.saveError = null
   render({ sections: ['modals'] })
 }
@@ -234,35 +232,38 @@ function enterIssueDetailEditMode() {
 function cancelIssueDetailEdit() {
   const m = state.issueDetailModal
   if (!m) return
-  if (m.editBuffer !== m.editInitial) {
+  if (isEditorDirty()) {
     if (!window.confirm('변경사항이 저장되지 않습니다. 취소하시겠습니까?')) return
   }
+  destroyEditor()
   m.editing = false
-  m.editBuffer = null
-  m.editInitial = null
+  m.editAdf = null
   m.saveError = null
+  m.lossyFeatures = null
   render({ sections: ['modals'] })
 }
 
 async function saveIssueDetailEdit() {
   const m = state.issueDetailModal
   if (!m || !m.editing || m.saving) return
-  const md = m.editBuffer || ''
-  // 빈 문자열이면 description을 null로 보내 비움 처리
-  const adfDoc = md.trim() === '' ? null : markdownToAdf(md)
+  const adfDoc = getCurrentAdf()
+  if (!adfDoc) return
+  const empty = isEmptyAdf(adfDoc)
+
+  // 저장 상태로 전환 (에디터 파괴됨 — 렌더가 spinner 표시)
+  destroyEditor()
   m.saving = true
   m.saveError = null
+  m.editAdf = adfDoc   // 실패 시 복구용
   render({ sections: ['modals'] })
 
   try {
-    await updateIssueDescription(m.key, adfDoc)
-    // 다시 상세 조회해 최신 상태 반영
+    await updateIssueDescription(m.key, empty ? null : adfDoc)
     const fresh = await fetchIssueDetail(m.key)
     if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
     state.issueDetailModal.data = fresh || {}
     state.issueDetailModal.editing = false
-    state.issueDetailModal.editBuffer = null
-    state.issueDetailModal.editInitial = null
+    state.issueDetailModal.editAdf = null
     state.issueDetailModal.saving = false
     state.issueDetailModal.saveError = null
     state.issueDetailModal.lossyFeatures = null
@@ -274,7 +275,27 @@ async function saveIssueDetailEdit() {
     state.issueDetailModal.saving = false
     state.issueDetailModal.saveError = err?.message || '알 수 없는 오류'
     render({ sections: ['modals'] })
+    // 다음 render의 ensureTiptap이 editAdf로 에디터 재생성
   }
+}
+
+// 에디터의 현재 ADF와 m.data.descriptionAdf를 비교해 변경 여부 판단
+function isEditorDirty() {
+  const m = state.issueDetailModal
+  if (!m) return false
+  const current = getCurrentAdf()
+  const original = m.data?.descriptionAdf || null
+  return JSON.stringify(current) !== JSON.stringify(original)
+}
+
+// 매 bindEvents 호출 후 실행: 편집 모드면 tiptap을 마운트
+function ensureIssueDetailEditor() {
+  const m = state.issueDetailModal
+  if (!m?.editing || m.saving) return
+  const mount = document.getElementById('issue-detail-edit-editor')
+  if (!mount || mount.dataset.tiptapMounted === '1') return
+  createEditor(mount, m.editAdf)
+  mount.dataset.tiptapMounted = '1'
 }
 
 // 이슈 상세 모달 열기 + 상세 데이터 비동기 로드
@@ -1289,23 +1310,34 @@ export function bindEvents() {
     })
   }
 
-  // 편집 textarea: 입력 추적 (저장 시 editBuffer 사용)
-  const detailEditTa = document.getElementById('issue-detail-edit')
-  if (detailEditTa) {
-    on(detailEditTa, 'input', (e) => {
-      if (state.issueDetailModal) state.issueDetailModal.editBuffer = e.target.value
-    })
-    // 포커스 이동 및 커서 끝으로
-    detailEditTa.focus()
-    const v = detailEditTa.value
-    detailEditTa.setSelectionRange(v.length, v.length)
-  }
-
   // 편집 취소/저장 버튼
   const detailEditCancelBtn = document.getElementById('issue-detail-edit-cancel')
   if (detailEditCancelBtn) on(detailEditCancelBtn, 'click', cancelIssueDetailEdit)
   const detailEditSaveBtn = document.getElementById('issue-detail-edit-save')
   if (detailEditSaveBtn) on(detailEditSaveBtn, 'click', saveIssueDetailEdit)
+
+  // tiptap 툴바: 각 버튼의 data-tt-cmd를 에디터 명령으로 실행
+  const toolbar = document.getElementById('issue-detail-edit-toolbar')
+  if (toolbar) {
+    on(toolbar, 'click', (e) => {
+      const btn = e.target.closest('[data-tt-cmd]')
+      if (!btn) return
+      e.preventDefault()
+      const cmd = btn.dataset.ttCmd
+      // 링크만 특별 처리 (URL 프롬프트)
+      if (cmd === '__link') {
+        const url = window.prompt('링크 URL을 입력하세요:')
+        if (url) runCommand('setLink', { href: url })
+        return
+      }
+      const argsRaw = btn.dataset.ttArgs
+      const args = argsRaw ? JSON.parse(argsRaw) : null
+      runCommand(cmd, args)
+    })
+  }
+
+  // 편집 모드 tiptap 에디터 마운트 (중복 마운트 방지)
+  ensureIssueDetailEditor()
 
   // 일감 미지정 세션 종료 모달의 이슈 키 입력: 자동완성 드롭다운 + blur 검증
   const finishIssueInput = document.getElementById('finish-issue-key')
