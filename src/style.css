@@ -3569,19 +3569,57 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   color: var(--text-bright);
 }
 
-/* Jira Wiki Renderer 특수 클래스: 패널/노트/정보 박스 */
-.detail-description .panel,
-.detail-description .aui-message {
+/* ADF 패널 / 상태 / 태스크 리스트 / 확장 박스 */
+.detail-description .adf-panel {
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  margin: 8px 0;
+  margin: 10px 0;
   background: var(--bg);
 }
 
-.detail-description .panelHeader {
+.detail-description .adf-panel-info    { border-left: 3px solid #3b82f6; }
+.detail-description .adf-panel-warning { border-left: 3px solid #f59e0b; }
+.detail-description .adf-panel-error   { border-left: 3px solid #ef4444; }
+.detail-description .adf-panel-success { border-left: 3px solid #10b981; }
+.detail-description .adf-panel-note    { border-left: 3px solid #a855f7; }
+
+.detail-description .adf-status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.detail-description .adf-mention {
+  color: var(--accent);
+}
+
+.detail-description .adf-tasklist,
+.detail-description .adf-decisionlist {
+  list-style: none;
+  padding-left: 4px;
+}
+
+.detail-description .adf-taskitem input {
+  margin-right: 6px;
+}
+
+.detail-description .adf-expand {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 10px 0;
+  padding: 6px 12px;
+  background: var(--bg);
+}
+
+.detail-description .adf-expand > summary {
+  cursor: pointer;
   font-weight: 600;
-  margin-bottom: 6px;
+  color: var(--text-bright);
+  padding: 4px 0;
 }
 
 .detail-section-label {

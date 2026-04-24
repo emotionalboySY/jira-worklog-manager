@@ -225,14 +225,6 @@ async function openIssueDetailModal(issueKey) {
   }
 }
 
-function isJiraResourceUrl(url) {
-  if (!url) return false
-  if (url.startsWith('https://api.atlassian.com/')) return true
-  if (/^https:\/\/[^/]+\.atlassian\.net\/rest\//.test(url)) return true
-  if (url.startsWith('/rest/')) return true
-  return false
-}
-
 // 본문 설명의 <img>와 첨부 썸네일을 인증 프록시로 받아 Blob URL로 교체
 async function loadIssueDetailImages() {
   const m = state.issueDetailModal
@@ -240,18 +232,20 @@ async function loadIssueDetailImages() {
   const modal = document.getElementById('issue-detail-overlay')
   if (!modal) return
 
-  // 1) 설명 본문의 이미지 (Jira 첨부만 프록시, 외부 이미지는 원본 유지)
-  const descImgs = modal.querySelectorAll('.detail-description img')
+  // 1) ADF media 노드: data-adf-media-url 속성에 담긴 Jira 첨부 URL을 Blob URL로 교체
+  const mediaImgs = modal.querySelectorAll('.detail-description img[data-adf-media-url]')
   const tasks = []
-  descImgs.forEach(img => {
-    const src = img.getAttribute('src')
-    if (!src) return
-    if (!isJiraResourceUrl(src)) return  // 외부 이미지는 브라우저가 그대로 로드
-
-    img.removeAttribute('src')
+  mediaImgs.forEach(img => {
+    const url = img.getAttribute('data-adf-media-url')
+    img.removeAttribute('data-adf-media-url')
+    if (!url) {
+      img.classList.add('detail-img-error')
+      img.alt = '(이미지 원본을 찾지 못함)'
+      return
+    }
     img.classList.add('detail-img-loading')
     tasks.push(
-      fetchAttachmentBlobUrl(src).then(blobUrl => {
+      fetchAttachmentBlobUrl(url).then(blobUrl => {
         if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
         if (blobUrl) {
           img.src = blobUrl

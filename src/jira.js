@@ -385,8 +385,9 @@ export async function fetchProjects() {
 // 스프린트 커스텀 필드 ID (확인 완료)
 const SPRINT_FIELD = 'customfield_10020'
 
-// 이슈 상세 정보 조회: 설명(HTML) + 메타 필드 + 첨부 목록
-// 목록 조회와는 별도로 모달 열릴 때만 호출 (lazy load)
+// 이슈 상세 정보 조회: ADF 설명 + 메타 + 첨부 목록
+// renderedFields(서버 HTML)는 구식 위키 마크업 잔재를 망치므로 쓰지 않고,
+// 클라이언트에서 ADF를 직접 렌더한다.
 export async function fetchIssueDetail(issueKey, { signal } = {}) {
   const fields = [
     'summary', 'issuetype', 'status', 'priority',
@@ -395,13 +396,12 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
     SPRINT_FIELD,
   ].join(',')
   const data = await jiraFetch(
-    `/issue/${encodeURIComponent(issueKey)}?fields=${fields}&expand=renderedFields`,
+    `/issue/${encodeURIComponent(issueKey)}?fields=${fields}`,
     { signal }
   )
   if (!data) return null
 
   const f = data.fields || {}
-  const rf = data.renderedFields || {}
   const tt = f.timetracking || {}
 
   return {
@@ -422,10 +422,10 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
     originalEstimateSeconds: tt.originalEstimateSeconds ?? null,
     timeSpentSeconds: tt.timeSpentSeconds ?? null,
     sprints: extractSprints(f[SPRINT_FIELD]),
-    descriptionHtml: rf.description || '',
+    descriptionAdf: f.description || null,  // ADF doc or null
     attachments: extractAttachments(f.attachment),
-    created: data.fields?.created || null,
-    updated: data.fields?.updated || null,
+    created: f.created || null,
+    updated: f.updated || null,
   }
 }
 

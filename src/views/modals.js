@@ -16,6 +16,7 @@ import {
   getShortStatusLabel,
 } from '../utils.js'
 import { loadWorklogs } from '../data.js'
+import { renderAdf } from '../adf.js'
 
 // 이슈 키 형식 검사 (예: DKT-123) — ISSUE_KEY_PATTERN도 여기에서 재노출
 export { ISSUE_KEY_PATTERN }
@@ -855,14 +856,20 @@ export function renderIssueDetailModal() {
   const spentHtml = (m.loading && !d.timeSpent) ? '불러오는 중…' : (d.timeSpent || '-')
 
   const descriptionSection = (() => {
-    if (m.loading && !d.descriptionHtml && !d.attachments) {
+    if (m.loading && !d.descriptionAdf && !d.attachments) {
       return `<div class="detail-loading"><div class="loading-spinner"></div><span>상세 정보를 불러오는 중</span></div>`
     }
     if (m.error) {
       return `<div class="detail-error">상세 정보를 불러오지 못했습니다: ${escapeHtml(m.error)}</div>`
     }
-    const descHtml = d.descriptionHtml
-      ? `<div class="detail-description">${d.descriptionHtml}</div>`
+
+    // ADF → HTML. 첨부 ID 맵을 context로 넘겨 media 노드가 해결되게 함
+    const attachmentsById = {}
+    for (const a of (d.attachments || [])) attachmentsById[a.id] = a
+    const rendered = d.descriptionAdf ? renderAdf(d.descriptionAdf, { attachmentsById }) : ''
+
+    const descHtml = rendered
+      ? `<div class="detail-description">${rendered}</div>`
       : `<div class="detail-description detail-description-empty">(설명 없음)</div>`
     const attachmentsHtml = (d.attachments && d.attachments.length > 0)
       ? `
