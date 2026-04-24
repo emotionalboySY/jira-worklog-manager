@@ -437,6 +437,33 @@ export async function updateIssueDescription(issueKey, adfDoc) {
   )
 }
 
+// 해당 이슈에 할당 가능한 사용자 목록 조회. query로 이름 필터링(서버측 검색)
+export async function fetchAssignableUsers(issueKey, query = '', { signal } = {}) {
+  const q = encodeURIComponent(query || '')
+  const data = await jiraFetch(
+    `/user/assignable/search?issueKey=${encodeURIComponent(issueKey)}&query=${q}&maxResults=30`,
+    { signal }
+  )
+  if (!Array.isArray(data)) return []
+  return data.map(u => {
+    const urls = u.avatarUrls || {}
+    return {
+      accountId: u.accountId,
+      displayName: u.displayName || '',
+      emailAddress: u.emailAddress || '',
+      avatarUrl: urls['32x32'] || urls['48x48'] || urls['24x24'] || urls['16x16'] || '',
+    }
+  })
+}
+
+// 이슈 담당자 변경. accountId=null/빈값이면 미할당
+export async function updateIssueAssignee(issueKey, accountId) {
+  await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}/assignee`,
+    { method: 'PUT', body: { accountId: accountId || null } }
+  )
+}
+
 function extractReporter(fields) {
   const r = fields?.reporter
   if (!r || !r.accountId) return null

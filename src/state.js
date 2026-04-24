@@ -166,6 +166,14 @@ export const state = {
   // { issueKey, transition, values, submitting } | null
   transitionFieldsModal: null,
 
+  // 담당자 드롭다운: { issueKey, rect, users, loading, searching, query } | null
+  assigneeDropdown: null,
+  // 담당자 변경 진행 중인 이슈 키 집합 (아바타에 스피너 표시)
+  assigneeUpdating: new Set(),
+  // 담당자 검색 디바운스/취소
+  assigneeSearchTimer: null,
+  assigneeSearchController: null,
+
   // ----- 테마/패널 -----
   theme: localStorage.getItem('theme') || 'dark',
   favoritesPanelCollapsed: (localStorage.getItem('favorites_collapsed') === '1'),

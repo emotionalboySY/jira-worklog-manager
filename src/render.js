@@ -19,6 +19,7 @@ import {
   renderStatusDropdown,
   renderTransitionFieldsModal,
   renderIssueDetailModal,
+  renderAssigneeDropdown,
 } from './views/modals.js'
 import { renderSettingsFab, renderSettingsModal } from './views/settings.js'
 import { bindEvents, startTimerUpdate } from './events.js'
@@ -35,6 +36,7 @@ function renderModalsHtml() {
     ${state.showSettings ? renderSettingsModal() : ''}
     ${state.showSwapIssue ? renderSwapIssueModal() : ''}
     ${state.statusDropdown ? renderStatusDropdown() : ''}
+    ${state.assigneeDropdown ? renderAssigneeDropdown() : ''}
     ${state.transitionFieldsModal ? renderTransitionFieldsModal() : ''}
     ${state.issueDetailModal ? renderIssueDetailModal() : ''}
   `

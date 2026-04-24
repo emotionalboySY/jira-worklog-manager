@@ -15,6 +15,8 @@ import {
   fetchIssueDetail,
   fetchAttachmentBlobUrl,
   updateIssueDescription,
+  fetchAssignableUsers,
+  updateIssueAssignee,
 } from './jira.js'
 import { detectLossyFeatures, isEmptyAdf } from './adfProsemirror.js'
 import { createEditor, destroyEditor, getCurrentAdf, runCommand } from './tiptap.js'
@@ -129,6 +131,15 @@ function handleGlobalClick(e) {
     }
   }
 
+  // 담당자 드롭다운: 드롭다운 바깥 + 아바타 바깥 클릭 시 닫음
+  if (state.assigneeDropdown) {
+    const dd = document.getElementById('assignee-dropdown')
+    const clickedOnTrigger = e.target.closest?.('[data-action="toggle-assignee-menu"]')
+    if (dd && !dd.contains(e.target) && !clickedOnTrigger) {
+      closeAssigneeDropdown()
+    }
+  }
+
   if (state.favoritesPanelCollapsed) return
   const panel = document.querySelector('.favorites-panel.expanded')
   if (!panel) return
@@ -165,6 +176,10 @@ function handleGlobalKeydown(e) {
   if (state.statusDropdown) {
     state.statusDropdown = null
     render(modalsOnly)
+    return
+  }
+  if (state.assigneeDropdown) {
+    closeAssigneeDropdown()
     return
   }
   if (state.showSwapIssue) {
@@ -286,6 +301,80 @@ function isEditorDirty() {
   const current = getCurrentAdf()
   const original = m.data?.descriptionAdf || null
   return JSON.stringify(current) !== JSON.stringify(original)
+}
+
+// 담당자 드롭다운 닫기 + 인플라이트 요청 취소
+function closeAssigneeDropdown({ skipRender = false } = {}) {
+  if (state.assigneeSearchController) {
+    try { state.assigneeSearchController.abort() } catch {}
+    state.assigneeSearchController = null
+  }
+  if (state.assigneeSearchTimer) {
+    clearTimeout(state.assigneeSearchTimer)
+    state.assigneeSearchTimer = null
+  }
+  state.assigneeDropdown = null
+  if (!skipRender) render({ sections: ['modals'] })
+}
+
+// 할당 가능한 사용자 조회. 이전 요청이 있으면 abort 후 새로 실행
+async function loadAssignableUsers(issueKey, query) {
+  if (state.assigneeSearchController) {
+    try { state.assigneeSearchController.abort() } catch {}
+  }
+  const controller = new AbortController()
+  state.assigneeSearchController = controller
+  try {
+    const users = await fetchAssignableUsers(issueKey, query, { signal: controller.signal })
+    // 드롭다운이 이미 닫혔거나 다른 이슈로 바뀐 경우 무시
+    if (!state.assigneeDropdown || state.assigneeDropdown.issueKey !== issueKey) return
+    if (state.assigneeDropdown.query !== query) return  // 더 최근 쿼리로 교체됨
+    state.assigneeDropdown.users = users
+    state.assigneeDropdown.loading = false
+    state.assigneeDropdown.searching = false
+    render({ sections: ['modals'] })
+  } catch (err) {
+    if (err?.name === 'AbortError') return
+    console.error('할당 가능한 사용자 조회 실패:', err)
+    if (!state.assigneeDropdown || state.assigneeDropdown.issueKey !== issueKey) return
+    state.assigneeDropdown.users = []
+    state.assigneeDropdown.loading = false
+    state.assigneeDropdown.searching = false
+    render({ sections: ['modals'] })
+    showToast(`사용자 조회 실패: ${formatJiraError(err)}`, '⚠')
+  }
+}
+
+// 담당자 변경 실행. 진행 중 스피너 → 성공 시 아바타 즉시 갱신 + 토스트
+async function applyAssigneeChange(issueKey, accountId, selectedUser) {
+  state.assigneeUpdating.add(issueKey)
+  render({ sections: ['content'] })
+  try {
+    await updateIssueAssignee(issueKey, accountId)
+    // realIssues에서 해당 이슈의 assignee 갱신
+    for (const issue of state.realIssues) {
+      if (issue.key !== issueKey) continue
+      if (!accountId) {
+        issue.assignee = null
+      } else if (selectedUser) {
+        issue.assignee = {
+          accountId: selectedUser.accountId,
+          displayName: selectedUser.displayName,
+          avatarUrl: selectedUser.avatarUrl,
+        }
+      }
+      break
+    }
+    showToast(accountId
+      ? `담당자를 ${selectedUser?.displayName || ''}(으)로 변경했습니다.`
+      : '담당자를 미할당으로 변경했습니다.', '✓')
+  } catch (err) {
+    console.error('담당자 변경 실패:', err)
+    showToast(`담당자 변경 실패: ${formatJiraError(err)}`, '⚠')
+  } finally {
+    state.assigneeUpdating.delete(issueKey)
+    render({ sections: ['content'] })
+  }
 }
 
 // 매 bindEvents 호출 후 실행: 편집 모드면 tiptap을 마운트
@@ -1076,6 +1165,75 @@ export function bindEvents() {
         }
         showToast(`상태 조회 실패: ${formatJiraError(err)}`, '⚠')
       }
+    })
+  })
+
+  // 담당자 아바타 클릭 → 드롭다운 토글
+  document.querySelectorAll('[data-action="toggle-assignee-menu"]').forEach(el => {
+    on(el, 'click', (e) => {
+      e.stopPropagation()
+      const key = el.dataset.issueKey
+      if (!key) return
+      // 이미 이 이슈에 열려 있으면 토글로 닫기
+      if (state.assigneeDropdown && state.assigneeDropdown.issueKey === key) {
+        closeAssigneeDropdown()
+        return
+      }
+      // 다른 이슈 드롭다운이 열려있으면 먼저 정리
+      if (state.assigneeDropdown) closeAssigneeDropdown({ skipRender: true })
+      const rect = el.getBoundingClientRect()
+      state.assigneeDropdown = {
+        issueKey: key,
+        rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+        users: null,
+        loading: true,
+        searching: false,
+        query: '',
+      }
+      // 상태 드롭다운이 열려있으면 닫음
+      if (state.statusDropdown) state.statusDropdown = null
+      render({ sections: ['modals'] })
+      loadAssignableUsers(key, '')
+    })
+  })
+
+  // 담당자 검색 입력 (디바운스 300ms)
+  const assigneeSearchInput = document.getElementById('assignee-search-input')
+  if (assigneeSearchInput) {
+    // 포커스 유지: 드롭다운이 매 렌더 시 재생성되므로 현재 값/커서 위치 복원 후 포커스
+    const dd = state.assigneeDropdown
+    if (dd) {
+      const pos = assigneeSearchInput.value.length
+      assigneeSearchInput.focus()
+      try { assigneeSearchInput.setSelectionRange(pos, pos) } catch {}
+    }
+    on(assigneeSearchInput, 'input', (e) => {
+      const q = e.target.value
+      if (!state.assigneeDropdown) return
+      state.assigneeDropdown.query = q
+      state.assigneeDropdown.searching = true
+      render({ sections: ['modals'] })
+      if (state.assigneeSearchTimer) clearTimeout(state.assigneeSearchTimer)
+      state.assigneeSearchTimer = setTimeout(() => {
+        if (!state.assigneeDropdown) return
+        loadAssignableUsers(state.assigneeDropdown.issueKey, q)
+      }, 300)
+    })
+  }
+
+  // 담당자 항목 선택 → 변경 API 호출
+  document.querySelectorAll('.assignee-dd-item').forEach(item => {
+    on(item, 'click', async (e) => {
+      e.stopPropagation()
+      const dd = state.assigneeDropdown
+      if (!dd) return
+      const issueKey = dd.issueKey
+      const accountId = item.dataset.assigneeId || ''  // 빈 문자열 = 미할당
+      const selected = accountId
+        ? (dd.users || []).find(u => u.accountId === accountId)
+        : null
+      closeAssigneeDropdown()
+      await applyAssigneeChange(issueKey, accountId || null, selected)
     })
   })
 

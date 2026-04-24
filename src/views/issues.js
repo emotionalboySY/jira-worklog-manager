@@ -104,7 +104,7 @@ export function renderIssuesTab() {
               <svg width="15" height="15" viewBox="0 0 16 16" fill="${isFavorite(issue.key) ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>
             </button>
             ${renderStatusButton(issue, statusCss, statusLabel, rawStatus)}
-            ${renderAssigneeAvatar(issue.assignee)}
+            ${renderAssigneeAvatar(issue.assignee, issue.key)}
             ${issue.role && issue.role !== 'none'
               ? `<span class="issue-tag ${issue.role}">${{ assignee: '할당', reporter: '보고', watcher: '워칭' }[issue.role]}</span>`
               : `<span class="issue-tag placeholder" aria-hidden="true">·</span>`
@@ -139,15 +139,25 @@ function renderStatusButton(issue, statusCss, statusLabel, rawStatus) {
   return `<button type="button" class="issue-status ${statusCss}" data-action="toggle-status-menu" data-key="${issue.key}" data-current-status="${currentStatusAttr}" title="${titleSafe} · 클릭하여 상태 변경">${statusLabel}</button>`
 }
 
-// 담당자 원형 프로필. 미할당이면 SVG 실루엣 기본 아이콘
-function renderAssigneeAvatar(assignee) {
+// 담당자 원형 프로필. 클릭 시 담당자 변경 드롭다운이 열림.
+// - 업데이트 중(assigneeUpdating에 키가 있음)이면 스피너로 교체
+// - 미할당이면 SVG 실루엣 기본 아이콘
+function renderAssigneeAvatar(assignee, issueKey) {
+  const isUpdating = state.assigneeUpdating.has(issueKey)
+  if (isUpdating) {
+    return `
+      <span class="assignee-avatar assignee-avatar-loading" title="담당자 변경 중" aria-label="담당자 변경 중">
+        <span class="btn-spinner"></span>
+      </span>
+    `
+  }
+  const clickAttrs = `data-action="toggle-assignee-menu" data-issue-key="${escapeHtml(issueKey)}" role="button" tabindex="0"`
   if (assignee && assignee.avatarUrl) {
     const title = escapeHtml(assignee.displayName || '담당자')
-    // onerror: Jira 아바타 URL 로드 실패 시 'broken' 클래스로 전환해 실루엣 배경이 보이도록
-    return `<img class="assignee-avatar" src="${escapeHtml(assignee.avatarUrl)}" alt="${title}" title="${title}" loading="lazy" onerror="this.classList.add('broken')" />`
+    return `<img class="assignee-avatar" src="${escapeHtml(assignee.avatarUrl)}" alt="${title}" title="${title} · 클릭하여 변경" loading="lazy" onerror="this.classList.add('broken')" ${clickAttrs} />`
   }
   return `
-    <span class="assignee-avatar assignee-avatar-empty" title="미할당" aria-label="미할당">
+    <span class="assignee-avatar assignee-avatar-empty" title="미할당 · 클릭하여 지정" aria-label="미할당" ${clickAttrs}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="8" r="3.5"/>
         <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/>

@@ -274,6 +274,76 @@ export function renderStatusDropdown() {
   `
 }
 
+// ========== 담당자 드롭다운 ==========
+// 이슈 목록의 담당자 아바타 클릭 시 표시. 이름 검색(서버측 300ms 디바운스) + 리스트.
+export function renderAssigneeDropdown() {
+  const dd = state.assigneeDropdown
+  if (!dd) return ''
+  const { rect, users, loading, searching, query } = dd
+
+  const GAP = 4
+  const EDGE = 8
+  const WIDTH = 280
+  // 높이 추정: 검색창(44) + 항목당 40 + 여유
+  const rows = Math.max(1, (users || []).length + (query ? 0 : 1)) // 검색어 없을 땐 "미할당" 옵션 추가
+  const estHeight = Math.min(420, 44 + rows * 40 + 20)
+
+  const spaceBelow = window.innerHeight - rect.bottom - EDGE
+  const spaceAbove = rect.top - EDGE
+  const openUp = estHeight > spaceBelow && spaceAbove > spaceBelow
+  const available = openUp ? spaceAbove : spaceBelow
+  const maxHeight = Math.max(220, available - GAP)
+
+  // 아바타 기준 오른쪽 정렬 (아바타가 행의 오른쪽에 위치하므로)
+  const right = Math.max(EDGE, Math.round(window.innerWidth - rect.right))
+  const vertical = openUp
+    ? `bottom:${Math.round(window.innerHeight - rect.top + GAP)}px;`
+    : `top:${Math.round(rect.bottom + GAP)}px;`
+  const style = `${vertical} right:${right}px; width:${WIDTH}px; max-height:${maxHeight}px;`
+
+  const unassignedItem = !query ? `
+    <button type="button" class="assignee-dd-item" data-assignee-id="">
+      <span class="assignee-avatar assignee-avatar-empty sm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>
+      </span>
+      <span class="assignee-dd-name">미할당</span>
+    </button>
+  ` : ''
+
+  let listHtml
+  if (loading) {
+    listHtml = `<div class="assignee-dd-loading"><span class="btn-spinner"></span><span>사용자 조회 중…</span></div>`
+  } else {
+    const items = users || []
+    if (items.length === 0) {
+      listHtml = `
+        ${unassignedItem}
+        <div class="assignee-dd-empty">${query ? '검색 결과가 없습니다.' : '할당 가능한 사용자가 없습니다.'}</div>
+      `
+    } else {
+      const itemsHtml = items.map(u => `
+        <button type="button" class="assignee-dd-item" data-assignee-id="${escapeHtml(u.accountId)}">
+          ${u.avatarUrl
+            ? `<img class="assignee-avatar sm" src="${escapeHtml(u.avatarUrl)}" alt="" onerror="this.classList.add('broken')" />`
+            : `<span class="assignee-avatar assignee-avatar-empty sm"></span>`}
+          <span class="assignee-dd-name">${escapeHtml(u.displayName)}</span>
+        </button>
+      `).join('')
+      listHtml = `${unassignedItem}${itemsHtml}`
+    }
+  }
+
+  return `
+    <div class="assignee-dropdown" id="assignee-dropdown" style="${style}">
+      <div class="assignee-dd-search">
+        <input type="text" id="assignee-search-input" placeholder="이름 검색..." value="${escapeHtml(query || '')}" autocomplete="off" />
+        ${searching ? `<span class="search-spinner"></span>` : ''}
+      </div>
+      <div class="assignee-dd-list">${listHtml}</div>
+    </div>
+  `
+}
+
 // 전이에 필수 필드(resolution 등)가 있는지 검사
 export function hasRequiredFields(transition) {
   const fields = transition.fields || {}
