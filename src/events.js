@@ -212,8 +212,6 @@ async function openIssueDetailModal(issueKey) {
     const detail = await fetchIssueDetail(issueKey)
     // 모달이 이미 닫혔거나 다른 이슈로 바뀐 경우 무시
     if (!state.issueDetailModal || state.issueDetailModal.key !== issueKey) return
-    // [임시] description HTML 구조 확인용 — 포맷팅 이슈 디버깅 후 제거 예정
-    console.log('[debug] descriptionHtml:', detail?.descriptionHtml)
     state.issueDetailModal.data = detail || {}
     state.issueDetailModal.loading = false
     render({ sections: ['modals'] })
