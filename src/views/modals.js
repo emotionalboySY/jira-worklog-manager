@@ -301,6 +301,23 @@ export function renderAssigneeDropdown() {
     : `top:${Math.round(rect.bottom + GAP)}px;`
   const style = `${vertical} right:${right}px; width:${WIDTH}px; max-height:${maxHeight}px;`
 
+  return `
+    <div class="assignee-dropdown" id="assignee-dropdown" style="${style}">
+      <div class="assignee-dd-search">
+        <input type="text" id="assignee-search-input" placeholder="이름 검색..." value="${escapeHtml(query || '')}" autocomplete="off" />
+        <span class="search-spinner" id="assignee-search-spinner" style="${searching ? '' : 'display:none'}"></span>
+      </div>
+      <div class="assignee-dd-list" id="assignee-dd-list">${renderAssigneeDropdownListContents(dd)}</div>
+    </div>
+  `
+}
+
+// 드롭다운 리스트 영역만 생성. 검색 입력 시 DOM 직접 갱신으로 input 엘리먼트는 보존해
+// IME 한글 조합이 끊기지 않도록 함.
+export function renderAssigneeDropdownListContents(dd) {
+  if (!dd) return ''
+  const { users, loading, query } = dd
+
   const unassignedItem = !query ? `
     <button type="button" class="assignee-dd-item" data-assignee-id="">
       <span class="assignee-avatar assignee-avatar-empty sm">
@@ -310,38 +327,25 @@ export function renderAssigneeDropdown() {
     </button>
   ` : ''
 
-  let listHtml
   if (loading) {
-    listHtml = `<div class="assignee-dd-loading"><span class="btn-spinner"></span><span>사용자 조회 중…</span></div>`
-  } else {
-    const items = users || []
-    if (items.length === 0) {
-      listHtml = `
-        ${unassignedItem}
-        <div class="assignee-dd-empty">${query ? '검색 결과가 없습니다.' : '할당 가능한 사용자가 없습니다.'}</div>
-      `
-    } else {
-      const itemsHtml = items.map(u => `
-        <button type="button" class="assignee-dd-item" data-assignee-id="${escapeHtml(u.accountId)}">
-          ${u.avatarUrl
-            ? `<img class="assignee-avatar sm" src="${escapeHtml(u.avatarUrl)}" alt="" onerror="this.classList.add('broken')" />`
-            : `<span class="assignee-avatar assignee-avatar-empty sm"></span>`}
-          <span class="assignee-dd-name">${escapeHtml(u.displayName)}</span>
-        </button>
-      `).join('')
-      listHtml = `${unassignedItem}${itemsHtml}`
-    }
+    return `<div class="assignee-dd-loading"><span class="btn-spinner"></span><span>사용자 조회 중…</span></div>`
   }
-
-  return `
-    <div class="assignee-dropdown" id="assignee-dropdown" style="${style}">
-      <div class="assignee-dd-search">
-        <input type="text" id="assignee-search-input" placeholder="이름 검색..." value="${escapeHtml(query || '')}" autocomplete="off" />
-        ${searching ? `<span class="search-spinner"></span>` : ''}
-      </div>
-      <div class="assignee-dd-list">${listHtml}</div>
-    </div>
-  `
+  const items = users || []
+  if (items.length === 0) {
+    return `
+      ${unassignedItem}
+      <div class="assignee-dd-empty">${query ? '검색 결과가 없습니다.' : '할당 가능한 사용자가 없습니다.'}</div>
+    `
+  }
+  const itemsHtml = items.map(u => `
+    <button type="button" class="assignee-dd-item" data-assignee-id="${escapeHtml(u.accountId)}">
+      ${u.avatarUrl
+        ? `<img class="assignee-avatar sm" src="${escapeHtml(u.avatarUrl)}" alt="" onerror="this.classList.add('broken')" />`
+        : `<span class="assignee-avatar assignee-avatar-empty sm"></span>`}
+      <span class="assignee-dd-name">${escapeHtml(u.displayName)}</span>
+    </button>
+  `).join('')
+  return `${unassignedItem}${itemsHtml}`
 }
 
 // 전이에 필수 필드(resolution 등)가 있는지 검사

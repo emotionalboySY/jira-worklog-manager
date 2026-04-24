@@ -71,6 +71,7 @@ import {
   updateKeyDropdown,
   selectKeyCandidate,
   buildTransitionFieldsPayload,
+  renderAssigneeDropdownListContents,
 } from './views/modals.js'
 import { ensureSummaryWorklogs } from './views/summary.js'
 import { render, resetIssueListScroll } from './render.js'
@@ -317,6 +318,16 @@ function closeAssigneeDropdown({ skipRender = false } = {}) {
   if (!skipRender) render({ sections: ['modals'] })
 }
 
+// 리스트 영역만 부분 재렌더. 전체 render()를 피해 검색 input의 IME 조합 유지.
+function refreshAssigneeDropdownList() {
+  const dd = state.assigneeDropdown
+  if (!dd) return
+  const listEl = document.getElementById('assignee-dd-list')
+  if (listEl) listEl.innerHTML = renderAssigneeDropdownListContents(dd)
+  const sp = document.getElementById('assignee-search-spinner')
+  if (sp) sp.style.display = dd.searching ? '' : 'none'
+}
+
 // 할당 가능한 사용자 조회. 이전 요청이 있으면 abort 후 새로 실행
 async function loadAssignableUsers(issueKey, query) {
   if (state.assigneeSearchController) {
@@ -332,7 +343,7 @@ async function loadAssignableUsers(issueKey, query) {
     state.assigneeDropdown.users = users
     state.assigneeDropdown.loading = false
     state.assigneeDropdown.searching = false
-    render({ sections: ['modals'] })
+    refreshAssigneeDropdownList()
   } catch (err) {
     if (err?.name === 'AbortError') return
     console.error('할당 가능한 사용자 조회 실패:', err)
@@ -340,7 +351,7 @@ async function loadAssignableUsers(issueKey, query) {
     state.assigneeDropdown.users = []
     state.assigneeDropdown.loading = false
     state.assigneeDropdown.searching = false
-    render({ sections: ['modals'] })
+    refreshAssigneeDropdownList()
     showToast(`사용자 조회 실패: ${formatJiraError(err)}`, '⚠')
   }
 }
@@ -1197,22 +1208,24 @@ export function bindEvents() {
     })
   })
 
-  // 담당자 검색 입력 (디바운스 300ms)
+  // 담당자 검색 입력: 전체 재렌더하지 않고 부분 DOM 업데이트 (IME 조합 보존)
   const assigneeSearchInput = document.getElementById('assignee-search-input')
   if (assigneeSearchInput) {
-    // 포커스 유지: 드롭다운이 매 렌더 시 재생성되므로 현재 값/커서 위치 복원 후 포커스
-    const dd = state.assigneeDropdown
-    if (dd) {
-      const pos = assigneeSearchInput.value.length
+    // 드롭다운이 막 열렸을 때만 최초 1회 포커스
+    if (state.assigneeDropdown && !state.assigneeDropdown._focused) {
       assigneeSearchInput.focus()
-      try { assigneeSearchInput.setSelectionRange(pos, pos) } catch {}
+      state.assigneeDropdown._focused = true
     }
     on(assigneeSearchInput, 'input', (e) => {
       const q = e.target.value
       if (!state.assigneeDropdown) return
       state.assigneeDropdown.query = q
       state.assigneeDropdown.searching = true
-      render({ sections: ['modals'] })
+      // 스피너 show
+      const sp = document.getElementById('assignee-search-spinner')
+      if (sp) sp.style.display = ''
+      // 리스트만 갱신 (query 기반으로 "미할당" 항목 유무 바뀜)
+      refreshAssigneeDropdownList()
       if (state.assigneeSearchTimer) clearTimeout(state.assigneeSearchTimer)
       state.assigneeSearchTimer = setTimeout(() => {
         if (!state.assigneeDropdown) return
@@ -1221,21 +1234,25 @@ export function bindEvents() {
     })
   }
 
-  // 담당자 항목 선택 → 변경 API 호출
-  document.querySelectorAll('.assignee-dd-item').forEach(item => {
-    on(item, 'click', async (e) => {
+  // 리스트 항목 클릭 위임: 리스트 컨테이너에 한 번만 바인드
+  // (부분 DOM 업데이트로 항목 DOM이 바뀌어도 핸들러는 컨테이너에 살아있음)
+  const assigneeList = document.getElementById('assignee-dd-list')
+  if (assigneeList) {
+    on(assigneeList, 'click', async (e) => {
+      const item = e.target.closest('.assignee-dd-item')
+      if (!item) return
       e.stopPropagation()
       const dd = state.assigneeDropdown
       if (!dd) return
       const issueKey = dd.issueKey
-      const accountId = item.dataset.assigneeId || ''  // 빈 문자열 = 미할당
+      const accountId = item.dataset.assigneeId || ''
       const selected = accountId
         ? (dd.users || []).find(u => u.accountId === accountId)
         : null
       closeAssigneeDropdown()
       await applyAssigneeChange(issueKey, accountId || null, selected)
     })
-  })
+  }
 
   // 드롭다운의 전이 항목 선택 → 필드 필요하면 2차 모달, 아니면 즉시 실행
   document.querySelectorAll('[data-action="apply-transition"]').forEach(btn => {

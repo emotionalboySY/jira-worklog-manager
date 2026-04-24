@@ -3357,6 +3357,20 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   height: 20px;
 }
 
+/* 이슈 행의 클릭 가능한 아바타: 호버 시 테두리 강조 */
+.assignee-avatar[data-action="toggle-assignee-menu"] {
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+
+.assignee-avatar[data-action="toggle-assignee-menu"]:hover {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.assignee-avatar[data-action="toggle-assignee-menu"]:active {
+  transform: scale(0.95);
+}
+
 /* ========== 이슈 상세 모달 ========== */
 .modal-issue-detail {
   width: 880px;
