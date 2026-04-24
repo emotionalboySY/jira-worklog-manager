@@ -166,13 +166,11 @@ export const state = {
   // { issueKey, transition, values, submitting } | null
   transitionFieldsModal: null,
 
-  // 담당자 드롭다운: { issueKey, rect, users, loading, searching, query } | null
+  // 담당자 드롭다운: { issueKey, rect, allUsers, query, loading, _focused } | null
+  // allUsers: 최초 1회 API 조회 결과. 검색은 로컬 필터(instant).
   assigneeDropdown: null,
   // 담당자 변경 진행 중인 이슈 키 집합 (아바타에 스피너 표시)
   assigneeUpdating: new Set(),
-  // 담당자 검색 디바운스/취소
-  assigneeSearchTimer: null,
-  assigneeSearchController: null,
 
   // ----- 테마/패널 -----
   theme: localStorage.getItem('theme') || 'dark',

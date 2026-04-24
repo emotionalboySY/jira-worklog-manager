@@ -437,11 +437,11 @@ export async function updateIssueDescription(issueKey, adfDoc) {
   )
 }
 
-// 해당 이슈에 할당 가능한 사용자 목록 조회. query로 이름 필터링(서버측 검색)
-export async function fetchAssignableUsers(issueKey, query = '', { signal } = {}) {
-  const q = encodeURIComponent(query || '')
+// 해당 이슈에 할당 가능한 사용자 전체 조회. 검색은 클라이언트 측에서 처리.
+export async function fetchAssignableUsers(issueKey, { signal } = {}) {
+  // Jira Cloud 기본 max는 1000. 100이면 사실상 전원 커버.
   const data = await jiraFetch(
-    `/user/assignable/search?issueKey=${encodeURIComponent(issueKey)}&query=${q}&maxResults=30`,
+    `/user/assignable/search?issueKey=${encodeURIComponent(issueKey)}&query=&maxResults=100`,
     { signal }
   )
   if (!Array.isArray(data)) return []

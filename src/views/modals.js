@@ -275,11 +275,12 @@ export function renderStatusDropdown() {
 }
 
 // ========== 담당자 드롭다운 ==========
-// 이슈 목록의 담당자 아바타 클릭 시 표시. 이름 검색(서버측 300ms 디바운스) + 리스트.
+// 이슈 목록의 담당자 아바타 클릭 시 표시. 최초 1회만 API 조회하고 이후 검색은 로컬 필터.
 export function renderAssigneeDropdown() {
   const dd = state.assigneeDropdown
   if (!dd) return ''
-  const { rect, users, loading, searching, query } = dd
+  const { rect, allUsers, loading, query } = dd
+  const users = filterAssignees(allUsers, query)
 
   const GAP = 4
   const EDGE = 8
@@ -305,18 +306,29 @@ export function renderAssigneeDropdown() {
     <div class="assignee-dropdown" id="assignee-dropdown" style="${style}">
       <div class="assignee-dd-search">
         <input type="text" id="assignee-search-input" placeholder="이름 검색..." value="${escapeHtml(query || '')}" autocomplete="off" />
-        <span class="search-spinner" id="assignee-search-spinner" style="${searching ? '' : 'display:none'}"></span>
       </div>
       <div class="assignee-dd-list" id="assignee-dd-list">${renderAssigneeDropdownListContents(dd)}</div>
     </div>
   `
 }
 
+// 이름/이메일에 query가 포함된 사용자만 반환 (대소문자 무시)
+export function filterAssignees(allUsers, query) {
+  if (!Array.isArray(allUsers)) return null
+  const q = (query || '').trim().toLowerCase()
+  if (!q) return allUsers
+  return allUsers.filter(u =>
+    (u.displayName || '').toLowerCase().includes(q) ||
+    (u.emailAddress || '').toLowerCase().includes(q)
+  )
+}
+
 // 드롭다운 리스트 영역만 생성. 검색 입력 시 DOM 직접 갱신으로 input 엘리먼트는 보존해
 // IME 한글 조합이 끊기지 않도록 함.
 export function renderAssigneeDropdownListContents(dd) {
   if (!dd) return ''
-  const { users, loading, query } = dd
+  const { allUsers, loading, query } = dd
+  const users = filterAssignees(allUsers, query)
 
   const unassignedItem = !query ? `
     <button type="button" class="assignee-dd-item" data-assignee-id="">
