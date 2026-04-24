@@ -382,27 +382,125 @@ export async function fetchProjects() {
   }))
 }
 
-// [임시 디버그] 스프린트 등 커스텀 필드 ID 확인용. 사용 후 제거 예정
-export async function debugListCustomFields() {
-  try {
-    const fields = await jiraFetch('/field')
-    if (!Array.isArray(fields)) {
-      console.warn('[debug] /field 응답이 배열이 아닙니다.', fields)
-      return
-    }
-    const sprintFields = fields.filter(f =>
-      (f.name || '').toLowerCase().includes('sprint') ||
-      (f.schema?.custom || '').toLowerCase().includes('sprint')
-    )
-    console.log('[debug] Sprint 관련 필드:', sprintFields)
-    console.log('[debug] 전체 커스텀 필드 수:', fields.filter(f => f.custom).length)
-    console.table(sprintFields.map(f => ({
-      id: f.id,
-      name: f.name,
-      custom: f.custom,
-      schema: f.schema?.custom || '',
-    })))
-  } catch (e) {
-    console.error('[debug] 커스텀 필드 조회 실패:', e)
+// 스프린트 커스텀 필드 ID (확인 완료)
+const SPRINT_FIELD = 'customfield_10020'
+
+// 이슈 상세 정보 조회: 설명(HTML) + 메타 필드 + 첨부 목록
+// 목록 조회와는 별도로 모달 열릴 때만 호출 (lazy load)
+export async function fetchIssueDetail(issueKey, { signal } = {}) {
+  const fields = [
+    'summary', 'issuetype', 'status', 'priority',
+    'reporter', 'assignee', 'duedate', 'timetracking',
+    'description', 'attachment', 'parent', 'created', 'updated',
+    SPRINT_FIELD,
+  ].join(',')
+  const data = await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}?fields=${fields}&expand=renderedFields`,
+    { signal }
+  )
+  if (!data) return null
+
+  const f = data.fields || {}
+  const rf = data.renderedFields || {}
+  const tt = f.timetracking || {}
+
+  return {
+    key: data.key,
+    summary: f.summary || '',
+    type: f.issuetype?.name || '',
+    typeIconUrl: f.issuetype?.iconUrl || '',
+    status: f.status?.name || '',
+    statusCategory: f.status?.statusCategory?.key || 'new',
+    priority: f.priority?.name || '',
+    priorityIconUrl: f.priority?.iconUrl || '',
+    parent: extractParent(f),
+    assignee: extractAssignee(f),
+    reporter: extractReporter(f),
+    duedate: f.duedate || null,
+    originalEstimate: tt.originalEstimate || null,
+    timeSpent: tt.timeSpent || null,
+    originalEstimateSeconds: tt.originalEstimateSeconds ?? null,
+    timeSpentSeconds: tt.timeSpentSeconds ?? null,
+    sprints: extractSprints(f[SPRINT_FIELD]),
+    descriptionHtml: rf.description || '',
+    attachments: extractAttachments(f.attachment),
+    created: data.fields?.created || null,
+    updated: data.fields?.updated || null,
   }
+}
+
+function extractReporter(fields) {
+  const r = fields?.reporter
+  if (!r || !r.accountId) return null
+  const urls = r.avatarUrls || {}
+  return {
+    accountId: r.accountId,
+    displayName: r.displayName || '',
+    avatarUrl: urls['32x32'] || urls['48x48'] || urls['24x24'] || urls['16x16'] || '',
+  }
+}
+
+// 스프린트 배열에서 이름만 뽑음. active 우선, 없으면 future, 그 외는 제외
+function extractSprints(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter(s => s && (s.state === 'active' || s.state === 'future'))
+    .map(s => ({ id: s.id, name: s.name || '', state: s.state || '' }))
+}
+
+function extractAttachments(value) {
+  if (!Array.isArray(value)) return []
+  return value.map(a => ({
+    id: a.id,
+    filename: a.filename || '',
+    mimeType: a.mimeType || '',
+    size: a.size || 0,
+    contentUrl: a.content || '',  // 원본 다운로드 URL
+    thumbnailUrl: a.thumbnail || '',
+  }))
+}
+
+// 첨부/이미지 바이너리를 인증 프록시로 받아 Blob URL 생성
+// 호출 측이 URL.revokeObjectURL로 해제해야 함
+export async function fetchAttachmentBlobUrl(url) {
+  const accessToken = localStorage.getItem('jira_access_token')
+  if (!accessToken || !url) return null
+
+  // 사이트 URL(mysite.atlassian.net)은 api.atlassian.com 경유로 변환
+  const apiUrl = toApiAtlassianUrl(url)
+  if (!apiUrl) return null
+
+  try {
+    const res = await fetch(`/api/attachment?url=${encodeURIComponent(apiUrl)}`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return URL.createObjectURL(blob)
+  } catch {
+    return null
+  }
+}
+
+// 다양한 형태의 Jira 리소스 URL을 api.atlassian.com 프록시 형태로 정규화
+// - 이미 api.atlassian.com: 그대로
+// - <site>.atlassian.net/rest/...: /ex/jira/<cloudId>/rest/...로 변환
+// - 상대 경로 /rest/...: 같은 방식으로 변환
+// - 그 외: null (외부 이미지 등은 프록시하지 않음)
+function toApiAtlassianUrl(url) {
+  if (url.startsWith('https://api.atlassian.com/')) return url
+
+  const cloudId = localStorage.getItem('jira_cloud_id')
+  if (!cloudId) return null
+
+  // 사이트 호스트 URL → 경로 추출
+  const siteMatch = url.match(/^https:\/\/[^/]+\.atlassian\.net(\/.*)$/)
+  const path = siteMatch ? siteMatch[1] : (url.startsWith('/') ? url : null)
+  if (!path) return null
+
+  // /rest/api/... 나 /rest/agile/... 는 /ex/jira/<cloudId>/rest/... 로 매핑
+  if (path.startsWith('/rest/')) {
+    return `https://api.atlassian.com/ex/jira/${cloudId}${path}`
+  }
+  return null
 }

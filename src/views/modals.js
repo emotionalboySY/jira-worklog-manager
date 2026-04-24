@@ -798,3 +798,139 @@ export function computeDurationFromTimes(startTime, endTime) {
   if (actualMinutes <= 0) return { valid: false, message: '점심시간을 제외하면 실제 작업 시간이 없습니다.' }
   return { valid: true, totalMinutes, lunchMinutes, actualMinutes }
 }
+
+// ========== 이슈 상세 모달 ==========
+// 목록에서 행 클릭 시 열림. 기본 정보는 목록 데이터로 즉시 표시하고
+// 설명/첨부/스프린트/추정치 등 상세 필드는 비동기로 로드.
+export function renderIssueDetailModal() {
+  const m = state.issueDetailModal
+  if (!m) return ''
+
+  const d = m.data || {}
+  const listIssue = findLoadedIssue(m.key) || {}
+  const key = m.key
+  const summary = d.summary || listIssue.summary || ''
+  const type = d.type || listIssue.type || ''
+  const typeIconUrl = d.typeIconUrl || listIssue.typeIconUrl || ''
+  const priority = d.priority || listIssue.priority || ''
+  const priorityIconUrl = d.priorityIconUrl || listIssue.priorityIconUrl || ''
+  const status = d.status || listIssue.status || ''
+  const statusCategory = d.statusCategory || listIssue.statusCategory || 'new'
+  const statusCss = getStatusCss(statusCategory || status)
+  const statusLabel = getShortStatusLabel(status)
+  const assignee = d.assignee || listIssue.assignee || null
+  const reporter = d.reporter || null
+
+  const siteName = localStorage.getItem('jira_site_name')
+  const jiraUrl = siteName ? `https://${siteName}.atlassian.net/browse/${key}` : null
+
+  const typeIconHtml = typeIconUrl
+    ? `<img class="detail-type-icon" src="${escapeHtml(typeIconUrl)}" alt="${escapeHtml(type)}" />`
+    : ''
+  const priorityIconHtml = priorityIconUrl
+    ? `<img class="detail-priority-icon" src="${escapeHtml(priorityIconUrl)}" alt="${escapeHtml(priority)}" />`
+    : ''
+
+  const renderPerson = (p, fallback) => {
+    if (!p) return `<span class="detail-meta-empty">${fallback}</span>`
+    const avatar = p.avatarUrl
+      ? `<img class="detail-avatar" src="${escapeHtml(p.avatarUrl)}" alt="${escapeHtml(p.displayName)}" onerror="this.classList.add('broken')" />`
+      : `<span class="detail-avatar detail-avatar-empty"></span>`
+    return `${avatar}<span>${escapeHtml(p.displayName)}</span>`
+  }
+
+  const sprintHtml = (() => {
+    if (m.loading && !d.sprints) return `<span class="detail-meta-empty">불러오는 중…</span>`
+    if (!d.sprints || d.sprints.length === 0) return `<span class="detail-meta-empty">-</span>`
+    return d.sprints.map(s => `<span class="detail-sprint-chip ${s.state}">${escapeHtml(s.name)}</span>`).join(' ')
+  })()
+
+  const dueHtml = (() => {
+    if (m.loading && !d.duedate) return `<span class="detail-meta-empty">불러오는 중…</span>`
+    if (!d.duedate) return `<span class="detail-meta-empty">-</span>`
+    return escapeHtml(d.duedate)
+  })()
+
+  const estHtml = (m.loading && !d.originalEstimate) ? '불러오는 중…' : (d.originalEstimate || '-')
+  const spentHtml = (m.loading && !d.timeSpent) ? '불러오는 중…' : (d.timeSpent || '-')
+
+  const descriptionSection = (() => {
+    if (m.loading && !d.descriptionHtml && !d.attachments) {
+      return `<div class="detail-loading"><div class="loading-spinner"></div><span>상세 정보를 불러오는 중</span></div>`
+    }
+    if (m.error) {
+      return `<div class="detail-error">상세 정보를 불러오지 못했습니다: ${escapeHtml(m.error)}</div>`
+    }
+    const descHtml = d.descriptionHtml
+      ? `<div class="detail-description">${d.descriptionHtml}</div>`
+      : `<div class="detail-description detail-description-empty">(설명 없음)</div>`
+    const attachmentsHtml = (d.attachments && d.attachments.length > 0)
+      ? `
+        <div class="detail-section-label">첨부파일 (${d.attachments.length})</div>
+        <div class="detail-attachments">
+          ${d.attachments.map(a => renderAttachmentTile(a)).join('')}
+        </div>
+      `
+      : ''
+    return `${descHtml}${attachmentsHtml}`
+  })()
+
+  const openJiraBtn = jiraUrl
+    ? `<a class="btn" href="${jiraUrl}" target="_blank" rel="noopener noreferrer">Jira에서 열기</a>`
+    : ''
+
+  return `
+    <div class="modal-overlay" id="issue-detail-overlay">
+      <div class="modal modal-issue-detail">
+        <div class="detail-header">
+          <div class="detail-header-left">
+            ${typeIconHtml}
+            <span class="detail-type-label">${escapeHtml(type)}</span>
+            <a class="issue-key issue-key-link" href="${jiraUrl || '#'}" target="_blank" rel="noopener noreferrer">${escapeHtml(key)}</a>
+          </div>
+          <button class="detail-close" id="issue-detail-close" aria-label="닫기">✕</button>
+        </div>
+        <div class="detail-summary">${escapeHtml(summary)}</div>
+        <div class="detail-meta-grid">
+          <div class="detail-meta-row"><span class="detail-meta-label">상태</span><span class="detail-meta-value"><span class="issue-status ${statusCss}">${escapeHtml(statusLabel || status || '-')}</span></span></div>
+          <div class="detail-meta-row"><span class="detail-meta-label">우선순위</span><span class="detail-meta-value">${priorityIconHtml}${escapeHtml(priority || '-')}</span></div>
+          <div class="detail-meta-row"><span class="detail-meta-label">담당자</span><span class="detail-meta-value detail-person">${renderPerson(assignee, '미할당')}</span></div>
+          <div class="detail-meta-row"><span class="detail-meta-label">보고자</span><span class="detail-meta-value detail-person">${renderPerson(reporter, m.loading ? '불러오는 중…' : '-')}</span></div>
+          <div class="detail-meta-row"><span class="detail-meta-label">스프린트</span><span class="detail-meta-value">${sprintHtml}</span></div>
+          <div class="detail-meta-row"><span class="detail-meta-label">기한</span><span class="detail-meta-value">${dueHtml}</span></div>
+          <div class="detail-meta-row"><span class="detail-meta-label">최초 추정치</span><span class="detail-meta-value">${escapeHtml(estHtml)}</span></div>
+          <div class="detail-meta-row"><span class="detail-meta-label">진행 시간</span><span class="detail-meta-value">${escapeHtml(spentHtml)}</span></div>
+        </div>
+        <div class="detail-body">
+          ${descriptionSection}
+        </div>
+        <div class="detail-footer">
+          ${openJiraBtn}
+          <button class="btn btn-primary" id="issue-detail-close-footer">닫기</button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function renderAttachmentTile(a) {
+  const fn = escapeHtml(a.filename || '')
+  const isImage = (a.mimeType || '').startsWith('image/')
+  const sizeKb = a.size ? `${Math.max(1, Math.round(a.size / 1024))}KB` : ''
+  const dataUrl = escapeHtml(a.contentUrl || '')
+  if (isImage) {
+    return `
+      <a class="detail-attachment detail-attachment-image" data-attachment-url="${dataUrl}" href="#" title="${fn}">
+        <span class="detail-attachment-thumb" data-thumb-url="${escapeHtml(a.thumbnailUrl || a.contentUrl || '')}"></span>
+        <span class="detail-attachment-name">${fn}</span>
+      </a>
+    `
+  }
+  return `
+    <a class="detail-attachment detail-attachment-file" data-attachment-url="${dataUrl}" href="#" title="${fn}">
+      <span class="detail-attachment-icon">📄</span>
+      <span class="detail-attachment-name">${fn}</span>
+      ${sizeKb ? `<span class="detail-attachment-size">${sizeKb}</span>` : ''}
+    </a>
+  `
+}

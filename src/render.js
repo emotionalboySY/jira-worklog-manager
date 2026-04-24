@@ -18,6 +18,7 @@ import {
   renderSwapIssueModal,
   renderStatusDropdown,
   renderTransitionFieldsModal,
+  renderIssueDetailModal,
 } from './views/modals.js'
 import { renderSettingsFab, renderSettingsModal } from './views/settings.js'
 import { bindEvents, startTimerUpdate } from './events.js'
@@ -35,6 +36,7 @@ function renderModalsHtml() {
     ${state.showSwapIssue ? renderSwapIssueModal() : ''}
     ${state.statusDropdown ? renderStatusDropdown() : ''}
     ${state.transitionFieldsModal ? renderTransitionFieldsModal() : ''}
+    ${state.issueDetailModal ? renderIssueDetailModal() : ''}
   `
 }
 
@@ -113,6 +115,7 @@ export function render(options = {}) {
     'settings-overlay',
     'swap-issue-overlay',
     'transition-fields-overlay',
+    'issue-detail-overlay',
   ]
 
   for (const name of sections) {

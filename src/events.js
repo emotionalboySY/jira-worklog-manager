@@ -12,6 +12,8 @@ import {
   fetchTransitions,
   transitionIssue,
   fetchIssueStatus,
+  fetchIssueDetail,
+  fetchAttachmentBlobUrl,
 } from './jira.js'
 import {
   loadSessions,
@@ -183,6 +185,108 @@ function handleGlobalKeydown(e) {
     render(modalsOnly)
     return
   }
+  if (state.issueDetailModal) {
+    closeIssueDetailModal()
+    return
+  }
+}
+
+// 이슈 상세 모달 닫기 + Blob URL 해제
+function closeIssueDetailModal() {
+  const m = state.issueDetailModal
+  if (m?.blobUrls) {
+    for (const url of m.blobUrls) {
+      try { URL.revokeObjectURL(url) } catch {}
+    }
+  }
+  state.issueDetailModal = null
+  render({ sections: ['modals'] })
+}
+
+// 이슈 상세 모달 열기 + 상세 데이터 비동기 로드
+async function openIssueDetailModal(issueKey) {
+  state.issueDetailModal = { key: issueKey, loading: true, data: null, error: null, blobUrls: [] }
+  render({ sections: ['modals'] })
+
+  try {
+    const detail = await fetchIssueDetail(issueKey)
+    // 모달이 이미 닫혔거나 다른 이슈로 바뀐 경우 무시
+    if (!state.issueDetailModal || state.issueDetailModal.key !== issueKey) return
+    state.issueDetailModal.data = detail || {}
+    state.issueDetailModal.loading = false
+    render({ sections: ['modals'] })
+    // DOM에 붙은 후 이미지/썸네일을 인증 프록시로 교체
+    loadIssueDetailImages()
+  } catch (err) {
+    if (!state.issueDetailModal || state.issueDetailModal.key !== issueKey) return
+    state.issueDetailModal.loading = false
+    state.issueDetailModal.error = err?.message || '알 수 없는 오류'
+    render({ sections: ['modals'] })
+  }
+}
+
+function isJiraResourceUrl(url) {
+  if (!url) return false
+  if (url.startsWith('https://api.atlassian.com/')) return true
+  if (/^https:\/\/[^/]+\.atlassian\.net\/rest\//.test(url)) return true
+  if (url.startsWith('/rest/')) return true
+  return false
+}
+
+// 본문 설명의 <img>와 첨부 썸네일을 인증 프록시로 받아 Blob URL로 교체
+async function loadIssueDetailImages() {
+  const m = state.issueDetailModal
+  if (!m) return
+  const modal = document.getElementById('issue-detail-overlay')
+  if (!modal) return
+
+  // 1) 설명 본문의 이미지 (Jira 첨부만 프록시, 외부 이미지는 원본 유지)
+  const descImgs = modal.querySelectorAll('.detail-description img')
+  const tasks = []
+  descImgs.forEach(img => {
+    const src = img.getAttribute('src')
+    if (!src) return
+    if (!isJiraResourceUrl(src)) return  // 외부 이미지는 브라우저가 그대로 로드
+
+    img.removeAttribute('src')
+    img.classList.add('detail-img-loading')
+    tasks.push(
+      fetchAttachmentBlobUrl(src).then(blobUrl => {
+        if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
+        if (blobUrl) {
+          img.src = blobUrl
+          state.issueDetailModal.blobUrls.push(blobUrl)
+        } else {
+          img.classList.add('detail-img-error')
+          img.alt = '(이미지 로드 실패)'
+        }
+        img.classList.remove('detail-img-loading')
+      })
+    )
+  })
+
+  // 2) 첨부 썸네일
+  const thumbs = modal.querySelectorAll('.detail-attachment-thumb[data-thumb-url]')
+  thumbs.forEach(thumb => {
+    const url = thumb.getAttribute('data-thumb-url')
+    if (!url) return
+    thumb.removeAttribute('data-thumb-url')
+    thumb.classList.add('detail-img-loading')
+    tasks.push(
+      fetchAttachmentBlobUrl(url).then(blobUrl => {
+        if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
+        if (blobUrl) {
+          thumb.style.backgroundImage = `url("${blobUrl}")`
+          state.issueDetailModal.blobUrls.push(blobUrl)
+        } else {
+          thumb.classList.add('detail-img-error')
+        }
+        thumb.classList.remove('detail-img-loading')
+      })
+    )
+  })
+
+  await Promise.all(tasks)
 }
 
 // ========== 설정 모달 헬퍼 ==========
@@ -737,6 +841,12 @@ export function bindEvents() {
       const summary = row.dataset.issueSummary
       if (key) showContextMenu(e, key, summary)
     })
+    // 이슈 행 좌클릭 → 상세 모달. 이슈 키/별/상태/아바타/액션 버튼은 제외
+    on(row, 'click', (e) => {
+      if (e.target.closest('a, button, [data-action]')) return
+      const key = row.dataset.issueKey
+      if (key) openIssueDetailModal(key)
+    })
   })
 
   // 작업 로그 상세 행 우클릭 → 컨텍스트 메뉴 (이슈 행과 동일)
@@ -1079,6 +1189,27 @@ export function bindEvents() {
       render({ sections: ['modals'] })
     })
   }
+
+  // 이슈 상세 모달: 닫기 버튼들 + 첨부 클릭 시 새 탭으로 Jira 다운로드 URL 열기
+  const detailCloseBtn = document.getElementById('issue-detail-close')
+  if (detailCloseBtn) on(detailCloseBtn, 'click', closeIssueDetailModal)
+  const detailCloseFooterBtn = document.getElementById('issue-detail-close-footer')
+  if (detailCloseFooterBtn) on(detailCloseFooterBtn, 'click', closeIssueDetailModal)
+  document.querySelectorAll('#issue-detail-overlay .detail-attachment').forEach(el => {
+    on(el, 'click', async (e) => {
+      e.preventDefault()
+      const url = el.dataset.attachmentUrl
+      if (!url) return
+      const blobUrl = await fetchAttachmentBlobUrl(url)
+      if (blobUrl) {
+        // 새 탭에서 열고, 메모리 누수 방지를 위해 일정 시간 후 revoke
+        window.open(blobUrl, '_blank', 'noopener,noreferrer')
+        setTimeout(() => { try { URL.revokeObjectURL(blobUrl) } catch {} }, 60000)
+      } else {
+        showToast('첨부파일을 불러오지 못했습니다.', '⚠')
+      }
+    })
+  })
 
   // 일감 미지정 세션 종료 모달의 이슈 키 입력: 자동완성 드롭다운 + blur 검증
   const finishIssueInput = document.getElementById('finish-issue-key')

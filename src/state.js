@@ -127,6 +127,9 @@ export const state = {
   showManualLog: null,     // 수동 작업 기록 모달 state: null | { issueKey, summary }
   showSettings: false,     // 설정 모달 표시 여부
   settingsDraft: null,     // 설정 모달에서 편집 중인 임시 값 (저장 전)
+  // 이슈 상세 모달: null | { key, loading, data, error, blobUrls }
+  // blobUrls: 본문/첨부 이미지용 object URL 목록 (닫을 때 revoke)
+  issueDetailModal: null,
 
   // ----- 사용자 설정 (저장된 값) -----
   userPrefs: {
