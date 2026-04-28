@@ -958,26 +958,19 @@ export function renderIssueDetailModal() {
       `
       : ''
 
-    // 편집 모드
+    // 편집 모드: 저장 중에도 에디터를 그대로 두고 setEditable(false)로만 잠근다
     if (m.editing) {
-      if (m.saving) {
-        return `
-          <div class="detail-saving">
-            <div class="loading-spinner"></div>
-            <span>저장 중…</span>
-          </div>
-        `
-      }
       const lossyWarn = (m.lossyFeatures && m.lossyFeatures.length > 0)
         ? `<div class="detail-edit-warn">⚠ 이 이슈의 설명에는 에디터가 지원하지 않는 요소(${escapeHtml(m.lossyFeatures.join(', '))})가 있어, 저장 시 해당 요소가 텍스트로 변환되거나 제거됩니다. 복잡한 편집은 Jira에서 진행하세요.</div>`
         : ''
       const saveErrHtml = m.saveError
         ? `<div class="detail-edit-error">저장 실패: ${escapeHtml(m.saveError)}</div>`
         : ''
+      const savingClass = m.saving ? ' is-saving' : ''
       return `
         ${lossyWarn}
         ${renderTiptapToolbar()}
-        <div class="tiptap-editor-mount" id="issue-detail-edit-editor"></div>
+        <div class="tiptap-editor-mount${savingClass}" id="issue-detail-edit-editor"></div>
         ${saveErrHtml}
         ${attachmentsHtml}
       `
@@ -1022,7 +1015,7 @@ export function renderIssueDetailModal() {
           </div>
           <button class="detail-close" id="issue-detail-close" aria-label="닫기">✕</button>
         </div>
-        <div class="detail-summary">${escapeHtml(summary)}</div>
+        ${renderDetailSummary(m, summary)}
         <div class="detail-meta-grid">
           <div class="detail-meta-row"><span class="detail-meta-label">상태</span><span class="detail-meta-value"><span class="issue-status ${statusCss}">${escapeHtml(statusLabel || status || '-')}</span></span></div>
           <div class="detail-meta-row"><span class="detail-meta-label">우선순위</span><span class="detail-meta-value">${priorityIconHtml}${escapeHtml(priority || '-')}</span></div>
@@ -1040,6 +1033,32 @@ export function renderIssueDetailModal() {
           ${footerHtml}
         </div>
       </div>
+    </div>
+  `
+}
+
+// 요약 영역. 보기 모드에서는 클릭 시 인라인 편집 모드로 전환.
+// 저장 버튼은 인라인 input 바로 아래에 두고 Enter=저장, Esc=취소.
+function renderDetailSummary(m, summary) {
+  if (!m.summaryEditing) {
+    return `<div class="detail-summary" id="issue-detail-summary" title="클릭하여 편집">${escapeHtml(summary)}</div>`
+  }
+  const draft = m.summaryDraft != null ? m.summaryDraft : summary
+  const saving = !!m.summarySaving
+  const errHtml = m.summaryError
+    ? `<div class="detail-summary-error">저장 실패: ${escapeHtml(m.summaryError)}</div>`
+    : ''
+  return `
+    <div class="detail-summary-edit">
+      <input type="text" id="issue-detail-summary-input" class="detail-summary-input"
+        value="${escapeHtml(draft)}" maxlength="255" ${saving ? 'disabled' : ''} />
+      <div class="detail-summary-actions">
+        <button class="btn" id="issue-detail-summary-cancel" ${saving ? 'disabled' : ''}>취소</button>
+        <button class="btn btn-primary" id="issue-detail-summary-save" ${saving ? 'disabled' : ''}>
+          ${saving ? '<span class="btn-spinner"></span> 저장 중…' : '저장'}
+        </button>
+      </div>
+      ${errHtml}
     </div>
   `
 }

@@ -17,9 +17,10 @@ import {
   updateIssueDescription,
   fetchAssignableUsers,
   updateIssueAssignee,
+  updateIssueSummary,
 } from './jira.js'
 import { detectLossyFeatures, isEmptyAdf } from './adfProsemirror.js'
-import { createEditor, destroyEditor, getCurrentAdf, runCommand } from './tiptap.js'
+import { createEditor, destroyEditor, getCurrentAdf, runCommand, setEditable } from './tiptap.js'
 import {
   loadSessions,
   saveSessions,
@@ -247,7 +248,7 @@ function enterIssueDetailEditMode() {
 
 function cancelIssueDetailEdit() {
   const m = state.issueDetailModal
-  if (!m) return
+  if (!m || m.saving) return
   if (isEditorDirty()) {
     if (!window.confirm('변경사항이 저장되지 않습니다. 취소하시겠습니까?')) return
   }
@@ -259,6 +260,23 @@ function cancelIssueDetailEdit() {
   render({ sections: ['modals'] })
 }
 
+// 저장 중에 푸터의 저장/취소 버튼만 직접 DOM 갱신해 스피너/잠금 표시.
+// (전체 재렌더 시 에디터의 DOM이 교체되어 사용자 입력 상태가 사라지는 것을 피하기 위함)
+function setDescSavingButtons(saving) {
+  const saveBtn = document.getElementById('issue-detail-edit-save')
+  const cancelBtn = document.getElementById('issue-detail-edit-cancel')
+  if (saveBtn) {
+    saveBtn.disabled = saving
+    saveBtn.innerHTML = saving ? '<span class="btn-spinner"></span> 저장 중…' : '저장'
+  }
+  if (cancelBtn) cancelBtn.disabled = saving
+  // 이전 저장 시도의 에러 메시지가 남아 있으면 새 시도 시작 시 제거
+  if (saving) {
+    const errEl = document.querySelector('#issue-detail-overlay .detail-edit-error')
+    if (errEl) errEl.remove()
+  }
+}
+
 async function saveIssueDetailEdit() {
   const m = state.issueDetailModal
   if (!m || !m.editing || m.saving) return
@@ -266,17 +284,19 @@ async function saveIssueDetailEdit() {
   if (!adfDoc) return
   const empty = isEmptyAdf(adfDoc)
 
-  // 저장 상태로 전환 (에디터 파괴됨 — 렌더가 spinner 표시)
-  destroyEditor()
   m.saving = true
   m.saveError = null
-  m.editAdf = adfDoc   // 실패 시 복구용
-  render({ sections: ['modals'] })
+  m.editAdf = adfDoc   // 실패 시 / 재렌더 시 에디터 복구용
+
+  // 에디터는 그대로 두고 입력만 잠그고, 푸터 버튼만 스피너/disabled 처리
+  setEditable(false)
+  setDescSavingButtons(true)
 
   try {
     await updateIssueDescription(m.key, empty ? null : adfDoc)
     const fresh = await fetchIssueDetail(m.key)
     if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
+    destroyEditor()
     state.issueDetailModal.data = fresh || {}
     state.issueDetailModal.editing = false
     state.issueDetailModal.editAdf = null
@@ -290,8 +310,114 @@ async function saveIssueDetailEdit() {
     if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
     state.issueDetailModal.saving = false
     state.issueDetailModal.saveError = err?.message || '알 수 없는 오류'
+    // 잠금 해제 후 에러 메시지 표시 (에디터는 그대로, 부분 재렌더로 메시지만 갱신)
+    setEditable(true)
+    setDescSavingButtons(false)
+    // 저장 에러 메시지를 에디터 아래에 삽입 (전체 재렌더 회피)
+    const mount = document.getElementById('issue-detail-edit-editor')
+    if (mount && state.issueDetailModal.saveError) {
+      const div = document.createElement('div')
+      div.className = 'detail-edit-error'
+      div.textContent = `저장 실패: ${state.issueDetailModal.saveError}`
+      mount.parentNode?.insertBefore(div, mount.nextSibling)
+    }
+  }
+}
+
+// ----- 요약(summary) 인라인 편집 -----
+function enterSummaryEdit() {
+  const m = state.issueDetailModal
+  if (!m || m.summaryEditing || m.loading) return
+  const current = m.data?.summary || findLoadedIssue(m.key)?.summary || ''
+  m.summaryEditing = true
+  m.summaryDraft = current
+  m.summarySaving = false
+  m.summaryError = null
+  render({ sections: ['modals'] })
+  // 렌더 후 input에 포커스 + 전체 선택
+  setTimeout(() => {
+    const input = document.getElementById('issue-detail-summary-input')
+    if (input) { input.focus(); input.select() }
+  }, 0)
+}
+
+function cancelSummaryEdit() {
+  const m = state.issueDetailModal
+  if (!m || !m.summaryEditing || m.summarySaving) return
+  m.summaryEditing = false
+  m.summaryDraft = null
+  m.summaryError = null
+  render({ sections: ['modals'] })
+}
+
+// 저장 중 input/버튼 직접 갱신 (전체 재렌더 시 input의 IME 조합/선택이 깨지는 것 방지)
+function setSummarySavingUI(saving) {
+  const input = document.getElementById('issue-detail-summary-input')
+  const saveBtn = document.getElementById('issue-detail-summary-save')
+  const cancelBtn = document.getElementById('issue-detail-summary-cancel')
+  if (input) input.disabled = saving
+  if (saveBtn) {
+    saveBtn.disabled = saving
+    saveBtn.innerHTML = saving ? '<span class="btn-spinner"></span> 저장 중…' : '저장'
+  }
+  if (cancelBtn) cancelBtn.disabled = saving
+}
+
+async function saveSummaryEdit() {
+  const m = state.issueDetailModal
+  if (!m || !m.summaryEditing || m.summarySaving) return
+  const input = document.getElementById('issue-detail-summary-input')
+  const newSummary = (input?.value ?? m.summaryDraft ?? '').trim()
+  if (!newSummary) {
+    m.summaryError = '요약은 비워둘 수 없습니다.'
     render({ sections: ['modals'] })
-    // 다음 render의 ensureTiptap이 editAdf로 에디터 재생성
+    return
+  }
+  const original = m.data?.summary || ''
+  if (newSummary === original) {
+    // 변경 없음 — 그냥 편집 모드 종료
+    m.summaryEditing = false
+    m.summaryDraft = null
+    m.summaryError = null
+    render({ sections: ['modals'] })
+    return
+  }
+
+  m.summarySaving = true
+  m.summaryError = null
+  m.summaryDraft = newSummary
+  setSummarySavingUI(true)
+
+  try {
+    await updateIssueSummary(m.key, newSummary)
+    if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
+    // 모달 데이터 + 이슈 목록 동기화
+    if (state.issueDetailModal.data) state.issueDetailModal.data.summary = newSummary
+    for (const issue of state.realIssues) {
+      if (issue.key === m.key) { issue.summary = newSummary; break }
+    }
+    state.issueDetailModal.summaryEditing = false
+    state.issueDetailModal.summaryDraft = null
+    state.issueDetailModal.summarySaving = false
+    state.issueDetailModal.summaryError = null
+    render({ sections: ['modals', 'content'] })
+    showToast('요약이 저장되었습니다.', '✓')
+  } catch (err) {
+    if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
+    state.issueDetailModal.summarySaving = false
+    state.issueDetailModal.summaryError = err?.message || '알 수 없는 오류'
+    setSummarySavingUI(false)
+    // 에러 메시지를 직접 DOM에 삽입 (input/포커스 보존)
+    const editBox = document.querySelector('.detail-summary-edit')
+    if (editBox) {
+      let errEl = editBox.querySelector('.detail-summary-error')
+      if (!errEl) {
+        errEl = document.createElement('div')
+        errEl.className = 'detail-summary-error'
+        editBox.appendChild(errEl)
+      }
+      errEl.textContent = `저장 실패: ${state.issueDetailModal.summaryError}`
+    }
   }
 }
 
@@ -369,12 +495,15 @@ async function applyAssigneeChange(issueKey, accountId, selectedUser) {
 }
 
 // 매 bindEvents 호출 후 실행: 편집 모드면 tiptap을 마운트
+// 저장 중에도 외부 사정으로 재렌더가 일어날 수 있으므로 다시 마운트하되,
+// 입력은 잠근 상태로 유지한다.
 function ensureIssueDetailEditor() {
   const m = state.issueDetailModal
-  if (!m?.editing || m.saving) return
+  if (!m?.editing) return
   const mount = document.getElementById('issue-detail-edit-editor')
   if (!mount || mount.dataset.tiptapMounted === '1') return
   createEditor(mount, m.editAdf)
+  if (m.saving) setEditable(false)
   mount.dataset.tiptapMounted = '1'
 }
 
@@ -1448,6 +1577,29 @@ export function bindEvents() {
       enterIssueDetailEditMode()
     })
   }
+
+  // 요약 영역 클릭 → 인라인 편집 모드 진입
+  const detailSummaryEl = document.getElementById('issue-detail-summary')
+  if (detailSummaryEl) on(detailSummaryEl, 'click', enterSummaryEdit)
+
+  // 요약 편집: input의 Enter=저장 / Esc=취소, 버튼 핸들러
+  const summaryInput = document.getElementById('issue-detail-summary-input')
+  if (summaryInput) {
+    on(summaryInput, 'keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault()
+        saveSummaryEdit()
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()  // 전역 ESC 리스너의 모달 닫기 동작 차단
+        cancelSummaryEdit()
+      }
+    })
+  }
+  const summaryCancelBtn = document.getElementById('issue-detail-summary-cancel')
+  if (summaryCancelBtn) on(summaryCancelBtn, 'click', cancelSummaryEdit)
+  const summarySaveBtn = document.getElementById('issue-detail-summary-save')
+  if (summarySaveBtn) on(summarySaveBtn, 'click', saveSummaryEdit)
 
   // 편집 취소/저장 버튼
   const detailEditCancelBtn = document.getElementById('issue-detail-edit-cancel')

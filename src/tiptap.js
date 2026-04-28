@@ -80,6 +80,12 @@ export function isActive(type, attrs) {
   try { return currentEditor.isActive(type, attrs) } catch { return false }
 }
 
+// 에디터 입력 활성/비활성 토글 (저장 중 잠금용)
+export function setEditable(editable) {
+  if (!currentEditor) return
+  try { currentEditor.setEditable(!!editable) } catch {}
+}
+
 // 에디터 명령 실행 (editor.chain().focus().X().run() 래퍼)
 export function runCommand(name, ...args) {
   if (!currentEditor) return

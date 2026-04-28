@@ -437,6 +437,13 @@ export async function updateIssueDescription(issueKey, adfDoc) {
   )
 }
 
+export async function updateIssueSummary(issueKey, summary) {
+  await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}`,
+    { method: 'PUT', body: { fields: { summary } } }
+  )
+}
+
 // 해당 이슈에 할당 가능한 사용자 전체 조회. 검색은 클라이언트 측에서 처리.
 export async function fetchAssignableUsers(issueKey, { signal } = {}) {
   // Jira Cloud 기본 max는 1000. 100이면 사실상 전원 커버.

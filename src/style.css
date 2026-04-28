@@ -3428,6 +3428,53 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   font-weight: 600;
   color: var(--text-bright);
   line-height: 1.4;
+  cursor: text;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.detail-summary:hover {
+  background: var(--bg-card);
+}
+
+.detail-summary-edit {
+  padding: 12px 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-summary-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-bright);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  outline: none;
+  line-height: 1.4;
+}
+
+.detail-summary-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.detail-summary-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.detail-summary-error {
+  font-size: 12px;
+  color: #ef4444;
+  padding: 6px 8px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius);
 }
 
 .detail-meta-grid {
@@ -3872,6 +3919,12 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   min-height: 220px;
   max-height: 55vh;
   overflow-y: auto;
+}
+
+/* 저장 중: 에디터 잠금 시각 효과 (입력은 setEditable(false)로 막힘) */
+.tiptap-editor-mount.is-saving {
+  opacity: 0.6;
+  cursor: progress;
 }
 
 .tiptap-content {
