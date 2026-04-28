@@ -75,13 +75,11 @@ body {
   user-select: none;
 }
 
-/* 텍스트 선택 허용 영역 */
-.issue-key,
-.issue-summary,
-.modal-issue-summary,
-.log-comment,
+/* 텍스트 선택은 실제 입력 가능한 요소(input, textarea, contenteditable)에서만 허용 */
 input,
-textarea {
+textarea,
+[contenteditable="true"],
+[contenteditable="true"] * {
   -webkit-user-select: text;
   -moz-user-select: text;
   user-select: text;
