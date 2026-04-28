@@ -35,6 +35,7 @@ import {
   savePreferences,
   resetPreferences,
   saveIssuesCache,
+  updateIssueSummaryEverywhere,
 } from './storage.js'
 import {
   toDateString,
@@ -391,16 +392,17 @@ async function saveSummaryEdit() {
   try {
     await updateIssueSummary(m.key, newSummary)
     if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
-    // 모달 데이터 + 이슈 목록 동기화
+    // 모달 데이터 + 이슈 목록 + 세션/즐겨찾기 저장소 모두 동기화
     if (state.issueDetailModal.data) state.issueDetailModal.data.summary = newSummary
     for (const issue of state.realIssues) {
       if (issue.key === m.key) { issue.summary = newSummary; break }
     }
+    updateIssueSummaryEverywhere(m.key, newSummary)
     state.issueDetailModal.summaryEditing = false
     state.issueDetailModal.summaryDraft = null
     state.issueDetailModal.summarySaving = false
     state.issueDetailModal.summaryError = null
-    render({ sections: ['modals', 'content'] })
+    render({ sections: ['modals', 'content', 'sessions', 'favorites'] })
     showToast('요약이 저장되었습니다.', '✓')
   } catch (err) {
     if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return

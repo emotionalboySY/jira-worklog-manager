@@ -248,6 +248,31 @@ export function isFavorite(issueKey) {
   return loadFavorites().some(f => f.issueKey === issueKey)
 }
 
+// 특정 이슈 키의 요약 텍스트를 세션·즐겨찾기 저장소에 모두 반영
+export function updateIssueSummaryEverywhere(issueKey, newSummary) {
+  if (!issueKey) return
+  // 세션
+  const sessions = loadSessions()
+  let sessionsChanged = false
+  for (const s of sessions) {
+    if (s.issueKey === issueKey && s.summary !== newSummary) {
+      s.summary = newSummary || ''
+      sessionsChanged = true
+    }
+  }
+  if (sessionsChanged) saveSessions(sessions)
+  // 즐겨찾기
+  const favs = loadFavorites()
+  let favsChanged = false
+  for (const f of favs) {
+    if (f.issueKey === issueKey && f.summary !== newSummary) {
+      f.summary = newSummary || ''
+      favsChanged = true
+    }
+  }
+  if (favsChanged) saveFavorites(favs)
+}
+
 export function toggleFavorite(issueKey, summary) {
   const list = loadFavorites()
   const idx = list.findIndex(f => f.issueKey === issueKey)
