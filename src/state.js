@@ -180,6 +180,10 @@ export const state = {
   activeContextMenu: null,
   contextMenuCloseHandler: null,
 
+  // ----- 다중 선택 (이슈 목록 일괄 복사) -----
+  selectedIssues: new Set(),       // 선택된 이슈 키 집합
+  lastSelectedIssueKey: null,      // shift+클릭 범위 선택의 기준점
+
   // ----- 싱글턴 -----
   flatpickrInstance: null,
   timerInterval: null,

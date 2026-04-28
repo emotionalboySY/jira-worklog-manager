@@ -37,6 +37,8 @@ export function renderIssuesTab() {
   ]
 
   const filtered = isSearchMode ? state.searchResults : getFilteredIssues()
+  const selectedCount = state.selectedIssues.size
+  const hasSelection = selectedCount > 0
 
   return `
     <div class="search-bar">
@@ -79,7 +81,8 @@ export function renderIssuesTab() {
       ` : ''}
     </div>
     ${isSearchMode ? `<div class="search-result-info">검색 결과 ${filtered.length}건</div>` : ''}
-    <div class="issue-list ${(isSearchMode || state.currentProject === 'ALL') ? 'show-project-bar' : ''}">
+    ${hasSelection ? renderBulkCopyBar(selectedCount) : ''}
+    <div class="issue-list ${(isSearchMode || state.currentProject === 'ALL') ? 'show-project-bar' : ''} ${hasSelection ? 'has-selection' : ''}">
       ${filtered.length === 0 ? `
         <div class="no-session">해당 조건에 맞는 이슈가 없습니다.</div>
       ` : paginateIssues(filtered).map(issue => {
@@ -90,8 +93,12 @@ export function renderIssuesTab() {
           ? `<img class="issue-type-img" src="${issue.typeIconUrl}" alt="${issue.type}" title="${issue.type}" />`
           : `<span class="issue-type-icon ${issue.type}" title="${getTypeLabel(issue.type)}">${getTypeIcon(issue.type)}</span>`
         const typeLabel = issue.typeIconUrl ? issue.type : getTypeLabel(issue.type)
+        const isSelected = state.selectedIssues.has(issue.key)
         return `
-        <div class="issue-row" data-issue-key="${issue.key}" data-issue-summary="${escapeHtml(issue.summary || '')}" data-project="${getProjectFromKey(issue.key)}">
+        <div class="issue-row ${isSelected ? 'is-selected' : ''}" data-issue-key="${issue.key}" data-issue-summary="${escapeHtml(issue.summary || '')}" data-project="${getProjectFromKey(issue.key)}">
+          <span class="issue-select" data-action="toggle-select" data-key="${issue.key}" title="선택">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} tabindex="-1" />
+          </span>
           <div class="issue-left">
             ${typeIcon}
             <span class="issue-type-label">${typeLabel}</span>
@@ -124,6 +131,21 @@ export function renderIssuesTab() {
       }).join('')}
     </div>
     ${!isSearchMode ? renderPagination(filtered.length) : ''}
+  `
+}
+
+// 일괄 복사 액션 바 — 1개 이상 선택 시 이슈 목록 위에 sticky로 노출
+function renderBulkCopyBar(count) {
+  return `
+    <div class="bulk-copy-bar">
+      <span class="bulk-copy-count">${count}개 선택됨</span>
+      <div class="bulk-copy-actions">
+        <button class="btn btn-sm" data-bulk="key" title="이슈 키만 콤마로 구분해 복사">키만</button>
+        <button class="btn btn-sm" data-bulk="both" title="이슈 키와 요약을 한 줄씩 복사">키 + 요약</button>
+        <button class="btn btn-sm" data-bulk="summary" title="이슈 요약만 한 줄씩 복사">요약만</button>
+        <button class="btn btn-sm bulk-copy-clear" data-bulk="clear" title="선택 해제 (Esc)" aria-label="선택 해제">✕</button>
+      </div>
+    </div>
   `
 }
 

@@ -818,6 +818,72 @@ a.issue-key-link:hover {
   background: var(--bg-hover);
 }
 
+/* 다중 선택: 체크박스 (행 좌측 hover 시 노출, 선택 모드면 항상 표시) */
+.issue-select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  flex: 0 0 22px;
+  margin-right: 8px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: pointer;
+}
+
+.issue-row:hover .issue-select,
+.issue-list.has-selection .issue-select,
+.issue-row.is-selected .issue-select {
+  opacity: 1;
+}
+
+.issue-select input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.issue-row.is-selected {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+/* 일괄 복사 액션 바 (이슈 목록 위 sticky) */
+.bulk-copy-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.bulk-copy-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.bulk-copy-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.bulk-copy-clear {
+  padding: 0 8px;
+  min-width: 28px;
+}
+
 .issue-left {
   display: flex;
   align-items: center;

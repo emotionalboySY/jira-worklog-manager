@@ -216,6 +216,11 @@ function handleGlobalKeydown(e) {
     }
     return
   }
+  // 모달이 모두 닫혀 있을 때 ESC: 다중 선택 해제
+  if (state.selectedIssues.size > 0) {
+    clearIssueSelection()
+    render({ sections: ['content'] })
+  }
 }
 
 // 이슈 상세 모달 닫기 + Blob URL 해제 + 에디터 파괴
@@ -430,6 +435,68 @@ function isEditorDirty() {
   const current = getCurrentAdf()
   const original = m.data?.descriptionAdf || null
   return JSON.stringify(current) !== JSON.stringify(original)
+}
+
+// ----- 다중 선택 (이슈 목록 일괄 복사) -----
+// 화면에 보이는 행의 키 목록 (DOM 기준 — 페이지/필터별 표시 순서를 그대로 따라감)
+function getVisibleIssueKeys() {
+  return Array.from(document.querySelectorAll('.issue-list .issue-row[data-issue-key]'))
+    .map(r => r.dataset.issueKey)
+}
+
+function toggleIssueSelection(key, shift) {
+  if (!key) return
+  if (shift && state.lastSelectedIssueKey && state.lastSelectedIssueKey !== key) {
+    // 마지막 기준점 ~ 현재 키까지 화면상의 범위를 모두 선택
+    const visible = getVisibleIssueKeys()
+    const a = visible.indexOf(state.lastSelectedIssueKey)
+    const b = visible.indexOf(key)
+    if (a >= 0 && b >= 0) {
+      const [from, to] = a < b ? [a, b] : [b, a]
+      for (let i = from; i <= to; i++) state.selectedIssues.add(visible[i])
+      state.lastSelectedIssueKey = key
+      return
+    }
+  }
+  if (state.selectedIssues.has(key)) {
+    state.selectedIssues.delete(key)
+  } else {
+    state.selectedIssues.add(key)
+  }
+  state.lastSelectedIssueKey = key
+}
+
+function clearIssueSelection() {
+  state.selectedIssues.clear()
+  state.lastSelectedIssueKey = null
+}
+
+// 선택된 이슈를 realIssues 순서대로 정렬해 클립보드에 복사
+function copySelectedIssues(format) {
+  if (state.selectedIssues.size === 0) return
+  const ordered = state.realIssues.filter(i => state.selectedIssues.has(i.key))
+  // realIssues에 없는 키(검색 결과 등)도 보존
+  const found = new Set(ordered.map(i => i.key))
+  for (const key of state.selectedIssues) {
+    if (!found.has(key)) {
+      const fromSearch = (state.searchResults || []).find(i => i.key === key)
+      ordered.push(fromSearch || { key, summary: '' })
+    }
+  }
+  let text = ''
+  if (format === 'key') {
+    text = ordered.map(i => i.key).join(', ')
+  } else if (format === 'both') {
+    text = ordered.map(i => `${i.key} ${i.summary || ''}`.trim()).join('\n')
+  } else if (format === 'summary') {
+    text = ordered.map(i => i.summary || '').join('\n')
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    const label = format === 'key' ? '이슈 키' : format === 'both' ? '이슈 키 + 요약' : '이슈 요약'
+    showToast(`${ordered.length}개 ${label}을(를) 복사했습니다.`, '✓')
+  }).catch(() => {
+    showToast('복사에 실패했습니다.', '⚠')
+  })
 }
 
 // 담당자 드롭다운 닫기
@@ -1146,6 +1213,30 @@ export function bindEvents() {
       if (e.target.closest('a, button, [data-action]')) return
       const key = row.dataset.issueKey
       if (key) openIssueDetailModal(key)
+    })
+  })
+
+  // 다중 선택 체크박스
+  document.querySelectorAll('[data-action="toggle-select"]').forEach(el => {
+    on(el, 'click', (e) => {
+      e.stopPropagation()
+      e.preventDefault()  // native checkbox 토글 막고 직접 컨트롤
+      toggleIssueSelection(el.dataset.key, e.shiftKey)
+      render({ sections: ['content'] })
+    })
+  })
+
+  // 일괄 복사 액션 바
+  document.querySelectorAll('[data-bulk]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      const action = btn.dataset.bulk
+      if (action === 'clear') {
+        clearIssueSelection()
+        render({ sections: ['content'] })
+        return
+      }
+      copySelectedIssues(action)
     })
   })
 
