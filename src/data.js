@@ -194,6 +194,52 @@ export async function refreshIssues() {
   render()
 }
 
+// 자동 새로고침: 토스트/로딩 스피너 없이 조용히 이슈 + 현재 월 작업 로그를 재조회
+// 사용자 액션 5분 비활동 후 호출되며, 데이터가 바뀌었어도 토스트 알림 없이 화면만 갱신
+export async function autoReloadIssuesAndWorklogs() {
+  if (state.issuesLoading || state.worklogsLoading) return
+
+  let issuesUpdated = false
+  let worklogsUpdated = false
+
+  // 1) 이슈 목록 (sprint 필터 상태 유지)
+  try {
+    const promises = [fetchMyIssues(), fetchProjects()]
+    if (state.showSprintOnly) promises.push(fetchActiveSprintIssueKeys())
+    const [freshIssues, freshProjects, sprintKeys] = await Promise.all(promises)
+    if (state.showSprintOnly) state.activeSprintKeys = new Set(sprintKeys || [])
+    state.realIssues = freshIssues
+    state.realProjects = freshProjects
+    state.issuesLoaded = true
+    saveIssuesCache(freshIssues, freshProjects)
+    issuesUpdated = true
+  } catch (e) {
+    console.error('이슈 자동 새로고침 실패:', e)
+  }
+
+  // 2) 현재 보고 있는 달의 작업 로그
+  const year = state.calendarYear
+  const month = state.calendarMonth
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
+  try {
+    const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
+    const lastDay = new Date(year, month + 1, 0).getDate()
+    const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+    const freshLogs = await fetchMyWorklogs(startDate, endDate)
+    for (const key of Object.keys(state.worklogsByDate)) {
+      if (key.startsWith(monthKey)) delete state.worklogsByDate[key]
+    }
+    mergeLogs(freshLogs)
+    state.worklogsLoadedMonths.add(monthKey)
+    saveWorklogCache(monthKey, freshLogs)
+    worklogsUpdated = true
+  } catch (e) {
+    console.error('작업 로그 자동 새로고침 실패:', e)
+  }
+
+  if (issuesUpdated || worklogsUpdated) render()
+}
+
 // 현재 월 작업 로그 강제 새로고침
 export async function refreshWorklogs() {
   if (state.worklogsLoading) return

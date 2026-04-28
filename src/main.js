@@ -6,6 +6,7 @@ import { applyTheme, applyPreferences } from './ui.js'
 import { loadPreferences } from './storage.js'
 import { render } from './render.js'
 import { loadIssues } from './data.js'
+import { setupAutoReload } from './autoReload.js'
 
 // ========== 초기화 ==========
 async function init() {
@@ -27,9 +28,10 @@ async function init() {
 
   render()
 
-  // 로그인 상태면 이슈 목록 로드
+  // 로그인 상태면 이슈 목록 로드 + 자동 재로드 활성화
   if (isLoggedIn()) {
     loadIssues()
+    setupAutoReload()
   }
 }
 
