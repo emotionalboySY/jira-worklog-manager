@@ -30,21 +30,30 @@ function extractAssignee(fields) {
 }
 
 // 모든 페이지 가져오기 (페이지네이션 처리)
+// Jira Cloud의 /search/jql 엔드포인트는 startAt + total 기반 페이지네이션을 더 이상
+// 지원하지 않고 nextPageToken 토큰 방식만 동작한다. (예전 코드처럼 startAt을 보내면
+// 서버가 무시하고 같은 첫 페이지를 계속 돌려줘서 무한 루프가 났었음.)
 async function fetchAllPages(jql, fields = FIELDS) {
   const allIssues = []
-  let startAt = 0
   const maxResults = 100
+  let nextPageToken = null
+  // 의도치 않은 무한 루프 안전 차단 (한 번 호출에 최대 1만 건)
+  const HARD_LIMIT_PAGES = 100
 
-  while (true) {
-    const data = await jiraFetch(
-      `/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=${maxResults}&startAt=${startAt}`
-    )
-    if (!data || !data.issues) break
+  for (let page = 0; page < HARD_LIMIT_PAGES; page++) {
+    let url = `/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=${maxResults}`
+    if (nextPageToken) url += `&nextPageToken=${encodeURIComponent(nextPageToken)}`
+    const data = await jiraFetch(url)
+    if (!data || !Array.isArray(data.issues)) break
 
     allIssues.push(...data.issues)
 
-    if (allIssues.length >= data.total || data.issues.length < maxResults) break
-    startAt += maxResults
+    // isLast=true이거나 nextPageToken이 없으면 마지막 페이지
+    if (data.isLast === true) break
+    if (!data.nextPageToken) break
+    // 같은 토큰을 다시 받으면 서버 측 비정상 — 안전하게 종료
+    if (data.nextPageToken === nextPageToken) break
+    nextPageToken = data.nextPageToken
   }
 
   return allIssues
