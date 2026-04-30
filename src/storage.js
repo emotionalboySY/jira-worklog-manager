@@ -284,6 +284,16 @@ export function toggleFavorite(issueKey, summary) {
   saveFavorites(list)
 }
 
+// 특정 이슈를 즐겨찾기에서 제거. 제거됐는지 여부 반환(상태 변화 시 재렌더 트리거용).
+export function removeFavorite(issueKey) {
+  const list = loadFavorites()
+  const idx = list.findIndex(f => f.issueKey === issueKey)
+  if (idx < 0) return false
+  list.splice(idx, 1)
+  saveFavorites(list)
+  return true
+}
+
 // ========== 이슈 캐시 ==========
 export function loadIssuesCache() {
   try {

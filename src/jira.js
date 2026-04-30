@@ -331,6 +331,33 @@ export async function fetchTransitions(issueKey, { signal } = {}) {
   return data?.transitions || []
 }
 
+// ========== Stale-While-Revalidate 메모리 캐시 ==========
+// 드롭다운 첫 오픈 후, 같은 세션에서 다시 열 때 즉시 표시되도록 결과를 메모리에 보관.
+// TTL이 지나도 즉시 반환은 하되 호출 측이 백그라운드 fetch로 신선화함.
+// 상태 전이가 일어난 이슈는 가능한 전이 목록이 바뀌므로 즉시 invalidate.
+const transitionsCache = new Map() // issueKey → { data, fetchedAt }
+const assignableUsersCache = new Map() // issueKey → { data, fetchedAt }
+
+export function getCachedTransitions(issueKey) {
+  return transitionsCache.get(issueKey)?.data || null
+}
+
+export function setCachedTransitions(issueKey, data) {
+  transitionsCache.set(issueKey, { data, fetchedAt: Date.now() })
+}
+
+export function invalidateTransitionsCache(issueKey) {
+  transitionsCache.delete(issueKey)
+}
+
+export function getCachedAssignableUsers(issueKey) {
+  return assignableUsersCache.get(issueKey)?.data || null
+}
+
+export function setCachedAssignableUsers(issueKey, data) {
+  assignableUsersCache.set(issueKey, { data, fetchedAt: Date.now() })
+}
+
 // 전이 실행. fields는 transition에 필요한 추가 데이터 (예: { resolution: { id: '10000' } })
 export async function transitionIssue(issueKey, transitionId, fields = null) {
   const body = { transition: { id: String(transitionId) } }

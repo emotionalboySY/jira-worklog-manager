@@ -1,7 +1,7 @@
 // 전체 이벤트 바인딩 + 타이머 업데이트
 import flatpickr from 'flatpickr'
 import { Korean } from 'flatpickr/dist/l10n/ko.js'
-import { state, NO_ISSUE_KEY, NO_ISSUE_SUMMARY } from './state.js'
+import { state, NO_ISSUE_KEY, NO_ISSUE_SUMMARY, CLOSED_CATEGORY } from './state.js'
 import { logout, isLoggedIn } from './auth.js'
 import {
   fetchIssueMeta,
@@ -18,6 +18,11 @@ import {
   fetchAssignableUsers,
   updateIssueAssignee,
   updateIssueSummary,
+  getCachedTransitions,
+  setCachedTransitions,
+  invalidateTransitionsCache,
+  getCachedAssignableUsers,
+  setCachedAssignableUsers,
 } from './jira.js'
 import { detectLossyFeatures, isEmptyAdf } from './adfProsemirror.js'
 import { createEditor, destroyEditor, getCurrentAdf, runCommand, setEditable } from './tiptap.js'
@@ -32,6 +37,7 @@ import {
   swapSessionIssue,
   setDayOff,
   toggleFavorite,
+  removeFavorite,
   savePreferences,
   resetPreferences,
   saveIssuesCache,
@@ -514,15 +520,20 @@ function refreshAssigneeDropdownList() {
 }
 
 // 드롭다운 오픈 시 최초 1회 전체 사용자 조회. 이후 검색은 로컬 필터.
+// 캐시가 있으면 호출 전에 이미 즉시 표시 — 여기서는 백그라운드 fetch로 신선화.
 async function loadAssignableUsers(issueKey) {
+  const hadCache = !!getCachedAssignableUsers(issueKey)
   try {
     const users = await fetchAssignableUsers(issueKey)
+    setCachedAssignableUsers(issueKey, users)
     if (!state.assigneeDropdown || state.assigneeDropdown.issueKey !== issueKey) return
     state.assigneeDropdown.allUsers = users
     state.assigneeDropdown.loading = false
     refreshAssigneeDropdownList()
   } catch (err) {
     console.error('할당 가능한 사용자 조회 실패:', err)
+    // 캐시로 이미 표시 중이면 사용자 흐름을 끊지 않음
+    if (hadCache) return
     if (!state.assigneeDropdown || state.assigneeDropdown.issueKey !== issueKey) return
     state.assigneeDropdown.allUsers = []
     state.assigneeDropdown.loading = false
@@ -697,6 +708,8 @@ async function performTransition(issueKey, transition, fields) {
   render({ sections: ['content'] })
   try {
     await transitionIssue(issueKey, transition.id, fields)
+    // 전이가 일어나면 가능한 다음 전이 목록이 바뀌므로 캐시 즉시 무효화
+    invalidateTransitionsCache(issueKey)
     // 전이 후 실제 status 재조회 (워크플로우에 따라 전이의 to.name과 실제 이동값이 다를 수 있음)
     const latest = await fetchIssueStatus(issueKey)
     if (latest) {
@@ -719,6 +732,7 @@ async function performTransition(issueKey, transition, fields) {
 }
 
 // realIssues / searchResults에서 이슈의 status/statusCategory 갱신 + 캐시 동기화
+// 완료(done) 카테고리로 들어온 이슈는 즐겨찾기에서도 자동 제거.
 function updateIssueStatusInState(issueKey, { status, statusCategory }) {
   const apply = (arr) => {
     if (!Array.isArray(arr)) return
@@ -730,6 +744,11 @@ function updateIssueStatusInState(issueKey, { status, statusCategory }) {
   apply(state.realIssues)
   apply(state.searchResults)
   try { saveIssuesCache(state.realIssues, state.realProjects) } catch {}
+  if (statusCategory === CLOSED_CATEGORY) {
+    if (removeFavorite(issueKey)) {
+      render({ sections: ['favorites'] })
+    }
+  }
 }
 
 // ========== 이벤트 바인딩 ==========
@@ -1354,17 +1373,20 @@ export function bindEvents() {
         return
       }
       const rect = btn.getBoundingClientRect()
+      // 캐시가 있으면 즉시 표시(loading=false), 그렇지 않으면 로딩 표시
+      const cached = getCachedTransitions(key)
       state.statusDropdown = {
         issueKey: key,
         currentStatus: btn.dataset.currentStatus || '',
         rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
-        transitions: null,
-        loading: true,
+        transitions: cached,
+        loading: !cached,
       }
       render({ sections: ['modals'] })
+      // 캐시 유무와 무관하게 백그라운드 fetch로 최신화 (stale-while-revalidate)
       try {
         const transitions = await fetchTransitions(key)
-        // 로딩 중 사용자가 다른 이슈로 드롭다운을 전환했을 수 있음
+        setCachedTransitions(key, transitions)
         if (state.statusDropdown && state.statusDropdown.issueKey === key) {
           state.statusDropdown.transitions = transitions
           state.statusDropdown.loading = false
@@ -1372,6 +1394,8 @@ export function bindEvents() {
         }
       } catch (err) {
         console.error('전이 조회 실패:', err)
+        // 캐시로 이미 표시 중이면 사용자 흐름을 끊지 않음 (네트워크 일시 오류 가능)
+        if (cached) return
         if (state.statusDropdown && state.statusDropdown.issueKey === key) {
           state.statusDropdown = null
           render({ sections: ['modals'] })
@@ -1393,15 +1417,18 @@ export function bindEvents() {
       }
       if (state.assigneeDropdown) closeAssigneeDropdown({ skipRender: true })
       const rect = el.getBoundingClientRect()
+      // 캐시가 있으면 즉시 리스트 표시(loading=false), 그렇지 않으면 로딩 표시
+      const cached = getCachedAssignableUsers(key)
       state.assigneeDropdown = {
         issueKey: key,
         rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
-        allUsers: null,
-        loading: true,
+        allUsers: cached,
+        loading: !cached,
         query: '',
       }
       if (state.statusDropdown) state.statusDropdown = null
       render({ sections: ['modals'] })
+      // 캐시 유무와 무관하게 백그라운드 fetch로 최신화 (stale-while-revalidate)
       loadAssignableUsers(key)
     })
   })
