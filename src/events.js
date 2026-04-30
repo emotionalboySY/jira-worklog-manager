@@ -1203,8 +1203,11 @@ export function bindEvents() {
     })
   }
 
+  // bindEvents()는 모든 render마다 호출되므로 가드가 없으면 부분 렌더(modals 등)에서도
+  // 매번 새 flatpickr 인스턴스가 생성되어 calendar DOM과 document 리스너가 누수된다.
+  // content 섹션이 재렌더될 때는 render.js가 먼저 destroy하므로 그 외에는 재생성하지 않는다.
   const logDatePicker = document.getElementById('log-date-picker')
-  if (logDatePicker) {
+  if (logDatePicker && !state.flatpickrInstance) {
     state.flatpickrInstance = flatpickr(logDatePicker, {
       locale: Korean,
       dateFormat: 'Y년 m월 d일 (D)',
