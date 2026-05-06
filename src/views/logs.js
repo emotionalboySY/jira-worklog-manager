@@ -1,6 +1,7 @@
 // 작업 로그 기록 탭
 import { state } from '../state.js'
 import { getDayOff, getDayOffLabel } from '../storage.js'
+import { getHoliday } from '../holidays.js'
 import {
   toDateString,
   escapeHtml,
@@ -63,6 +64,9 @@ export function renderCalendarView() {
     const minutes = getLogMinutes(dateStr)
     const dayOffType = getDayOff(dateStr)
     const isFuture = dateStr > todayStr
+    const cellDate = new Date(state.calendarYear, state.calendarMonth, d)
+    const dow = cellDate.getDay()  // 0=일, 6=토
+    const holiday = getHoliday(dateStr)
     cells.push({
       day: d,
       dateStr,
@@ -71,6 +75,9 @@ export function renderCalendarView() {
       isToday: dateStr === todayStr,
       isSelected: dateStr === state.logDate,
       isFuture,
+      isSaturday: dow === 6,
+      isSunday: dow === 0,
+      holiday,
       empty: false,
     })
   }
@@ -108,16 +115,21 @@ export function renderCalendarView() {
         ${!(isCurrentMonth && state.logDate === todayStr) ? `<button class="btn btn-primary btn-sm" id="cal-today">오늘</button>` : ''}
       </div>
       <div class="calendar-grid">
-        ${dayHeaders.map(d => `<div class="calendar-weekday">${d}</div>`).join('')}
+        ${dayHeaders.map((d, i) => `<div class="calendar-weekday ${i === 0 ? 'sunday' : i === 6 ? 'saturday' : ''}">${d}</div>`).join('')}
         ${cells.map(cell => {
           if (cell.empty) return `<div class="calendar-cell empty"></div>`
           const level = cell.isFuture ? 0 : cell.minutes <= 0 ? 0 : cell.minutes < 180 ? 1 : cell.minutes < 360 ? 2 : 3
           const dayOffClass = cell.dayOffType ? `day-off day-off-${cell.dayOffType}` : ''
+          const dowClass = cell.holiday ? 'holiday' : cell.isSunday ? 'sunday' : cell.isSaturday ? 'saturday' : ''
+          const titleParts = []
+          if (cell.holiday) titleParts.push(cell.holiday)
+          if (cell.dayOffType) titleParts.push(getDayOffLabel(cell.dayOffType))
+          const titleAttr = titleParts.length ? ` title="${escapeHtml(titleParts.join(' · '))}"` : ''
           return `
-            <div class="calendar-cell ${cell.isToday ? 'today' : ''} ${cell.isSelected ? 'selected' : ''} ${cell.isFuture ? 'future' : ''} level-${level} ${dayOffClass}"
-                 ${!cell.isFuture ? `data-cal-date="${cell.dateStr}"` : ''}
-                 ${cell.dayOffType ? `title="${getDayOffLabel(cell.dayOffType)}"` : ''}>
+            <div class="calendar-cell ${cell.isToday ? 'today' : ''} ${cell.isSelected ? 'selected' : ''} ${cell.isFuture ? 'future' : ''} level-${level} ${dayOffClass} ${dowClass}"
+                 ${!cell.isFuture ? `data-cal-date="${cell.dateStr}"` : ''}${titleAttr}>
               <span class="calendar-day">${cell.day}</span>
+              ${cell.holiday ? `<span class="calendar-holiday">${escapeHtml(cell.holiday)}</span>` : ''}
               ${cell.minutes > 0 ? `<span class="calendar-hours">${formatHoursShort(cell.minutes)}</span>` : ''}
             </div>
           `

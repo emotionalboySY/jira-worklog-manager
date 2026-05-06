@@ -26,6 +26,8 @@
   --red-bg: rgba(239, 68, 68, 0.12);
   --orange: #f97316;
   --orange-bg: rgba(249, 115, 22, 0.12);
+  --blue: #3b82f6;
+  --blue-bg: rgba(59, 130, 246, 0.12);
   --radius: 8px;
   --radius-lg: 12px;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
@@ -62,6 +64,8 @@
   --orange-bg: rgba(234, 88, 12, 0.08);
   --purple: #7c3aed;
   --purple-bg: rgba(124, 58, 237, 0.08);
+  --blue: #2563eb;
+  --blue-bg: rgba(37, 99, 235, 0.08);
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   --modal-overlay: rgba(0, 0, 0, 0.3);
   --modal-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
@@ -1918,6 +1922,9 @@ span.flatpickr-weekday {
   padding: 6px 0;
 }
 
+.calendar-weekday.saturday { color: var(--blue); }
+.calendar-weekday.sunday { color: var(--red); }
+
 .calendar-cell {
   aspect-ratio: 2 / 1;
   display: flex;
@@ -1956,6 +1963,26 @@ span.flatpickr-weekday {
 .calendar-cell.today .calendar-day {
   color: var(--accent);
   font-weight: 700;
+}
+
+/* 토/일/공휴일 날짜 색상 (today보다 우선) */
+.calendar-cell.saturday .calendar-day { color: var(--blue); }
+.calendar-cell.sunday .calendar-day,
+.calendar-cell.holiday .calendar-day { color: var(--red); }
+.calendar-cell.today.saturday .calendar-day,
+.calendar-cell.today.sunday .calendar-day,
+.calendar-cell.today.holiday .calendar-day { font-weight: 700; }
+
+.calendar-holiday {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--red);
+  line-height: 1.1;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .calendar-day {
@@ -2237,9 +2264,15 @@ span.flatpickr-weekday {
   opacity: 0.3;
 }
 
-.chart-bar-col.weekend .chart-bar-label {
+.chart-bar-col.saturday .chart-bar-label {
+  color: var(--blue);
+  opacity: 0.85;
+}
+
+.chart-bar-col.sunday .chart-bar-label,
+.chart-bar-col.holiday .chart-bar-label {
   color: var(--red);
-  opacity: 0.7;
+  opacity: 0.85;
 }
 
 .chart-bar {
@@ -2286,6 +2319,14 @@ span.flatpickr-weekday {
 .chart-day-off-badge.day-off-pm {
   color: var(--accent-hover);
   background: rgba(99, 102, 241, 0.1);
+}
+
+.chart-day-off-badge.holiday {
+  color: var(--red);
+  background: var(--red-bg);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chart-day-off-badge.placeholder {

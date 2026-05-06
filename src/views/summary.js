@@ -3,8 +3,10 @@ import { state, DEFAULT_SUMMARY_WEEK_START } from '../state.js'
 import { isLoggedIn } from '../auth.js'
 import { loadWorklogs } from '../data.js'
 import { getDayOff, getDayOffLabel } from '../storage.js'
+import { getHoliday } from '../holidays.js'
 import {
   toDateString,
+  escapeHtml,
   formatMinutes,
   getActiveLogs,
   getLogMinutes,
@@ -67,6 +69,7 @@ export function getWeekData(offset) {
     const isToday = d.toDateString() === today.toDateString()
     const isFuture = d > today
     const dow = d.getDay()
+    const holiday = getHoliday(dateStr)
     weekData.push({
       day: days[dow],
       date: `${String(d.getMonth() + 1).padStart(2, '0')}월 ${String(d.getDate()).padStart(2, '0')}일`,
@@ -75,7 +78,9 @@ export function getWeekData(offset) {
       dayOffType: isFuture ? null : dayOffType,
       today: isToday,
       isFuture,
-      weekend: dow === 0 || dow === 6,
+      isSaturday: dow === 6,
+      isSunday: dow === 0,
+      holiday,
     })
   }
   return { weekData, weekStart, thursday }
@@ -142,19 +147,27 @@ export function renderSummaryTab() {
     <div class="weekly-chart">
       <div class="weekly-chart-title">${isCurrentWeek ? '금주' : ''}(${weekMonth}월 ${weekNum}주차) 일별 작업 시간</div>
       <div class="chart-bars">
-        ${weekData.map(d => `
-          <div class="chart-bar-col ${d.isFuture ? 'future' : ''} ${d.weekend ? 'weekend' : ''} ${!d.isFuture ? 'clickable' : ''}" ${!d.isFuture ? `data-chart-date="${d.dateStr}" title="${d.date} 기록 보기"` : ''}>
+        ${weekData.map(d => {
+          const dowClass = d.holiday ? 'holiday' : d.isSunday ? 'sunday' : d.isSaturday ? 'saturday' : ''
+          let badge
+          if (d.dayOffType) {
+            badge = `<span class="chart-day-off-badge day-off-${d.dayOffType}" title="${getDayOffLabel(d.dayOffType)}">${getDayOffLabel(d.dayOffType)}</span>`
+          } else if (d.holiday) {
+            badge = `<span class="chart-day-off-badge holiday" title="${escapeHtml(d.holiday)}">${escapeHtml(d.holiday)}</span>`
+          } else {
+            badge = `<span class="chart-day-off-badge placeholder" aria-hidden="true">·</span>`
+          }
+          return `
+          <div class="chart-bar-col ${d.isFuture ? 'future' : ''} ${dowClass} ${!d.isFuture ? 'clickable' : ''}" ${!d.isFuture ? `data-chart-date="${d.dateStr}" title="${d.date} 기록 보기"` : ''}>
             <span class="chart-bar-value">${d.minutes > 0 ? formatMinutes(d.minutes) : '-'}</span>
             <div class="chart-bar-track">
               <div class="chart-bar ${d.today ? 'today' : ''}" style="height: ${Math.max(Math.min((d.minutes / 480) * 100, 100), d.minutes > 0 ? 2 : 0)}%"></div>
             </div>
             <span class="chart-bar-label">${d.date} (${d.day})</span>
-            ${d.dayOffType
-              ? `<span class="chart-day-off-badge day-off-${d.dayOffType}" title="${getDayOffLabel(d.dayOffType)}">${getDayOffLabel(d.dayOffType)}</span>`
-              : `<span class="chart-day-off-badge placeholder" aria-hidden="true">·</span>`
-            }
+            ${badge}
           </div>
-        `).join('')}
+          `
+        }).join('')}
       </div>
     </div>
   `
