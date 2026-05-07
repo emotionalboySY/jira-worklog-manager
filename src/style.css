@@ -2409,10 +2409,37 @@ span.flatpickr-weekday {
 
 /* ========== 새 일감 생성 모달 ========== */
 .modal-create-issue {
-  width: 640px;
+  width: 760px;
   max-width: 94vw;
   max-height: 88vh;
   overflow-y: auto;
+  /* 스크롤 유무와 무관하게 콘텐츠 폭/위치 일정 (Chrome 94+, Firefox 97+, Safari 17+) */
+  scrollbar-gutter: stable;
+  /* Firefox + 최신 webkit: thin + 차분한 색 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* WebKit(Chrome/Edge/Safari): track을 투명으로 두고 thumb만 노출 */
+.modal-create-issue::-webkit-scrollbar {
+  width: 10px;
+}
+
+.modal-create-issue::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-create-issue::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+  border: 2px solid var(--bg-card);
+  background-clip: padding-box;
+}
+
+.modal-create-issue::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+  border: 2px solid var(--bg-card);
+  background-clip: padding-box;
 }
 
 .create-issue-types {
