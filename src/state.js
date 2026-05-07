@@ -60,6 +60,9 @@ export const DEFAULT_PROJECT_COLORS = {
 }
 export const CLOSED_CATEGORY = 'done'  // Jira statusCategory key
 
+// 새 일감 생성 모달의 프로젝트 선택지에서 제외할 키 목록
+export const EXCLUDED_CREATE_PROJECT_KEYS = ['MDP']
+
 // localStorage 키
 export const SESSIONS_KEY = 'work_sessions'
 export const DAY_OFFS_KEY = 'day_offs'

@@ -1,5 +1,5 @@
 // 모든 모달 + 이슈 키 자동완성 관련 로직
-import { state, ISSUE_KEY_PATTERN, LUNCH_START, LUNCH_END, WORKLOG_CACHE_KEY, NO_ISSUE_KEY, NO_ISSUE_SUMMARY } from '../state.js'
+import { state, ISSUE_KEY_PATTERN, LUNCH_START, LUNCH_END, WORKLOG_CACHE_KEY, NO_ISSUE_KEY, NO_ISSUE_SUMMARY, EXCLUDED_CREATE_PROJECT_KEYS } from '../state.js'
 import {
   loadSessions,
   loadFavorites,
@@ -581,8 +581,8 @@ export function renderCreateIssueModal() {
   const m = state.showCreateIssue
   if (!m) return ''
 
-  // 프로젝트 선택지에서 MDP 제외 (이 도구로 새 일감을 만들지 않는 프로젝트)
-  const projects = (state.realProjects || []).filter(p => p.key !== 'MDP')
+  // 프로젝트 선택지에서 EXCLUDED_CREATE_PROJECT_KEYS(예: MDP) 제외
+  const projects = (state.realProjects || []).filter(p => !EXCLUDED_CREATE_PROJECT_KEYS.includes(p.key))
   const meta = m.metaByProject?.[m.projectKey]
   const issuetypes = meta?.issuetypes || []
   const selectedType = issuetypes.find(t => t.id === m.issueTypeId) || null

@@ -1,7 +1,7 @@
 // 전체 이벤트 바인딩 + 타이머 업데이트
 import flatpickr from 'flatpickr'
 import { Korean } from 'flatpickr/dist/l10n/ko.js'
-import { state, NO_ISSUE_KEY, NO_ISSUE_SUMMARY, CLOSED_CATEGORY } from './state.js'
+import { state, NO_ISSUE_KEY, NO_ISSUE_SUMMARY, CLOSED_CATEGORY, EXCLUDED_CREATE_PROJECT_KEYS } from './state.js'
 import { logout, isLoggedIn } from './auth.js'
 import {
   fetchIssueMeta,
@@ -697,8 +697,8 @@ async function performTypeChange(issueKey, typeInfo) {
 // ========== 새 일감 생성 ==========
 function openCreateIssueModal() {
   if (state.showCreateIssue) return
-  // 첫 프로젝트 선택값 결정 (기존 필터의 currentProject가 있으면 우선)
-  const projects = state.realProjects || []
+  // 모달의 프로젝트 선택지와 동일하게 제외 키 필터 적용 (MDP 등)
+  const projects = (state.realProjects || []).filter(p => !EXCLUDED_CREATE_PROJECT_KEYS.includes(p.key))
   let projectKey = ''
   if (state.currentProject && state.currentProject !== 'ALL' && projects.some(p => p.key === state.currentProject)) {
     projectKey = state.currentProject
