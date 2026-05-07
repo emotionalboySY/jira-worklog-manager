@@ -614,14 +614,19 @@ export async function fetchCreateMeta(projectKey, { signal } = {}) {
     .map(t => {
       const fields = t.fields || {}
       const fieldKeys = Object.keys(fields)
+      // 설명 기본값(템플릿) — 보통 ADF doc. issuetype별로 정해진 양식이 있을 수 있음.
+      const descField = fields.description || {}
+      const descDefault = descField.hasDefaultValue && descField.defaultValue
+        ? descField.defaultValue
+        : null
       return {
         id: String(t.id),
         name: t.name || '',
         iconUrl: t.iconUrl || '',
-        // 필드 사용 가능 여부 + required 표시
         availableFields: fieldKeys,
         hasDuedate: fieldKeys.includes('duedate'),
         requiredFields: fieldKeys.filter(k => fields[k]?.required && !fields[k]?.hasDefaultValue),
+        descriptionDefaultAdf: descDefault,
       }
     })
   return { issuetypes }
@@ -662,9 +667,10 @@ export async function createIssueLink(typeName, inwardKey, outwardKey) {
 }
 
 // 프로젝트 멤버 중 할당 가능한 사용자 (이슈 키 없을 때 — 신규 생성 흐름용)
+// query를 서버에 전달해 서버 측 검색 사용 (빈 query는 알파벳 순 첫 1000명).
 export async function fetchAssignableUsersForProject(projectKey, query = '', { signal } = {}) {
   const data = await jiraFetch(
-    `/user/assignable/search?project=${encodeURIComponent(projectKey)}&query=${encodeURIComponent(query)}&maxResults=50`,
+    `/user/assignable/search?project=${encodeURIComponent(projectKey)}&query=${encodeURIComponent(query)}&maxResults=1000`,
     { signal }
   )
   if (!Array.isArray(data)) return []

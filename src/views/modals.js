@@ -581,7 +581,8 @@ export function renderCreateIssueModal() {
   const m = state.showCreateIssue
   if (!m) return ''
 
-  const projects = state.realProjects || []
+  // 프로젝트 선택지에서 MDP 제외 (이 도구로 새 일감을 만들지 않는 프로젝트)
+  const projects = (state.realProjects || []).filter(p => p.key !== 'MDP')
   const meta = m.metaByProject?.[m.projectKey]
   const issuetypes = meta?.issuetypes || []
   const selectedType = issuetypes.find(t => t.id === m.issueTypeId) || null
@@ -627,14 +628,29 @@ export function renderCreateIssueModal() {
       return `<option value="${escapeHtml(o.value)}" ${selected ? 'selected' : ''}>${escapeHtml(o.label)}</option>`
     }).join('')
     const targetErr = m.fieldErrors?.[`link-${idx}`] || ''
+    const chipsHtml = (link.targetKeys || []).map(key => `
+      <span class="link-target-chip">
+        <span>${escapeHtml(key)}</span>
+        <button type="button" class="link-target-chip-x" data-action="remove-link-target" data-link-idx="${idx}" data-target-key="${escapeHtml(key)}" aria-label="제거">✕</button>
+      </span>
+    `).join('')
+    const placeholder = (link.targetKeys || []).length === 0
+      ? '이슈 키 또는 키워드로 검색'
+      : '추가...'
     return `
       <div class="create-issue-link-row" data-link-idx="${idx}">
         <select class="modal-input create-issue-link-type" data-link-idx="${idx}" ${linkTypes.length === 0 ? 'disabled' : ''}>
           ${linkTypes.length === 0 ? '<option>로딩 중...</option>' : optsHtml}
         </select>
-        <input type="text" class="modal-input create-issue-link-target" data-link-idx="${idx}"
-          placeholder="DKT-123" value="${escapeHtml(link.targetKey || '')}" autocomplete="off" />
-        <button type="button" class="btn btn-sm" data-action="remove-create-link" data-link-idx="${idx}" aria-label="이 링크 제거">✕</button>
+        <div class="create-issue-link-targets-wrap">
+          <div class="create-issue-link-targets" data-link-idx="${idx}">
+            ${chipsHtml}
+            <input type="text" class="create-issue-link-search" data-link-idx="${idx}"
+              placeholder="${placeholder}" value="${escapeHtml(link.query || '')}" autocomplete="off" />
+          </div>
+          <div class="create-issue-link-suggestions" id="create-issue-link-suggestions-${idx}"></div>
+        </div>
+        <button type="button" class="btn btn-sm create-issue-link-remove" data-action="remove-create-link" data-link-idx="${idx}" aria-label="이 링크 제거">✕</button>
         ${targetErr ? `<div class="input-hint error">${escapeHtml(targetErr)}</div>` : ''}
       </div>
     `
@@ -711,6 +727,32 @@ export function renderCreateIssueModal() {
   `
 }
 
+// 항목 연결 행의 자동완성 드롭다운 HTML. 각 행마다 별도 element에 직접 innerHTML로 주입.
+// (manual-issue-key 자동완성과 동일 패턴 — modals 재렌더 없이 input 보존)
+export function renderLinkSuggestionsHtml(idx, link) {
+  const q = (link?.query || '').trim()
+  const searching = !!link?.searching
+  const candidates = link?.suggestions || []
+  if (!q && !searching) return ''
+  if (candidates.length === 0 && !searching) {
+    return `<div class="autocomplete-empty">검색 결과가 없습니다.</div>`
+  }
+  const activeIdx = link?.activeSuggestionIdx ?? -1
+  const itemsHtml = candidates.map((c, i) => `
+    <div class="autocomplete-item ${i === activeIdx ? 'active' : ''}" data-action="pick-link-target" data-link-idx="${idx}" data-key="${escapeHtml(c.key)}" data-suggest-idx="${i}">
+      <span class="autocomplete-key">${escapeHtml(c.key)}</span>
+      <span class="autocomplete-summary">${escapeHtml(c.summary || '')}</span>
+    </div>
+  `).join('')
+  let footer = ''
+  if (searching) {
+    footer = candidates.length === 0
+      ? `<div class="autocomplete-loading"><span class="btn-spinner"></span><span>검색 중...</span></div>`
+      : `<div class="autocomplete-footer"><span class="btn-spinner"></span><span>더 검색 중...</span></div>`
+  }
+  return itemsHtml + footer
+}
+
 // 담당자 선택 영역. 검색 input → 결과 리스트(미할당/본인/검색결과). 선택된 사용자만 칩으로.
 function renderCreateAssigneeBlock(m) {
   const me = getCachedMyself()
@@ -748,16 +790,8 @@ function renderCreateAssigneeBlock(m) {
 
   if (chipHtml) return chipHtml
 
-  // 검색 영역
-  const filtered = (() => {
-    if (!Array.isArray(usersForProj)) return []
-    const q = query.trim().toLowerCase()
-    if (!q) return usersForProj.slice(0, 8)
-    return usersForProj.filter(u =>
-      (u.displayName || '').toLowerCase().includes(q) ||
-      (u.emailAddress || '').toLowerCase().includes(q)
-    ).slice(0, 8)
-  })()
+  // 검색 영역 — 서버 측 검색 결과를 그대로 표시 (최대 표시 수만 제한)
+  const filtered = Array.isArray(usersForProj) ? usersForProj.slice(0, 30) : []
 
   const meItem = me ? `
     <button type="button" class="assignee-dd-item" data-action="pick-create-assignee" data-assignee-id="${escapeHtml(me.accountId)}">

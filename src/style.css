@@ -2511,11 +2511,111 @@ span.flatpickr-weekday {
   display: grid;
   grid-template-columns: 200px 1fr auto;
   gap: 6px;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .create-issue-link-row .input-hint {
   grid-column: 1 / -1;
+}
+
+.create-issue-link-row .create-issue-link-type {
+  height: 36px;
+}
+
+.create-issue-link-row .create-issue-link-remove {
+  height: 36px;
+}
+
+.create-issue-link-targets-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.create-issue-link-targets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  min-height: 36px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: text;
+}
+
+.create-issue-link-targets:focus-within {
+  border-color: var(--accent);
+}
+
+.link-target-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.link-target-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.link-target-chip-x:hover {
+  background: rgba(99, 102, 241, 0.2);
+  opacity: 1;
+}
+
+.create-issue-link-search {
+  flex: 1;
+  min-width: 120px;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 4px 2px;
+  color: var(--text-bright);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.create-issue-link-suggestions {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 250;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  padding: 4px 0;
+}
+
+.autocomplete-empty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
 }
 
 /* 신규 모달의 내부 요소들이 .modal 안에서 자연스럽게 정렬되도록 */
