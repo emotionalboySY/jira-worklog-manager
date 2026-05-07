@@ -18,11 +18,15 @@ import {
   fetchAssignableUsers,
   updateIssueAssignee,
   updateIssueSummary,
+  fetchIssueTypes,
+  updateIssueType,
   getCachedTransitions,
   setCachedTransitions,
   invalidateTransitionsCache,
   getCachedAssignableUsers,
   setCachedAssignableUsers,
+  getCachedIssueTypes,
+  setCachedIssueTypes,
 } from './jira.js'
 import { detectLossyFeatures, isEmptyAdf } from './adfProsemirror.js'
 import { createEditor, destroyEditor, getCurrentAdf, runCommand, setEditable } from './tiptap.js'
@@ -149,6 +153,16 @@ function handleGlobalClick(e) {
     }
   }
 
+  // 이슈 유형 드롭다운: 드롭다운 바깥 + 트리거 바깥 클릭 시 닫음
+  if (state.typeDropdown) {
+    const dd = document.getElementById('type-dropdown')
+    const clickedOnTrigger = e.target.closest?.('[data-action="toggle-type-menu"]')
+    if (dd && !dd.contains(e.target) && !clickedOnTrigger) {
+      state.typeDropdown = null
+      render({ sections: ['modals'] })
+    }
+  }
+
   if (state.favoritesPanelCollapsed) return
   const panel = document.querySelector('.favorites-panel.expanded')
   if (!panel) return
@@ -189,6 +203,11 @@ function handleGlobalKeydown(e) {
   }
   if (state.assigneeDropdown) {
     closeAssigneeDropdown()
+    return
+  }
+  if (state.typeDropdown) {
+    state.typeDropdown = null
+    render(modalsOnly)
     return
   }
   if (state.showSwapIssue) {
@@ -545,22 +564,25 @@ async function loadAssignableUsers(issueKey) {
 // 담당자 변경 실행. 진행 중 스피너 → 성공 시 아바타 즉시 갱신 + 토스트
 async function applyAssigneeChange(issueKey, accountId, selectedUser) {
   state.assigneeUpdating.add(issueKey)
-  render({ sections: ['content'] })
+  render({ sections: ['content', 'modals'] })
   try {
     await updateIssueAssignee(issueKey, accountId)
-    // realIssues에서 해당 이슈의 assignee 갱신
-    for (const issue of state.realIssues) {
-      if (issue.key !== issueKey) continue
-      if (!accountId) {
-        issue.assignee = null
-      } else if (selectedUser) {
-        issue.assignee = {
+    const newAssignee = !accountId
+      ? null
+      : (selectedUser ? {
           accountId: selectedUser.accountId,
           displayName: selectedUser.displayName,
           avatarUrl: selectedUser.avatarUrl,
-        }
-      }
+        } : null)
+    // realIssues에서 해당 이슈의 assignee 갱신
+    for (const issue of state.realIssues) {
+      if (issue.key !== issueKey) continue
+      issue.assignee = newAssignee
       break
+    }
+    // 상세 모달이 같은 이슈를 보고 있으면 거기도 갱신
+    if (state.issueDetailModal && state.issueDetailModal.key === issueKey && state.issueDetailModal.data) {
+      state.issueDetailModal.data.assignee = newAssignee
     }
     showToast(accountId
       ? `담당자를 ${selectedUser?.displayName || ''}(으)로 변경했습니다.`
@@ -570,7 +592,37 @@ async function applyAssigneeChange(issueKey, accountId, selectedUser) {
     showToast(`담당자 변경 실패: ${formatJiraError(err)}`, '⚠')
   } finally {
     state.assigneeUpdating.delete(issueKey)
-    render({ sections: ['content'] })
+    render({ sections: ['content', 'modals'] })
+  }
+}
+
+// 이슈 유형 변경 실행. 성공 시 realIssues + 상세 모달 동기 갱신.
+async function performTypeChange(issueKey, typeInfo) {
+  state.typeUpdating.add(issueKey)
+  render({ sections: ['content', 'modals'] })
+  try {
+    await updateIssueType(issueKey, typeInfo.id)
+    // realIssues 갱신
+    for (const arr of [state.realIssues, state.searchResults]) {
+      if (!Array.isArray(arr)) continue
+      const idx = arr.findIndex(i => i.key === issueKey)
+      if (idx >= 0) {
+        arr[idx] = { ...arr[idx], type: typeInfo.name, typeIconUrl: typeInfo.iconUrl || '' }
+      }
+    }
+    try { saveIssuesCache(state.realIssues, state.realProjects) } catch {}
+    // 상세 모달 갱신
+    if (state.issueDetailModal && state.issueDetailModal.key === issueKey && state.issueDetailModal.data) {
+      state.issueDetailModal.data.type = typeInfo.name
+      state.issueDetailModal.data.typeIconUrl = typeInfo.iconUrl || ''
+    }
+    showToast(`유형을 '${typeInfo.name}'(으)로 변경했습니다.`, '✓')
+  } catch (err) {
+    console.error('유형 변경 실패:', err)
+    showToast(`유형 변경 실패: ${formatJiraError(err)}`, '⚠')
+  } finally {
+    state.typeUpdating.delete(issueKey)
+    render({ sections: ['content', 'modals'] })
   }
 }
 
@@ -704,8 +756,8 @@ function deriveProjectColors(hex) {
 // fields=null이면 필드 없는 단순 전이, 객체면 해당 필드들을 함께 전송.
 async function performTransition(issueKey, transition, fields) {
   state.statusTransitioning.add(issueKey)
-  // 해당 이슈의 상태 버튼만 스피너로 갱신
-  render({ sections: ['content'] })
+  // 해당 이슈의 상태 버튼만 스피너로 갱신 (상세 모달 안에서도 보일 수 있도록 modals도 재렌더)
+  render({ sections: ['content', 'modals'] })
   try {
     await transitionIssue(issueKey, transition.id, fields)
     // 전이가 일어나면 가능한 다음 전이 목록이 바뀌므로 캐시 즉시 무효화
@@ -727,7 +779,7 @@ async function performTransition(issueKey, transition, fields) {
     showToast(`상태 변경 실패: ${formatJiraError(e)}`, '⚠')
   } finally {
     state.statusTransitioning.delete(issueKey)
-    render({ sections: ['content'] })
+    render({ sections: ['content', 'modals'] })
   }
 }
 
@@ -744,6 +796,11 @@ function updateIssueStatusInState(issueKey, { status, statusCategory }) {
   apply(state.realIssues)
   apply(state.searchResults)
   try { saveIssuesCache(state.realIssues, state.realProjects) } catch {}
+  // 상세 모달이 같은 이슈면 즉시 동기화 (상세 모달도 상태 변경 진입점이 됨)
+  if (state.issueDetailModal && state.issueDetailModal.key === issueKey && state.issueDetailModal.data) {
+    state.issueDetailModal.data.status = status
+    state.issueDetailModal.data.statusCategory = statusCategory
+  }
   if (statusCategory === CLOSED_CATEGORY) {
     if (removeFavorite(issueKey)) {
       render({ sections: ['favorites'] })
@@ -1362,6 +1419,68 @@ export function bindEvents() {
       render()
     })
   }
+
+  // 이슈 유형 버튼 → 유형 변경 드롭다운 토글 (상세 모달 좌상단)
+  document.querySelectorAll('[data-action="toggle-type-menu"]').forEach(btn => {
+    on(btn, 'click', async (e) => {
+      e.stopPropagation()
+      const key = btn.dataset.key
+      if (!key) return
+      if (state.typeDropdown && state.typeDropdown.issueKey === key) {
+        state.typeDropdown = null
+        render({ sections: ['modals'] })
+        return
+      }
+      const rect = btn.getBoundingClientRect()
+      const cached = getCachedIssueTypes(key)
+      state.typeDropdown = {
+        issueKey: key,
+        currentTypeName: btn.dataset.currentType || '',
+        rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+        types: cached,
+        loading: !cached,
+      }
+      // 다른 드롭다운은 닫음
+      if (state.statusDropdown) state.statusDropdown = null
+      if (state.assigneeDropdown) closeAssigneeDropdown({ skipRender: true })
+      render({ sections: ['modals'] })
+      try {
+        const types = await fetchIssueTypes(key)
+        setCachedIssueTypes(key, types)
+        if (state.typeDropdown && state.typeDropdown.issueKey === key) {
+          state.typeDropdown.types = types
+          state.typeDropdown.loading = false
+          render({ sections: ['modals'] })
+        }
+      } catch (err) {
+        console.error('이슈 유형 조회 실패:', err)
+        if (cached) return
+        if (state.typeDropdown && state.typeDropdown.issueKey === key) {
+          state.typeDropdown = null
+          render({ sections: ['modals'] })
+        }
+        showToast(`유형 조회 실패: ${formatJiraError(err)}`, '⚠')
+      }
+    })
+  })
+
+  // 유형 드롭다운 항목 선택 → 즉시 변경
+  document.querySelectorAll('[data-action="apply-type"]').forEach(btn => {
+    on(btn, 'click', async (e) => {
+      e.stopPropagation()
+      const dd = state.typeDropdown
+      if (!dd) return
+      const issueKey = dd.issueKey
+      const typeInfo = {
+        id: btn.dataset.typeId,
+        name: btn.dataset.typeName || '',
+        iconUrl: btn.dataset.typeIcon || '',
+      }
+      state.typeDropdown = null
+      render({ sections: ['modals'] })
+      await performTypeChange(issueKey, typeInfo)
+    })
+  })
 
   // 이슈 상태 버튼 → 전이 드롭다운 토글
   document.querySelectorAll('[data-action="toggle-status-menu"]').forEach(btn => {

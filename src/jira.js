@@ -346,6 +346,7 @@ export async function fetchTransitions(issueKey, { signal } = {}) {
 // 상태 전이가 일어난 이슈는 가능한 전이 목록이 바뀌므로 즉시 invalidate.
 const transitionsCache = new Map() // issueKey → { data, fetchedAt }
 const assignableUsersCache = new Map() // issueKey → { data, fetchedAt }
+const issueTypesCache = new Map() // issueKey → { data, fetchedAt }
 
 export function getCachedTransitions(issueKey) {
   return transitionsCache.get(issueKey)?.data || null
@@ -365,6 +366,14 @@ export function getCachedAssignableUsers(issueKey) {
 
 export function setCachedAssignableUsers(issueKey, data) {
   assignableUsersCache.set(issueKey, { data, fetchedAt: Date.now() })
+}
+
+export function getCachedIssueTypes(issueKey) {
+  return issueTypesCache.get(issueKey)?.data || null
+}
+
+export function setCachedIssueTypes(issueKey, data) {
+  issueTypesCache.set(issueKey, { data, fetchedAt: Date.now() })
 }
 
 // 전이 실행. fields는 transition에 필요한 추가 데이터 (예: { resolution: { id: '10000' } })
@@ -504,6 +513,30 @@ export async function updateIssueAssignee(issueKey, accountId) {
   await jiraFetch(
     `/issue/${encodeURIComponent(issueKey)}/assignee`,
     { method: 'PUT', body: { accountId: accountId || null } }
+  )
+}
+
+// 이 이슈에 대해 변경 가능한 이슈 유형 목록 조회.
+// editmeta가 issuetype 필드의 allowedValues를 직접 알려준다.
+export async function fetchIssueTypes(issueKey, { signal } = {}) {
+  const data = await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}/editmeta`,
+    { signal }
+  )
+  const allowed = data?.fields?.issuetype?.allowedValues || []
+  return allowed.map(t => ({
+    id: String(t.id),
+    name: t.name || '',
+    iconUrl: t.iconUrl || '',
+    subtask: !!t.subtask,
+  }))
+}
+
+// 이슈 유형 변경
+export async function updateIssueType(issueKey, typeId) {
+  await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}`,
+    { method: 'PUT', body: { fields: { issuetype: { id: String(typeId) } } } }
   )
 }
 

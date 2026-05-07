@@ -274,6 +274,75 @@ export function renderStatusDropdown() {
   `
 }
 
+// ========== 이슈 유형 드롭다운 ==========
+// 상세 모달의 좌상단 type 아이콘 클릭 시 표시. 동작은 상태 드롭다운과 동일 (fixed).
+export function renderTypeDropdown() {
+  const dd = state.typeDropdown
+  if (!dd) return ''
+  const { rect, types, loading, currentTypeName } = dd
+
+  // 현재 유형은 변경 옵션에서 제외
+  const visible = (types || []).filter(t => t.name !== currentTypeName)
+
+  const ITEM_H = 36
+  const CHROME = 10
+  let estHeight
+  if (loading || visible.length === 0) {
+    estHeight = 40 + CHROME
+  } else {
+    estHeight = visible.length * ITEM_H + CHROME
+  }
+
+  const GAP = 4
+  const EDGE = 8
+  const spaceBelow = window.innerHeight - rect.bottom - EDGE
+  const spaceAbove = rect.top - EDGE
+  const openUp = estHeight > spaceBelow && spaceAbove > spaceBelow
+  const available = openUp ? spaceAbove : spaceBelow
+  const maxHeight = Math.max(120, available - GAP)
+
+  // 좌상단 type 아이콘 기준 → 왼쪽 정렬이 자연스러움
+  const left = Math.max(EDGE, Math.round(rect.left))
+  const vertical = openUp
+    ? `bottom:${Math.round(window.innerHeight - rect.top + GAP)}px;`
+    : `top:${Math.round(rect.bottom + GAP)}px;`
+  const style = `${vertical} left:${left}px; max-height:${maxHeight}px;`
+
+  if (loading) {
+    return `
+      <div class="status-dropdown type-dropdown" id="type-dropdown" style="${style}">
+        <div class="status-dropdown-loading"><span class="btn-spinner"></span><span>유형 조회 중...</span></div>
+      </div>
+    `
+  }
+
+  if (visible.length === 0) {
+    return `
+      <div class="status-dropdown type-dropdown" id="type-dropdown" style="${style}">
+        <div class="status-dropdown-empty">변경 가능한 유형이 없습니다.</div>
+      </div>
+    `
+  }
+
+  const itemsHtml = visible.map(t => {
+    const iconHtml = t.iconUrl
+      ? `<img class="detail-type-icon" src="${escapeHtml(t.iconUrl)}" alt="${escapeHtml(t.name)}" />`
+      : ''
+    return `
+      <button type="button" class="status-dropdown-item type-dropdown-item" data-action="apply-type" data-type-id="${escapeHtml(t.id)}" data-type-name="${escapeHtml(t.name)}" data-type-icon="${escapeHtml(t.iconUrl || '')}">
+        ${iconHtml}
+        <span class="type-dropdown-name">${escapeHtml(t.name)}</span>
+      </button>
+    `
+  }).join('')
+
+  return `
+    <div class="status-dropdown type-dropdown" id="type-dropdown" style="${style}">
+      ${itemsHtml}
+    </div>
+  `
+}
+
 // ========== 담당자 드롭다운 ==========
 // 이슈 목록의 담당자 아바타 클릭 시 표시. 최초 1회만 API 조회하고 이후 검색은 로컬 필터.
 export function renderAssigneeDropdown() {
@@ -911,13 +980,26 @@ export function renderIssueDetailModal() {
   const siteName = localStorage.getItem('jira_site_name')
   const jiraUrl = siteName ? `https://${siteName}.atlassian.net/browse/${key}` : null
 
-  const typeIconHtml = typeIconUrl
+  // 타입 아이콘은 클릭하여 유형 변경 가능. 변경 진행 중이면 스피너로 대체.
+  const isTypeUpdating = state.typeUpdating.has(key)
+  const typeIconInner = typeIconUrl
     ? `<img class="detail-type-icon" src="${escapeHtml(typeIconUrl)}" alt="${escapeHtml(type)}" />`
-    : ''
+    : `<span class="detail-type-icon detail-type-icon-empty"></span>`
+  const typeBtnHtml = isTypeUpdating
+    ? `<button type="button" class="detail-type-btn is-loading" disabled aria-label="유형 변경 중"><span class="btn-spinner"></span></button>`
+    : `<button type="button" class="detail-type-btn" data-action="toggle-type-menu" data-key="${escapeHtml(key)}" data-current-type="${escapeHtml(type)}" title="${escapeHtml(type)} · 클릭하여 유형 변경">${typeIconInner}</button>`
+
   const priorityIconHtml = priorityIconUrl
     ? `<img class="detail-priority-icon" src="${escapeHtml(priorityIconUrl)}" alt="${escapeHtml(priority)}" />`
     : ''
 
+  // 상태: 클릭하면 status dropdown. 전이 중이면 스피너.
+  const isStatusTransitioning = state.statusTransitioning.has(key)
+  const statusBtnHtml = isStatusTransitioning
+    ? `<button type="button" class="issue-status ${statusCss} is-loading" disabled aria-label="상태 변경 중"><span class="btn-spinner"></span></button>`
+    : `<button type="button" class="issue-status ${statusCss}" data-action="toggle-status-menu" data-key="${escapeHtml(key)}" data-current-status="${escapeHtml(status || '')}" title="${escapeHtml(status || '-')} · 클릭하여 상태 변경">${escapeHtml(statusLabel || status || '-')}</button>`
+
+  // 담당자/보고자 렌더링. assignee는 클릭 시 변경 가능, reporter는 표시만.
   const renderPerson = (p, fallback) => {
     if (!p) return `<span class="detail-meta-empty">${fallback}</span>`
     const avatar = p.avatarUrl
@@ -925,6 +1007,20 @@ export function renderIssueDetailModal() {
       : `<span class="detail-avatar detail-avatar-empty"></span>`
     return `${avatar}<span>${escapeHtml(p.displayName)}</span>`
   }
+
+  // 담당자: 클릭 시 변경 드롭다운. 변경 중이면 스피너.
+  const isAssigneeUpdating = state.assigneeUpdating.has(key)
+  const assigneeBtnHtml = (() => {
+    if (isAssigneeUpdating) {
+      return `<span class="detail-assignee-btn is-loading" aria-label="담당자 변경 중"><span class="btn-spinner"></span><span>변경 중…</span></span>`
+    }
+    const inner = assignee
+      ? renderPerson(assignee, '미할당')
+      : `<span class="detail-avatar detail-avatar-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>
+        </span><span class="detail-meta-empty">미할당</span>`
+    return `<button type="button" class="detail-assignee-btn" data-action="toggle-assignee-menu" data-issue-key="${escapeHtml(key)}" title="클릭하여 담당자 변경">${inner}</button>`
+  })()
 
   const sprintHtml = (() => {
     if (m.loading && !d.sprints) return `<span class="detail-meta-empty">불러오는 중…</span>`
@@ -1009,7 +1105,7 @@ export function renderIssueDetailModal() {
       <div class="modal modal-issue-detail">
         <div class="detail-header">
           <div class="detail-header-left">
-            ${typeIconHtml}
+            ${typeBtnHtml}
             <span class="detail-type-label">${escapeHtml(type)}</span>
             <a class="issue-key issue-key-link" href="${jiraUrl || '#'}" target="_blank" rel="noopener noreferrer">${escapeHtml(key)}</a>
           </div>
@@ -1017,9 +1113,9 @@ export function renderIssueDetailModal() {
         </div>
         ${renderDetailSummary(m, summary)}
         <div class="detail-meta-grid">
-          <div class="detail-meta-row"><span class="detail-meta-label">상태</span><span class="detail-meta-value"><span class="issue-status ${statusCss}">${escapeHtml(statusLabel || status || '-')}</span></span></div>
+          <div class="detail-meta-row"><span class="detail-meta-label">상태</span><span class="detail-meta-value">${statusBtnHtml}</span></div>
           <div class="detail-meta-row"><span class="detail-meta-label">우선순위</span><span class="detail-meta-value">${priorityIconHtml}${escapeHtml(priority || '-')}</span></div>
-          <div class="detail-meta-row"><span class="detail-meta-label">담당자</span><span class="detail-meta-value detail-person">${renderPerson(assignee, '미할당')}</span></div>
+          <div class="detail-meta-row"><span class="detail-meta-label">담당자</span><span class="detail-meta-value detail-person">${assigneeBtnHtml}</span></div>
           <div class="detail-meta-row"><span class="detail-meta-label">보고자</span><span class="detail-meta-value detail-person">${renderPerson(reporter, m.loading ? '불러오는 중…' : '-')}</span></div>
           <div class="detail-meta-row"><span class="detail-meta-label">스프린트</span><span class="detail-meta-value">${sprintHtml}</span></div>
           <div class="detail-meta-row"><span class="detail-meta-label">기한</span><span class="detail-meta-value">${dueHtml}</span></div>

@@ -172,6 +172,11 @@ export const state = {
   // 담당자 변경 진행 중인 이슈 키 집합 (아바타에 스피너 표시)
   assigneeUpdating: new Set(),
 
+  // 이슈 유형 드롭다운: { issueKey, rect, types, loading, currentTypeName } | null
+  typeDropdown: null,
+  // 이슈 유형 변경 진행 중인 이슈 키 집합
+  typeUpdating: new Set(),
+
   // ----- 테마/패널 -----
   theme: localStorage.getItem('theme') || 'dark',
   favoritesPanelCollapsed: (localStorage.getItem('favorites_collapsed') === '1'),

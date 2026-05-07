@@ -3363,6 +3363,25 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   flex: 1;
 }
 
+/* 이슈 유형 드롭다운: 상태 드롭다운 골격 재사용, 항목 폭은 자동 */
+.type-dropdown {
+  min-width: 180px;
+}
+
+.type-dropdown-item .detail-type-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.type-dropdown-name {
+  font-size: 13px;
+  color: var(--text-bright);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ========== 담당자 드롭다운 ========== */
 .assignee-dropdown {
   position: fixed;
@@ -3508,6 +3527,37 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   flex-shrink: 0;
 }
 
+.detail-type-icon-empty {
+  display: inline-block;
+  background: var(--border);
+  border-radius: 3px;
+}
+
+/* 타입 아이콘 클릭 가능 버튼 (상세 모달 좌상단) */
+.detail-type-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.detail-type-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.detail-type-btn.is-loading {
+  cursor: default;
+  pointer-events: none;
+}
+
 .detail-type-label {
   font-size: 12px;
   color: var(--text-dim);
@@ -3626,6 +3676,42 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 
 .detail-person {
   min-width: 0;
+}
+
+/* 담당자 변경 가능 버튼 (상세 모달) */
+.detail-assignee-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 2px 6px;
+  margin-left: -6px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.detail-assignee-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.detail-assignee-btn.is-loading {
+  cursor: default;
+  pointer-events: none;
+  color: var(--text-dim);
+}
+
+/* 상태 버튼은 .issue-status를 그대로 사용. 상세 모달에서 hover 강조만 살짝 추가. */
+.detail-meta-row .issue-status[data-action="toggle-status-menu"] {
+  cursor: pointer;
+}
+
+.detail-meta-row .issue-status[data-action="toggle-status-menu"]:hover {
+  filter: brightness(1.1);
 }
 
 .detail-avatar {
