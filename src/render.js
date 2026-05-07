@@ -21,6 +21,7 @@ import {
   renderIssueDetailModal,
   renderAssigneeDropdown,
   renderTypeDropdown,
+  renderCreateIssueModal,
 } from './views/modals.js'
 import { renderSettingsFab, renderSettingsModal } from './views/settings.js'
 import { bindEvents, startTimerUpdate } from './events.js'
@@ -40,6 +41,7 @@ function renderModalsHtml() {
     ${state.assigneeDropdown ? renderAssigneeDropdown() : ''}
     ${state.typeDropdown ? renderTypeDropdown() : ''}
     ${state.transitionFieldsModal ? renderTransitionFieldsModal() : ''}
+    ${state.showCreateIssue ? renderCreateIssueModal() : ''}
     ${state.issueDetailModal ? renderIssueDetailModal() : ''}
   `
 }
@@ -119,6 +121,7 @@ export function render(options = {}) {
     'settings-overlay',
     'swap-issue-overlay',
     'transition-fields-overlay',
+    'create-issue-overlay',
     'issue-detail-overlay',
   ]
 

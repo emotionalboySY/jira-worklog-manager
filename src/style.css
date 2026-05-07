@@ -2392,6 +2392,141 @@ span.flatpickr-weekday {
   margin-left: 4px;
 }
 
+.modal-label-required {
+  color: var(--red);
+  margin-left: 2px;
+}
+
+.modal-error {
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--red);
+  background: var(--red-bg);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius);
+}
+
+/* ========== 새 일감 생성 모달 ========== */
+.modal-create-issue {
+  width: 640px;
+  max-width: 94vw;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.create-issue-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.create-issue-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-bright);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.create-issue-type:hover {
+  border-color: var(--accent);
+}
+
+.create-issue-type.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.create-issue-desc-mount {
+  min-height: 140px;
+  max-height: 280px;
+}
+
+.create-assignee-search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.create-assignee-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 0;
+}
+
+.create-assignee-list .assignee-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-bright);
+  font-size: 12px;
+}
+
+.create-assignee-list .assignee-dd-item:hover {
+  background: var(--bg-hover);
+}
+
+.create-assignee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-bright);
+}
+
+.create-assignee-chip .btn-link {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.create-issue-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.create-issue-link-row {
+  display: grid;
+  grid-template-columns: 200px 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.create-issue-link-row .input-hint {
+  grid-column: 1 / -1;
+}
+
+/* 신규 모달의 내부 요소들이 .modal 안에서 자연스럽게 정렬되도록 */
+.modal-create-issue .modal-field {
+  margin-top: 14px;
+}
+
+.modal-create-issue .modal-field:first-of-type {
+  margin-top: 0;
+}
+
 .modal-issue-info {
   display: flex;
   align-items: flex-start;

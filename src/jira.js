@@ -598,6 +598,87 @@ export async function updateIssueType(issueKey, typeId) {
   )
 }
 
+// ========== 새 이슈 생성 메타/생성/링크 ==========
+// 프로젝트의 createmeta: 사용 가능한 issuetype + 각 type의 필드 메타.
+// expand=projects.issuetypes.fields 로 필드까지 함께 받음.
+export async function fetchCreateMeta(projectKey, { signal } = {}) {
+  const data = await jiraFetch(
+    `/issue/createmeta?projectKeys=${encodeURIComponent(projectKey)}&expand=projects.issuetypes.fields`,
+    { signal }
+  )
+  const proj = (data?.projects || [])[0]
+  if (!proj) return { issuetypes: [] }
+  const issuetypes = (proj.issuetypes || [])
+    // 서브태스크는 부모가 필요해서 일반 생성에서 제외
+    .filter(t => !t.subtask)
+    .map(t => {
+      const fields = t.fields || {}
+      const fieldKeys = Object.keys(fields)
+      return {
+        id: String(t.id),
+        name: t.name || '',
+        iconUrl: t.iconUrl || '',
+        // 필드 사용 가능 여부 + required 표시
+        availableFields: fieldKeys,
+        hasDuedate: fieldKeys.includes('duedate'),
+        requiredFields: fieldKeys.filter(k => fields[k]?.required && !fields[k]?.hasDefaultValue),
+      }
+    })
+  return { issuetypes }
+}
+
+// 이슈 생성. 반환: { key, id, self }
+// fields는 호출 측이 구성해서 전달 (summary, issuetype, project, assignee, duedate, description...)
+export async function createIssue(fields) {
+  return jiraFetch(`/issue`, { method: 'POST', body: { fields } })
+}
+
+// 사이트 전체에서 사용 가능한 이슈 링크 타입 목록 (Blocks, Relates 등)
+let _linkTypesCache = null
+export async function fetchIssueLinkTypes() {
+  if (_linkTypesCache) return _linkTypesCache
+  const data = await jiraFetch('/issueLinkType')
+  const list = (data?.issueLinkTypes || []).map(t => ({
+    id: String(t.id),
+    name: t.name || '',
+    inward: t.inward || '',
+    outward: t.outward || '',
+  }))
+  _linkTypesCache = list
+  return list
+}
+
+// 두 이슈 사이 링크 생성. typeName은 link type의 'name' (예: 'Blocks').
+// outward: '주체'(이 일감이 X한다), inward: '대상'.
+export async function createIssueLink(typeName, inwardKey, outwardKey) {
+  await jiraFetch('/issueLink', {
+    method: 'POST',
+    body: {
+      type: { name: typeName },
+      inwardIssue: { key: inwardKey },
+      outwardIssue: { key: outwardKey },
+    },
+  })
+}
+
+// 프로젝트 멤버 중 할당 가능한 사용자 (이슈 키 없을 때 — 신규 생성 흐름용)
+export async function fetchAssignableUsersForProject(projectKey, query = '', { signal } = {}) {
+  const data = await jiraFetch(
+    `/user/assignable/search?project=${encodeURIComponent(projectKey)}&query=${encodeURIComponent(query)}&maxResults=50`,
+    { signal }
+  )
+  if (!Array.isArray(data)) return []
+  return data.map(u => {
+    const urls = u.avatarUrls || {}
+    return {
+      accountId: u.accountId,
+      displayName: u.displayName || '',
+      emailAddress: u.emailAddress || '',
+      avatarUrl: urls['32x32'] || urls['48x48'] || urls['24x24'] || urls['16x16'] || '',
+    }
+  })
+}
+
 function extractReporter(fields) {
   const r = fields?.reporter
   if (!r || !r.accountId) return null

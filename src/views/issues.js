@@ -77,6 +77,7 @@ export function renderIssuesTab() {
           <button class="btn btn-sm btn-refresh" id="btn-refresh-issues" ${state.issuesLoading ? 'disabled' : ''} title="이슈 목록 새로고침">
             ${state.issuesLoading ? '<span class="btn-spinner"></span>' : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8A5.5 5.5 0 1 1 12 4.5"/><polyline points="13.5 2 13.5 5 10.5 5"/></svg>'}
           </button>
+          <button class="btn btn-primary btn-sm" id="btn-create-issue" title="새 일감 생성">+ 새 일감</button>
         </div>
       ` : ''}
     </div>

@@ -24,6 +24,11 @@ import {
   updateIssueComment,
   deleteIssueComment,
   fetchMyself,
+  fetchCreateMeta,
+  createIssue,
+  fetchIssueLinkTypes,
+  createIssueLink,
+  fetchAssignableUsersForProject,
   getCachedTransitions,
   setCachedTransitions,
   invalidateTransitionsCache,
@@ -187,6 +192,7 @@ function handleGlobalKeydown(e) {
     else if (state.showSwapIssue) submitBtn = document.getElementById('swap-issue-submit')
     else if (state.editingWorklog) submitBtn = document.getElementById('edit-worklog-submit')
     else if (state.showManualLog) submitBtn = document.getElementById('manual-log-submit')
+    else if (state.showCreateIssue) submitBtn = document.getElementById('create-issue-submit')
     else if (state.issueDetailModal?.editing) submitBtn = document.getElementById('issue-detail-edit-save')
     else if (state.showModal) submitBtn = document.getElementById('modal-submit')
     if (submitBtn && !submitBtn.disabled) {
@@ -221,6 +227,10 @@ function handleGlobalKeydown(e) {
     state.showSwapIssue = null
     state.swapIssueCheck = null
     render(modalsOnly)
+    return
+  }
+  if (state.showCreateIssue) {
+    closeCreateIssueModal()
     return
   }
   if (state.showSettings) { closeSettings(); return }
@@ -679,6 +689,417 @@ async function performTypeChange(issueKey, typeInfo) {
   } finally {
     state.typeUpdating.delete(issueKey)
     render({ sections: ['content', 'modals'] })
+  }
+}
+
+// ========== 새 일감 생성 ==========
+function openCreateIssueModal() {
+  if (state.showCreateIssue) return
+  // 첫 프로젝트 선택값 결정 (기존 필터의 currentProject가 있으면 우선)
+  const projects = state.realProjects || []
+  let projectKey = ''
+  if (state.currentProject && state.currentProject !== 'ALL' && projects.some(p => p.key === state.currentProject)) {
+    projectKey = state.currentProject
+  } else if (projects.length > 0) {
+    projectKey = projects[0].key
+  }
+  state.showCreateIssue = {
+    projectKey,
+    issueTypeId: '',
+    summary: '',
+    descriptionAdf: null,
+    assigneeAccountId: '',  // '' = 미선택, '__UNASSIGNED__' = 미할당, 아니면 accountId
+    _selectedAssignee: null,
+    duedate: '',
+    links: [],  // [{ typeName, direction, targetKey }]
+    metaByProject: {},
+    linkTypes: null,
+    assigneeUsersByProject: {},
+    assigneeQuery: '',
+    loadingMeta: false,
+    loadingAssignees: false,
+    submitting: false,
+    error: null,
+    fieldErrors: {},
+    _descMount: null,
+  }
+  // 본인 정보 미리 가져오기 (담당자 옵션에 '나' 표시용)
+  fetchMyself().then(() => {
+    if (state.showCreateIssue) render({ sections: ['modals'] })
+  })
+  // 링크 타입 로드 (사이트 단위 캐시)
+  fetchIssueLinkTypes().then(types => {
+    if (!state.showCreateIssue) return
+    state.showCreateIssue.linkTypes = types
+    render({ sections: ['modals'] })
+  }).catch(err => console.warn('링크 타입 조회 실패:', err))
+  render({ sections: ['modals'] })
+  if (projectKey) loadCreateMetaFor(projectKey)
+}
+
+function closeCreateIssueModal() {
+  const m = state.showCreateIssue
+  if (!m || m.submitting) return
+  // 의미 있는 입력이 있으면 확인
+  const dirty = !!(m.summary?.trim() || (m.descriptionAdf && !isEmptyAdf(m.descriptionAdf)) ||
+    m.duedate || (m.links || []).some(l => l.targetKey?.trim()) || m.assigneeAccountId)
+  if (dirty && !window.confirm('작성 중인 내용이 있습니다. 닫으시겠습니까?')) return
+  if (m._descMount) destroyInstanceOnMount(m._descMount)
+  state.showCreateIssue = null
+  render({ sections: ['modals'] })
+}
+
+async function loadCreateMetaFor(projectKey) {
+  const m = state.showCreateIssue
+  if (!m) return
+  if (m.metaByProject[projectKey]) {
+    // 이미 로드됨 → 첫 유형으로 자동 선택
+    const types = m.metaByProject[projectKey].issuetypes || []
+    if (!m.issueTypeId && types.length > 0) m.issueTypeId = types[0].id
+    render({ sections: ['modals'] })
+    return
+  }
+  m.loadingMeta = true
+  render({ sections: ['modals'] })
+  try {
+    const meta = await fetchCreateMeta(projectKey)
+    const cur = state.showCreateIssue
+    if (!cur || cur.projectKey !== projectKey) return
+    cur.metaByProject[projectKey] = meta
+    if (!cur.issueTypeId && meta.issuetypes.length > 0) {
+      cur.issueTypeId = meta.issuetypes[0].id
+    }
+  } catch (err) {
+    console.error('createmeta 조회 실패:', err)
+    showToast(`이슈 유형 조회 실패: ${formatJiraError(err)}`, '⚠')
+  } finally {
+    const cur = state.showCreateIssue
+    if (cur) cur.loadingMeta = false
+    render({ sections: ['modals'] })
+  }
+  // 담당자 후보도 함께 로드
+  loadCreateAssigneesFor(projectKey)
+}
+
+async function loadCreateAssigneesFor(projectKey, query = '') {
+  const m = state.showCreateIssue
+  if (!m) return
+  // 빈 쿼리 + 이미 로드돼 있으면 스킵
+  if (!query && Array.isArray(m.assigneeUsersByProject[projectKey])) return
+  m.loadingAssignees = true
+  render({ sections: ['modals'] })
+  try {
+    const users = await fetchAssignableUsersForProject(projectKey, query)
+    const cur = state.showCreateIssue
+    if (!cur || cur.projectKey !== projectKey) return
+    cur.assigneeUsersByProject[projectKey] = users
+  } catch (err) {
+    console.warn('담당자 후보 조회 실패:', err)
+  } finally {
+    const cur = state.showCreateIssue
+    if (cur) cur.loadingAssignees = false
+    render({ sections: ['modals'] })
+  }
+}
+
+function ensureCreateIssueEditor() {
+  const m = state.showCreateIssue
+  if (!m) return
+  const newMount = document.getElementById('create-issue-desc-editor')
+  if (newMount && newMount !== m._descMount) {
+    if (m._descMount) destroyInstanceOnMount(m._descMount)
+    const editor = createEditorInstance(newMount, m.descriptionAdf, {
+      autofocus: false,
+      onUpdate: (adf) => {
+        const cur = state.showCreateIssue
+        if (cur) cur.descriptionAdf = adf
+      },
+    })
+    newMount.dataset.tiptapMounted = '1'
+    if (m.submitting) editor.setEditable(false)
+    m._descMount = newMount
+  } else if (!newMount && m._descMount) {
+    destroyInstanceOnMount(m._descMount)
+    m._descMount = null
+  }
+}
+
+function bindCreateIssueEvents() {
+  const m = state.showCreateIssue
+  if (!m) return
+
+  // 프로젝트 변경
+  const projSel = document.getElementById('create-issue-project')
+  if (projSel) {
+    on(projSel, 'change', () => {
+      const cur = state.showCreateIssue
+      if (!cur) return
+      cur.projectKey = projSel.value
+      cur.issueTypeId = ''
+      // 담당자 선택은 프로젝트 바뀌면 초기화
+      cur.assigneeAccountId = ''
+      cur._selectedAssignee = null
+      cur.assigneeQuery = ''
+      cur.fieldErrors = {}
+      render({ sections: ['modals'] })
+      loadCreateMetaFor(projSel.value)
+    })
+  }
+
+  // 이슈 유형 선택 (버튼 그룹)
+  document.querySelectorAll('[data-create-type-id]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      const cur = state.showCreateIssue
+      if (!cur) return
+      cur.issueTypeId = btn.dataset.createTypeId
+      render({ sections: ['modals'] })
+    })
+  })
+
+  // 요약 input
+  const summaryInput = document.getElementById('create-issue-summary')
+  if (summaryInput) {
+    on(summaryInput, 'input', () => {
+      const cur = state.showCreateIssue
+      if (!cur) return
+      cur.summary = summaryInput.value
+      if (cur.fieldErrors?.summary) {
+        delete cur.fieldErrors.summary
+        render({ sections: ['modals'] })
+      }
+    })
+  }
+
+  // 기한
+  const dueInput = document.getElementById('create-issue-duedate')
+  if (dueInput) {
+    on(dueInput, 'change', () => {
+      const cur = state.showCreateIssue
+      if (cur) cur.duedate = dueInput.value
+    })
+  }
+
+  // 담당자 검색 input
+  const assigneeInput = document.getElementById('create-issue-assignee-input')
+  if (assigneeInput) {
+    on(assigneeInput, 'input', () => {
+      const cur = state.showCreateIssue
+      if (!cur) return
+      cur.assigneeQuery = assigneeInput.value
+      // 부분 재렌더 — 리스트만 (input 보존)
+      const listEl = document.querySelector('.create-assignee-list')
+      if (listEl) {
+        // 간단히 전체 modals 재렌더 — input 포커스 유지를 위해 다음 줄에서 복원
+        const cursor = assigneeInput.selectionStart
+        render({ sections: ['modals'] })
+        const newInput = document.getElementById('create-issue-assignee-input')
+        if (newInput) {
+          newInput.focus()
+          try { newInput.setSelectionRange(cursor, cursor) } catch {}
+        }
+      }
+    })
+  }
+
+  // 담당자 선택
+  document.querySelectorAll('[data-action="pick-create-assignee"]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      const cur = state.showCreateIssue
+      if (!cur) return
+      const id = btn.dataset.assigneeId
+      if (id === '__UNASSIGNED__') {
+        cur.assigneeAccountId = '__UNASSIGNED__'
+        cur._selectedAssignee = null
+      } else {
+        const me = (typeof getCachedMyself === 'function') ? getCachedMyself() : null
+        const candidates = [
+          ...(me ? [me] : []),
+          ...(cur.assigneeUsersByProject[cur.projectKey] || []),
+        ]
+        const found = candidates.find(u => u.accountId === id)
+        cur.assigneeAccountId = id
+        cur._selectedAssignee = found || { accountId: id, displayName: '(알 수 없음)', avatarUrl: '' }
+      }
+      cur.assigneeQuery = ''
+      render({ sections: ['modals'] })
+    })
+  })
+
+  // 담당자 변경 (칩에서 X)
+  document.querySelectorAll('[data-action="clear-create-assignee"]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      const cur = state.showCreateIssue
+      if (!cur) return
+      cur.assigneeAccountId = ''
+      cur._selectedAssignee = null
+      cur.assigneeQuery = ''
+      render({ sections: ['modals'] })
+    })
+  })
+
+  // 항목 연결: 추가
+  const addLinkBtn = document.getElementById('create-issue-add-link')
+  if (addLinkBtn) {
+    on(addLinkBtn, 'click', () => {
+      const cur = state.showCreateIssue
+      if (!cur || !cur.linkTypes || cur.linkTypes.length === 0) return
+      const first = cur.linkTypes[0]
+      cur.links = [...(cur.links || []), { typeName: first.name, direction: 'outward', targetKey: '' }]
+      render({ sections: ['modals'] })
+    })
+  }
+
+  // 항목 연결: 제거
+  document.querySelectorAll('[data-action="remove-create-link"]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      const cur = state.showCreateIssue
+      if (!cur) return
+      const idx = parseInt(btn.dataset.linkIdx, 10)
+      cur.links.splice(idx, 1)
+      // 인덱스 의존 에러도 정리
+      cur.fieldErrors = {}
+      render({ sections: ['modals'] })
+    })
+  })
+
+  // 항목 연결: 종류 변경
+  document.querySelectorAll('.create-issue-link-type').forEach(sel => {
+    on(sel, 'change', () => {
+      const cur = state.showCreateIssue
+      if (!cur) return
+      const idx = parseInt(sel.dataset.linkIdx, 10)
+      const [linkId, direction] = String(sel.value).split(':')
+      const lt = (cur.linkTypes || []).find(t => t.id === linkId)
+      if (!lt) return
+      cur.links[idx] = { ...cur.links[idx], typeName: lt.name, direction }
+    })
+  })
+
+  // 항목 연결: 대상 키 input
+  document.querySelectorAll('.create-issue-link-target').forEach(input => {
+    on(input, 'input', () => {
+      const cur = state.showCreateIssue
+      if (!cur) return
+      const idx = parseInt(input.dataset.linkIdx, 10)
+      cur.links[idx] = { ...cur.links[idx], targetKey: input.value }
+      // 에러 즉시 해제
+      if (cur.fieldErrors?.[`link-${idx}`]) {
+        delete cur.fieldErrors[`link-${idx}`]
+      }
+    })
+  })
+
+  // 취소/제출
+  const cancelBtn = document.getElementById('create-issue-cancel')
+  if (cancelBtn) on(cancelBtn, 'click', closeCreateIssueModal)
+  const submitBtn = document.getElementById('create-issue-submit')
+  if (submitBtn) on(submitBtn, 'click', submitCreateIssue)
+}
+
+async function submitCreateIssue() {
+  const m = state.showCreateIssue
+  if (!m || m.submitting) return
+
+  // 검증
+  const errors = {}
+  if (!m.projectKey) errors.summary = '프로젝트를 선택하세요.'
+  if (!m.issueTypeId) errors.summary = '이슈 유형을 선택하세요.'
+  if (!m.summary || !m.summary.trim()) errors.summary = '요약을 입력하세요.'
+  // 링크 행 검증 — 키 형식
+  ;(m.links || []).forEach((link, i) => {
+    const key = (link.targetKey || '').trim().toUpperCase()
+    if (!key) {
+      errors[`link-${i}`] = '연결할 이슈 키를 입력하세요.'
+    } else if (!/^[A-Z][A-Z0-9]+-\d+$/.test(key)) {
+      errors[`link-${i}`] = '이슈 키 형식이 올바르지 않습니다.'
+    }
+  })
+  if (Object.keys(errors).length > 0) {
+    m.fieldErrors = errors
+    m.error = null
+    render({ sections: ['modals'] })
+    return
+  }
+
+  // payload 구성
+  const fields = {
+    project: { key: m.projectKey },
+    issuetype: { id: String(m.issueTypeId) },
+    summary: m.summary.trim(),
+  }
+  if (m.descriptionAdf && !isEmptyAdf(m.descriptionAdf)) {
+    fields.description = m.descriptionAdf
+  }
+  if (m.assigneeAccountId === '__UNASSIGNED__') {
+    fields.assignee = null
+  } else if (m.assigneeAccountId) {
+    fields.assignee = { accountId: m.assigneeAccountId }
+  }
+  if (m.duedate) {
+    fields.duedate = m.duedate
+  }
+
+  m.submitting = true
+  m.error = null
+  m.fieldErrors = {}
+  if (m._descMount) {
+    const ed = getEditorOnMount(m._descMount)
+    if (ed) ed.setEditable(false)
+  }
+  render({ sections: ['modals'] })
+
+  let createdKey = null
+  try {
+    const created = await createIssue(fields)
+    createdKey = created?.key || null
+    if (!createdKey) throw new Error('생성된 이슈 키를 찾을 수 없습니다.')
+
+    // 이슈 링크 추가 (실패해도 일감 자체는 생성됐으니 토스트로 보고하고 진행)
+    const linkErrors = []
+    for (const link of (m.links || [])) {
+      const target = (link.targetKey || '').trim().toUpperCase()
+      if (!target) continue
+      // outward: 새 일감(outwardIssue) → 대상(inwardIssue) [예: "(새 일감) blocks 대상"]
+      // inward:  대상(outwardIssue)   → 새 일감(inwardIssue) [예: "(새 일감) is blocked by 대상"]
+      const inwardKey = link.direction === 'outward' ? target : createdKey
+      const outwardKey = link.direction === 'outward' ? createdKey : target
+      try {
+        await createIssueLink(link.typeName, inwardKey, outwardKey)
+      } catch (e) {
+        console.error('링크 추가 실패:', e)
+        linkErrors.push(`${target}: ${formatJiraError(e)}`)
+      }
+    }
+
+    // 모달 닫고 목록 새로고침
+    if (m._descMount) destroyInstanceOnMount(m._descMount)
+    state.showCreateIssue = null
+    render({ sections: ['modals'] })
+
+    if (linkErrors.length > 0) {
+      showToast(`${createdKey} 생성됨. 일부 링크 실패: ${linkErrors.length}건`, '⚠')
+    } else {
+      showToast(`${createdKey} 일감을 생성했습니다.`, '✓')
+    }
+    // 백그라운드 새로고침 (할당됨/보고자에 새 이슈가 들어와야 보일 수 있음)
+    refreshIssues().catch(() => {})
+  } catch (err) {
+    console.error('일감 생성 실패:', err)
+    const cur = state.showCreateIssue
+    if (cur) {
+      cur.submitting = false
+      cur.error = `생성 실패: ${formatJiraError(err)}`
+      if (cur._descMount) {
+        const ed = getEditorOnMount(cur._descMount)
+        if (ed) ed.setEditable(true)
+      }
+    }
+    render({ sections: ['modals'] })
+    showToast(`일감 생성 실패: ${formatJiraError(err)}`, '⚠')
   }
 }
 
@@ -1334,6 +1755,16 @@ export function bindEvents() {
   if (refreshIssuesBtn) {
     on(refreshIssuesBtn, 'click', () => refreshIssues())
   }
+
+  // 새 일감 생성 모달 열기
+  const createIssueBtn = document.getElementById('btn-create-issue')
+  if (createIssueBtn) {
+    on(createIssueBtn, 'click', openCreateIssueModal)
+  }
+
+  // 새 일감 모달 내부 핸들러 + tiptap 마운트
+  bindCreateIssueEvents()
+  ensureCreateIssueEditor()
 
   // 작업 로그 새로고침
   const refreshWorklogsBtn = document.getElementById('btn-refresh-worklogs')

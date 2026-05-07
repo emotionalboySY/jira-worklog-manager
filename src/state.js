@@ -177,6 +177,14 @@ export const state = {
   // 이슈 유형 변경 진행 중인 이슈 키 집합
   typeUpdating: new Set(),
 
+  // 새 일감 생성 모달
+  // { projectKey, issueTypeId, summary, descriptionAdf, assigneeAccountId, duedate,
+  //   links: [{ direction, typeName, targetKey, _suggestions }],
+  //   metaByProject: {}, linkTypes, assigneeUsersByProject: {}, assigneeQuery,
+  //   loadingMeta, submitting, error, fieldErrors,
+  //   _descMount, _descAdf } | null
+  showCreateIssue: null,
+
   // ----- 테마/패널 -----
   theme: localStorage.getItem('theme') || 'dark',
   favoritesPanelCollapsed: (localStorage.getItem('favorites_collapsed') === '1'),

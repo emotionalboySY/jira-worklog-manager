@@ -576,6 +576,233 @@ export function renderCancelConfirm() {
   `
 }
 
+// ========== 새 일감 생성 모달 ==========
+export function renderCreateIssueModal() {
+  const m = state.showCreateIssue
+  if (!m) return ''
+
+  const projects = state.realProjects || []
+  const meta = m.metaByProject?.[m.projectKey]
+  const issuetypes = meta?.issuetypes || []
+  const selectedType = issuetypes.find(t => t.id === m.issueTypeId) || null
+  const showDuedate = !!selectedType?.hasDuedate
+
+  // 프로젝트 선택 옵션 (팀별 키 사용 — DEFAULT_PROJECT_ORDER 순)
+  const projectOptionsHtml = projects.length === 0
+    ? `<option value="">프로젝트 정보 로딩 중...</option>`
+    : projects.map(p => `<option value="${escapeHtml(p.key)}" ${p.key === m.projectKey ? 'selected' : ''}>${escapeHtml(p.key)} · ${escapeHtml(p.name)}</option>`).join('')
+
+  // 이슈 유형: 선택한 프로젝트의 createmeta 결과
+  let typeFieldHtml
+  if (m.loadingMeta) {
+    typeFieldHtml = `<div class="input-hint"><span class="btn-spinner"></span> 이슈 유형 조회 중...</div>`
+  } else if (issuetypes.length === 0 && m.projectKey) {
+    typeFieldHtml = `<div class="input-hint error">선택 가능한 이슈 유형이 없습니다.</div>`
+  } else {
+    typeFieldHtml = `
+      <div class="create-issue-types">
+        ${issuetypes.map(t => `
+          <button type="button" class="create-issue-type ${t.id === m.issueTypeId ? 'active' : ''}" data-create-type-id="${escapeHtml(t.id)}">
+            ${t.iconUrl ? `<img class="detail-type-icon" src="${escapeHtml(t.iconUrl)}" alt="" />` : ''}
+            <span>${escapeHtml(t.name)}</span>
+          </button>
+        `).join('')}
+      </div>
+    `
+  }
+
+  // 담당자 영역
+  const assigneeHtml = renderCreateAssigneeBlock(m)
+
+  // 항목 연결 (이슈 링크) 영역
+  const linkTypes = m.linkTypes || []
+  const linkOptions = []
+  for (const lt of linkTypes) {
+    if (lt.outward) linkOptions.push({ value: `${lt.id}:outward`, label: lt.outward, typeName: lt.name, direction: 'outward' })
+    if (lt.inward && lt.inward !== lt.outward) linkOptions.push({ value: `${lt.id}:inward`, label: lt.inward, typeName: lt.name, direction: 'inward' })
+  }
+  const linksHtml = (m.links || []).map((link, idx) => {
+    const optsHtml = linkOptions.map(o => {
+      const selected = link.typeName === o.typeName && link.direction === o.direction
+      return `<option value="${escapeHtml(o.value)}" ${selected ? 'selected' : ''}>${escapeHtml(o.label)}</option>`
+    }).join('')
+    const targetErr = m.fieldErrors?.[`link-${idx}`] || ''
+    return `
+      <div class="create-issue-link-row" data-link-idx="${idx}">
+        <select class="modal-input create-issue-link-type" data-link-idx="${idx}" ${linkTypes.length === 0 ? 'disabled' : ''}>
+          ${linkTypes.length === 0 ? '<option>로딩 중...</option>' : optsHtml}
+        </select>
+        <input type="text" class="modal-input create-issue-link-target" data-link-idx="${idx}"
+          placeholder="DKT-123" value="${escapeHtml(link.targetKey || '')}" autocomplete="off" />
+        <button type="button" class="btn btn-sm" data-action="remove-create-link" data-link-idx="${idx}" aria-label="이 링크 제거">✕</button>
+        ${targetErr ? `<div class="input-hint error">${escapeHtml(targetErr)}</div>` : ''}
+      </div>
+    `
+  }).join('')
+
+  // 기한 (issuetype에서 사용 가능 시)
+  const duedateHtml = showDuedate ? `
+    <div class="modal-field">
+      <label class="modal-label">기한 <span class="modal-label-note">(선택)</span></label>
+      <input type="date" class="modal-input" id="create-issue-duedate" value="${escapeHtml(m.duedate || '')}" />
+    </div>
+  ` : ''
+
+  const summaryErr = m.fieldErrors?.summary || ''
+  const submitting = !!m.submitting
+
+  return `
+    <div class="modal-overlay" id="create-issue-overlay">
+      <div class="modal modal-create-issue">
+        <div class="modal-title">새 일감 생성</div>
+
+        <div class="modal-field">
+          <label class="modal-label">프로젝트</label>
+          <select class="modal-input" id="create-issue-project" ${submitting ? 'disabled' : ''}>
+            ${projectOptionsHtml}
+          </select>
+        </div>
+
+        <div class="modal-field">
+          <label class="modal-label">이슈 유형</label>
+          ${typeFieldHtml}
+        </div>
+
+        <div class="modal-field">
+          <label class="modal-label">일감 요약 <span class="modal-label-required">*</span></label>
+          <input type="text" class="modal-input" id="create-issue-summary" maxlength="255"
+            value="${escapeHtml(m.summary || '')}" placeholder="간단한 한 줄 요약" autocomplete="off" />
+          ${summaryErr ? `<div class="input-hint error">${escapeHtml(summaryErr)}</div>` : ''}
+        </div>
+
+        <div class="modal-field">
+          <label class="modal-label">설명 <span class="modal-label-note">(선택)</span></label>
+          ${renderTiptapToolbar('create-issue-desc-toolbar', 'create-issue-desc-editor')}
+          <div class="tiptap-editor-mount create-issue-desc-mount" id="create-issue-desc-editor"></div>
+        </div>
+
+        <div class="modal-field">
+          <label class="modal-label">담당자 <span class="modal-label-note">(선택)</span></label>
+          ${assigneeHtml}
+        </div>
+
+        ${duedateHtml}
+
+        <div class="modal-field">
+          <div class="modal-label-row">
+            <label class="modal-label">항목 연결 <span class="modal-label-note">(선택)</span></label>
+            <button type="button" class="btn btn-sm" id="create-issue-add-link" ${linkTypes.length === 0 ? 'disabled' : ''}>+ 연결 추가</button>
+          </div>
+          <div class="create-issue-links">
+            ${linksHtml || '<div class="modal-label-note">아직 추가된 연결이 없습니다.</div>'}
+          </div>
+        </div>
+
+        ${m.error ? `<div class="modal-error">${escapeHtml(m.error)}</div>` : ''}
+
+        <div class="modal-actions">
+          <button class="btn" id="create-issue-cancel" ${submitting ? 'disabled' : ''}>취소</button>
+          <button class="btn btn-primary" id="create-issue-submit" ${submitting ? 'disabled' : ''}>
+            ${submitting ? '<span class="btn-spinner"></span> 생성 중…' : '생성'}
+          </button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// 담당자 선택 영역. 검색 input → 결과 리스트(미할당/본인/검색결과). 선택된 사용자만 칩으로.
+function renderCreateAssigneeBlock(m) {
+  const me = getCachedMyself()
+  const usersForProj = m.assigneeUsersByProject?.[m.projectKey] || null
+  const query = m.assigneeQuery || ''
+  const selected = m._selectedAssignee || null  // { accountId, displayName, avatarUrl }
+
+  // 칩 (선택된 상태)
+  const chipHtml = (() => {
+    if (m.assigneeAccountId === '__UNASSIGNED__') {
+      return `
+        <div class="create-assignee-chip">
+          <span class="assignee-avatar assignee-avatar-empty sm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>
+          </span>
+          <span>미할당</span>
+          <button type="button" class="btn-link" data-action="clear-create-assignee">변경</button>
+        </div>
+      `
+    }
+    if (selected) {
+      const av = selected.avatarUrl
+        ? `<img class="assignee-avatar sm" src="${escapeHtml(selected.avatarUrl)}" alt="" />`
+        : `<span class="assignee-avatar assignee-avatar-empty sm"></span>`
+      return `
+        <div class="create-assignee-chip">
+          ${av}
+          <span>${escapeHtml(selected.displayName)}</span>
+          <button type="button" class="btn-link" data-action="clear-create-assignee">변경</button>
+        </div>
+      `
+    }
+    return ''
+  })()
+
+  if (chipHtml) return chipHtml
+
+  // 검색 영역
+  const filtered = (() => {
+    if (!Array.isArray(usersForProj)) return []
+    const q = query.trim().toLowerCase()
+    if (!q) return usersForProj.slice(0, 8)
+    return usersForProj.filter(u =>
+      (u.displayName || '').toLowerCase().includes(q) ||
+      (u.emailAddress || '').toLowerCase().includes(q)
+    ).slice(0, 8)
+  })()
+
+  const meItem = me ? `
+    <button type="button" class="assignee-dd-item" data-action="pick-create-assignee" data-assignee-id="${escapeHtml(me.accountId)}">
+      ${me.avatarUrl ? `<img class="assignee-avatar sm" src="${escapeHtml(me.avatarUrl)}" alt="" />` : `<span class="assignee-avatar assignee-avatar-empty sm"></span>`}
+      <span class="assignee-dd-name">나 (${escapeHtml(me.displayName)})</span>
+    </button>
+  ` : ''
+  const unassignedItem = `
+    <button type="button" class="assignee-dd-item" data-action="pick-create-assignee" data-assignee-id="__UNASSIGNED__">
+      <span class="assignee-avatar assignee-avatar-empty sm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>
+      </span>
+      <span class="assignee-dd-name">미할당</span>
+    </button>
+  `
+
+  let listHtml
+  if (m.loadingAssignees && !usersForProj) {
+    listHtml = `<div class="assignee-dd-loading"><span class="btn-spinner"></span><span>사용자 조회 중…</span></div>`
+  } else if (filtered.length === 0) {
+    listHtml = query
+      ? `<div class="assignee-dd-empty">검색 결과가 없습니다.</div>`
+      : ''
+  } else {
+    listHtml = filtered.map(u => `
+      <button type="button" class="assignee-dd-item" data-action="pick-create-assignee" data-assignee-id="${escapeHtml(u.accountId)}">
+        ${u.avatarUrl ? `<img class="assignee-avatar sm" src="${escapeHtml(u.avatarUrl)}" alt="" />` : `<span class="assignee-avatar assignee-avatar-empty sm"></span>`}
+        <span class="assignee-dd-name">${escapeHtml(u.displayName)}</span>
+      </button>
+    `).join('')
+  }
+
+  return `
+    <div class="create-assignee-search">
+      <input type="text" class="modal-input" id="create-issue-assignee-input"
+        placeholder="이름 검색 (또는 본인/미할당 선택)" value="${escapeHtml(query)}" autocomplete="off" />
+      <div class="create-assignee-list">
+        ${unassignedItem}
+        ${meItem}
+        ${listHtml}
+      </div>
+    </div>
+  `
+}
+
 // ========== 워크로그 수정 모달 ==========
 export function renderEditWorklogModal() {
   if (!state.editingWorklog) return ''
