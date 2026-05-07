@@ -713,12 +713,13 @@ function openCreateIssueModal() {
     assigneeAccountId: '',  // '' = 미선택, '__UNASSIGNED__' = 미할당, 아니면 accountId
     _selectedAssignee: null,
     duedate: '',
-    links: [],  // [{ typeName, direction, targetKey }]
+    links: [],  // [{ typeName, direction, targetKeys, query, suggestions, ... }]
     metaByProject: {},
     linkTypes: null,
     assigneeUsersByProject: {},
     assigneeQuery: '',
-    loadingMeta: false,
+    // 첫 진입 시 createmeta 응답이 도착하기 전 깜빡임("선택 가능한 이슈 유형이 없습니다")을 막기 위해 true로 시작
+    loadingMeta: !!projectKey,
     loadingAssignees: false,
     submitting: false,
     error: null,
@@ -759,9 +760,10 @@ function closeCreateIssueModal() {
   render({ sections: ['modals'] })
 }
 
-async function loadCreateMetaFor(projectKey) {
+async function loadCreateMetaFor(projectKey, { isRetry = false } = {}) {
   const m = state.showCreateIssue
   if (!m) return
+  // 캐시된 정상 결과만 사용 (빈 결과는 캐시하지 않으므로 재시도 가능)
   if (m.metaByProject[projectKey]) {
     const types = m.metaByProject[projectKey].issuetypes || []
     if (!m.issueTypeId && types.length > 0) m.issueTypeId = types[0].id
@@ -771,23 +773,38 @@ async function loadCreateMetaFor(projectKey) {
   }
   m.loadingMeta = true
   render({ sections: ['modals'] })
+  let meta = null
   try {
-    const meta = await fetchCreateMeta(projectKey)
-    const cur = state.showCreateIssue
-    if (!cur || cur.projectKey !== projectKey) return
-    cur.metaByProject[projectKey] = meta
-    if (!cur.issueTypeId && meta.issuetypes.length > 0) {
-      cur.issueTypeId = meta.issuetypes[0].id
-    }
-    applyTypeDescriptionDefault(cur)
+    meta = await fetchCreateMeta(projectKey)
   } catch (err) {
     console.error('createmeta 조회 실패:', err)
     showToast(`이슈 유형 조회 실패: ${formatJiraError(err)}`, '⚠')
-  } finally {
-    const cur = state.showCreateIssue
-    if (cur) cur.loadingMeta = false
+  }
+  const cur = state.showCreateIssue
+  if (!cur || cur.projectKey !== projectKey) return
+
+  if (meta && meta.issuetypes.length > 0) {
+    cur.metaByProject[projectKey] = meta
+    if (!cur.issueTypeId) cur.issueTypeId = meta.issuetypes[0].id
+    applyTypeDescriptionDefault(cur)
+    cur.loadingMeta = false
+    render({ sections: ['modals'] })
+  } else if (!isRetry) {
+    // 빈 결과(서버 콜드 스타트 등)는 캐시하지 않고 짧게 대기 후 1회 자동 재시도
+    console.warn(`createmeta 빈 결과: ${projectKey} — 자동 재시도`)
+    setTimeout(() => {
+      const cur2 = state.showCreateIssue
+      if (cur2 && cur2.projectKey === projectKey && !cur2.metaByProject[projectKey]) {
+        loadCreateMetaFor(projectKey, { isRetry: true })
+      }
+    }, 300)
+    // loadingMeta는 true로 유지 — 재시도까지 "조회 중..." 표시
+  } else {
+    // 재시도도 빈 결과 → 사용자가 다른 프로젝트로 갔다가 돌아오는 식의 수동 재시도 필요
+    cur.loadingMeta = false
     render({ sections: ['modals'] })
   }
+
   // 담당자 후보도 함께 로드 (빈 query로 첫 페이지)
   loadCreateAssigneesFor(projectKey, '')
 }
