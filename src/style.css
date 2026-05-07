@@ -4139,13 +4139,16 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 .detail-comment-edit {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
 }
 
-.detail-comment-edit-input {
-  min-height: 80px;
-  font-size: 13px;
-  resize: vertical;
+.detail-comment-edit > .tiptap-toolbar {
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.detail-comment-edit > .detail-comment-error,
+.detail-comment-edit > .detail-comment-edit-actions {
+  margin-top: 6px;
 }
 
 .detail-comment-edit-actions {
@@ -4181,22 +4184,78 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 }
 
 .detail-comment-compose {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   padding-top: 12px;
   border-top: 1px dashed var(--border);
 }
 
-.detail-comment-input {
-  min-height: 70px;
+.detail-comment-compose-collapsed {
+  display: block;
+}
+
+.detail-comment-compose-trigger {
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
   font-size: 13px;
-  resize: vertical;
+  cursor: text;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.detail-comment-compose-trigger:hover {
+  border-color: var(--accent);
+  background: var(--bg-card);
+}
+
+.detail-comment-compose-open {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.detail-comment-compose-open > .tiptap-toolbar {
+  border-radius: var(--radius) var(--radius) 0 0;
 }
 
 .detail-comment-compose-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.detail-comment-compose-open > .detail-comment-error {
+  margin-top: 8px;
+}
+
+/* 댓글용 컴팩트 에디터 */
+.detail-comment-editor-mount {
+  min-height: 80px;
+  max-height: 320px;
+}
+
+.detail-comment-editor-mount .tiptap-content {
+  min-height: 60px;
+}
+
+/* 댓글 본문 이미지에도 본문 영역과 동일한 로딩/에러 시각 효과 */
+.detail-comment-body img.detail-img-loading {
+  opacity: 0.5;
+  filter: grayscale(0.4);
+}
+
+.detail-comment-body img.detail-img-error {
+  outline: 1px dashed var(--red);
+  outline-offset: 2px;
+  opacity: 0.6;
+}
+
+.detail-comment-body img {
+  max-width: 100%;
+  height: auto;
 }
 
 .btn-link-danger {

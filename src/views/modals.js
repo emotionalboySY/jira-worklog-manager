@@ -1136,28 +1136,22 @@ export function renderIssueDetailModal() {
 }
 
 // ========== 댓글 영역 ==========
-// 표시: ADF→HTML 렌더. 작성/수정: textarea(plain text) → ADF로 변환해 전송.
+// 본문과 동일한 tiptap 에디터로 작성/수정 → 멘션·이미지·표 등 풍부한 마크업 보존.
 // 본인 작성 댓글에만 수정/삭제 버튼 노출 (myself accountId 비교).
 function renderDetailComments(m, issueKey) {
   // 상세 본문이 아직 로딩 중이면 비워둠 (descriptionSection이 로딩 표시 중)
-  if (m.loading && !m.data?.comments) {
-    return ''
-  }
+  if (m.loading && !m.data?.comments) return ''
   if (m.error) return ''
 
   const comments = m.data?.comments || []
   const myAccountId = getCachedMyself()?.accountId || ''
-  const submitting = !!m.commentSubmitting
-  const commentDraft = m.commentDraft != null ? m.commentDraft : ''
-  const commentError = m.commentError || ''
+  // 댓글 본문 안의 미디어/첨부 노드는 이슈 attachments에서 해석
+  const attachmentsById = {}
+  for (const a of (m.data?.attachments || [])) attachmentsById[a.id] = a
 
   const itemsHtml = comments.length === 0
     ? `<div class="detail-comment-empty">아직 댓글이 없습니다.</div>`
-    : comments.map(c => renderCommentItem(c, m, myAccountId)).join('')
-
-  const composeError = !m.editingCommentId && commentError
-    ? `<div class="detail-comment-error">${escapeHtml(commentError)}</div>`
-    : ''
+    : comments.map(c => renderCommentItem(c, m, myAccountId, attachmentsById)).join('')
 
   return `
     <div class="detail-comments">
@@ -1165,28 +1159,46 @@ function renderDetailComments(m, issueKey) {
       <div class="detail-comments-list">
         ${itemsHtml}
       </div>
-      <div class="detail-comment-compose">
-        <textarea class="modal-textarea detail-comment-input" id="detail-comment-input"
-          placeholder="댓글을 입력하세요..." ${submitting ? 'disabled' : ''}>${escapeHtml(commentDraft)}</textarea>
-        ${composeError}
-        <div class="detail-comment-compose-actions">
-          <button class="btn btn-primary btn-sm" id="detail-comment-submit" ${submitting ? 'disabled' : ''}>
-            ${submitting ? '<span class="btn-spinner"></span> 작성 중…' : '댓글 작성'}
-          </button>
-        </div>
+      ${renderCommentCompose(m)}
+    </div>
+  `
+}
+
+function renderCommentCompose(m) {
+  const submitting = !!m.commentSubmitting
+  const composeError = !m.editingCommentId && m.commentError
+    ? `<div class="detail-comment-error">${escapeHtml(m.commentError)}</div>`
+    : ''
+  if (!m.commentComposeOpen) {
+    return `
+      <div class="detail-comment-compose detail-comment-compose-collapsed">
+        <button class="detail-comment-compose-trigger" id="detail-comment-compose-open">
+          댓글을 입력하세요...
+        </button>
+      </div>
+    `
+  }
+  return `
+    <div class="detail-comment-compose detail-comment-compose-open${submitting ? ' is-saving' : ''}">
+      ${renderTiptapToolbar('detail-comment-compose-toolbar', 'detail-comment-compose-editor')}
+      <div class="tiptap-editor-mount detail-comment-editor-mount" id="detail-comment-compose-editor"></div>
+      ${composeError}
+      <div class="detail-comment-compose-actions">
+        <button class="btn btn-sm" id="detail-comment-compose-cancel" ${submitting ? 'disabled' : ''}>취소</button>
+        <button class="btn btn-primary btn-sm" id="detail-comment-submit" ${submitting ? 'disabled' : ''}>
+          ${submitting ? '<span class="btn-spinner"></span> 작성 중…' : '댓글 작성'}
+        </button>
       </div>
     </div>
   `
 }
 
-function renderCommentItem(c, m, myAccountId) {
+function renderCommentItem(c, m, myAccountId, attachmentsById) {
   const isMine = !!c.author?.accountId && c.author.accountId === myAccountId
   const isEditing = m.editingCommentId === c.id
   const isDeleting = m.deletingCommentId === c.id
-  const editing = isEditing
-  const editingDraft = (editing && m.editingCommentDraft != null) ? m.editingCommentDraft : ''
-  const editingSaving = editing && !!m.editingCommentSaving
-  const editError = editing && m.commentError ? m.commentError : ''
+  const editingSaving = isEditing && !!m.editingCommentSaving
+  const editError = isEditing && m.commentError ? m.commentError : ''
   const edited = c.updated && c.updated !== c.created
 
   const avatar = c.author?.avatarUrl
@@ -1198,7 +1210,7 @@ function renderCommentItem(c, m, myAccountId) {
     <span class="detail-comment-time">${escapeHtml(formatCommentTime(c.created))}${edited ? ' · 수정됨' : ''}</span>
   `
 
-  const actions = isMine && !editing && !isDeleting
+  const actions = isMine && !isEditing && !isDeleting
     ? `
       <div class="detail-comment-actions">
         <button class="btn-link" data-action="edit-comment" data-comment-id="${escapeHtml(c.id)}">수정</button>
@@ -1207,28 +1219,32 @@ function renderCommentItem(c, m, myAccountId) {
     `
     : ''
 
-  const body = editing
+  const safeId = escapeHtml(c.id)
+  const editorMountId = `detail-comment-edit-editor-${safeId}`
+  const editorToolbarId = `detail-comment-edit-toolbar-${safeId}`
+
+  const body = isEditing
     ? `
-      <div class="detail-comment-edit">
-        <textarea class="modal-textarea detail-comment-edit-input" id="detail-comment-edit-${escapeHtml(c.id)}"
-          ${editingSaving ? 'disabled' : ''}>${escapeHtml(editingDraft)}</textarea>
+      <div class="detail-comment-edit${editingSaving ? ' is-saving' : ''}">
+        ${renderTiptapToolbar(editorToolbarId, editorMountId)}
+        <div class="tiptap-editor-mount detail-comment-editor-mount" id="${editorMountId}"></div>
         ${editError ? `<div class="detail-comment-error">${escapeHtml(editError)}</div>` : ''}
         <div class="detail-comment-edit-actions">
           <button class="btn btn-sm" data-action="cancel-edit-comment" ${editingSaving ? 'disabled' : ''}>취소</button>
-          <button class="btn btn-primary btn-sm" data-action="save-edit-comment" data-comment-id="${escapeHtml(c.id)}" ${editingSaving ? 'disabled' : ''}>
+          <button class="btn btn-primary btn-sm" data-action="save-edit-comment" data-comment-id="${safeId}" ${editingSaving ? 'disabled' : ''}>
             ${editingSaving ? '<span class="btn-spinner"></span> 저장 중…' : '저장'}
           </button>
         </div>
       </div>
     `
-    : `<div class="detail-comment-body">${c.bodyAdf ? renderAdf(c.bodyAdf) : ''}</div>`
+    : `<div class="detail-comment-body">${c.bodyAdf ? renderAdf(c.bodyAdf, { attachmentsById }) : ''}</div>`
 
   const deleteConfirm = isDeleting
     ? `
       <div class="detail-comment-delete-confirm">
         <span>이 댓글을 삭제하시겠습니까?</span>
         <button class="btn btn-sm" data-action="cancel-delete-comment" ${m.commentSubmitting ? 'disabled' : ''}>취소</button>
-        <button class="btn btn-danger btn-sm" data-action="confirm-delete-comment" data-comment-id="${escapeHtml(c.id)}" ${m.commentSubmitting ? 'disabled' : ''}>
+        <button class="btn btn-danger btn-sm" data-action="confirm-delete-comment" data-comment-id="${safeId}" ${m.commentSubmitting ? 'disabled' : ''}>
           ${m.commentSubmitting ? '<span class="btn-spinner"></span> 삭제 중…' : '삭제'}
         </button>
       </div>
@@ -1236,7 +1252,7 @@ function renderCommentItem(c, m, myAccountId) {
     : ''
 
   return `
-    <div class="detail-comment" data-comment-id="${escapeHtml(c.id)}">
+    <div class="detail-comment" data-comment-id="${safeId}">
       ${avatar}
       <div class="detail-comment-main">
         <div class="detail-comment-head">
@@ -1285,11 +1301,13 @@ function renderDetailSummary(m, summary) {
   `
 }
 
-function renderTiptapToolbar() {
+// 일반화된 tiptap 툴바. 어느 mount element를 조작하는지 data 속성으로 표시.
+// 본문 편집/댓글 작성/댓글 편집 모두 같은 디자인 재사용.
+export function renderTiptapToolbar(toolbarId = 'issue-detail-edit-toolbar', mountId = 'issue-detail-edit-editor') {
   const btn = (cmd, label, title, args = '') =>
     `<button type="button" class="tiptap-tb-btn" data-tt-cmd="${cmd}"${args ? ` data-tt-args='${args}'` : ''} title="${title}">${label}</button>`
   return `
-    <div class="tiptap-toolbar" id="issue-detail-edit-toolbar">
+    <div class="tiptap-toolbar" id="${toolbarId}" data-tt-mount-id="${mountId}">
       ${btn('toggleBold', '<b>B</b>', '굵게 (Ctrl+B)')}
       ${btn('toggleItalic', '<i>I</i>', '이탤릭 (Ctrl+I)')}
       ${btn('toggleStrike', '<span style="text-decoration:line-through">S</span>', '취소선 (Ctrl+Shift+X)')}

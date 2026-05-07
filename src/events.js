@@ -33,8 +33,10 @@ import {
   setCachedIssueTypes,
 } from './jira.js'
 import { detectLossyFeatures, isEmptyAdf } from './adfProsemirror.js'
-import { textToAdf, adfToText } from './adf.js'
-import { createEditor, destroyEditor, getCurrentAdf, runCommand, setEditable } from './tiptap.js'
+import {
+  createEditor, destroyEditor, getCurrentAdf, runCommand, setEditable,
+  createEditorInstance, destroyInstanceOnMount, getInstanceAdf, getEditorOnMount, runCommandOnEditor,
+} from './tiptap.js'
 import {
   loadSessions,
   saveSessions,
@@ -249,6 +251,11 @@ function handleGlobalKeydown(e) {
       cancelEditComment()
       return
     }
+    // 댓글 작성기 펼쳐진 상태면 ESC로 닫기
+    if (state.issueDetailModal.commentComposeOpen && !state.issueDetailModal.commentSubmitting) {
+      cancelCommentCompose()
+      return
+    }
     // 편집 중이면 ESC로 편집만 취소 (모달은 유지)
     if (state.issueDetailModal.editing) {
       cancelIssueDetailEdit()
@@ -267,11 +274,16 @@ function handleGlobalKeydown(e) {
 // 이슈 상세 모달 닫기 + Blob URL 해제 + 에디터 파괴
 function closeIssueDetailModal() {
   const m = state.issueDetailModal
-  // 편집 중이면 에디터 내용으로 dirty 판정
+  // 편집 중이면 에디터 내용으로 dirty 판정 (본문 + 댓글 작성기/편집기)
   if (m?.editing && isEditorDirty()) {
     if (!window.confirm('편집 중인 내용이 있습니다. 닫으시겠습니까?')) return
+  } else if (m?.commentComposeOpen && isCommentComposeDirty()) {
+    if (!window.confirm('작성 중인 댓글이 있습니다. 닫으시겠습니까?')) return
+  } else if (m?.editingCommentId && isCommentEditDirty()) {
+    if (!window.confirm('수정 중인 댓글이 있습니다. 닫으시겠습니까?')) return
   }
   destroyEditor()
+  destroyCommentEditors()
   if (m?.blobUrls) {
     for (const url of m.blobUrls) {
       try { URL.revokeObjectURL(url) } catch {}
@@ -279,6 +291,34 @@ function closeIssueDetailModal() {
   }
   state.issueDetailModal = null
   render({ sections: ['modals'] })
+}
+
+// 모달 내부 댓글용 tiptap 인스턴스 모두 정리
+function destroyCommentEditors() {
+  const composeMount = document.getElementById('detail-comment-compose-editor')
+  if (composeMount) destroyInstanceOnMount(composeMount)
+  document.querySelectorAll('[id^="detail-comment-edit-editor-"]').forEach(mount => destroyInstanceOnMount(mount))
+}
+
+// 댓글 작성기에 의미 있는 입력이 있는지
+function isCommentComposeDirty() {
+  const mount = document.getElementById('detail-comment-compose-editor')
+  const editor = getEditorOnMount(mount)
+  const adf = editor ? getInstanceAdf(editor) : state.issueDetailModal?.commentDraftAdf
+  return !!adf && !isEmptyAdf(adf)
+}
+
+// 댓글 편집기 내용이 원본과 달라졌는지
+function isCommentEditDirty() {
+  const m = state.issueDetailModal
+  if (!m?.editingCommentId) return false
+  const mount = document.getElementById(`detail-comment-edit-editor-${m.editingCommentId}`)
+  const editor = getEditorOnMount(mount)
+  if (!editor) return false
+  const current = getInstanceAdf(editor)
+  const original = (m.data?.comments || []).find(c => c.id === m.editingCommentId)?.bodyAdf || null
+  // 단순 비교 (구조 동일하면 동일 JSON 문자열)
+  return JSON.stringify(current) !== JSON.stringify(original)
 }
 
 // 편집 진입: editAdf에 현재 본문 복사 후 render → ensureTiptap이 마운트
@@ -643,22 +683,20 @@ async function performTypeChange(issueKey, typeInfo) {
 }
 
 // ========== 댓글 CRUD ==========
-// 댓글 영역의 모든 버튼/입력을 매 bindEvents 호출마다 (재)바인드.
-// on() 헬퍼가 element별 1회만 바인드하므로 modals 재렌더로 element가 새로 생기면 자동 재바인드된다.
+// 작성/편집 모두 본문과 동일한 tiptap 에디터 사용 → 멘션·이미지·표 등 풍부한 마크업 보존.
+// 매 bindEvents 호출마다 (재)바인드. on() 헬퍼가 element별 1회 바인드라 modals 재렌더로
+// element가 새로 생기면 자동 재바인드 + 새 element에 새 에디터 마운트.
 function bindCommentEvents() {
   const m = state.issueDetailModal
   if (!m || !m.data) return
 
-  // 새 댓글 작성 textarea: draft를 state에 보존 (재렌더로 input 사라져도 복원)
-  const composeInput = document.getElementById('detail-comment-input')
-  if (composeInput) {
-    on(composeInput, 'input', () => {
-      const cur = state.issueDetailModal
-      if (cur) cur.commentDraft = composeInput.value
-    })
-  }
+  // 작성기 펼치기 트리거 (collapsed placeholder)
+  const composeOpen = document.getElementById('detail-comment-compose-open')
+  if (composeOpen) on(composeOpen, 'click', openCommentCompose)
 
-  // 새 댓글 작성 버튼
+  // 작성 취소 / 작성 버튼
+  const composeCancel = document.getElementById('detail-comment-compose-cancel')
+  if (composeCancel) on(composeCancel, 'click', cancelCommentCompose)
   const submitBtn = document.getElementById('detail-comment-submit')
   if (submitBtn) on(submitBtn, 'click', submitNewComment)
 
@@ -666,21 +704,14 @@ function bindCommentEvents() {
   document.querySelectorAll('[data-action="edit-comment"]').forEach(btn => {
     on(btn, 'click', (e) => {
       e.stopPropagation()
-      const id = btn.dataset.commentId
-      startEditComment(id)
+      startEditComment(btn.dataset.commentId)
     })
   })
   document.querySelectorAll('[data-action="cancel-edit-comment"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      cancelEditComment()
-    })
+    on(btn, 'click', (e) => { e.stopPropagation(); cancelEditComment() })
   })
   document.querySelectorAll('[data-action="save-edit-comment"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      saveEditComment(btn.dataset.commentId)
-    })
+    on(btn, 'click', (e) => { e.stopPropagation(); saveEditComment(btn.dataset.commentId) })
   })
   document.querySelectorAll('[data-action="delete-comment"]').forEach(btn => {
     on(btn, 'click', (e) => {
@@ -702,50 +733,129 @@ function bindCommentEvents() {
     })
   })
   document.querySelectorAll('[data-action="confirm-delete-comment"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      confirmDeleteComment(btn.dataset.commentId)
+    on(btn, 'click', (e) => { e.stopPropagation(); confirmDeleteComment(btn.dataset.commentId) })
+  })
+}
+
+// 매 bindEvents 후 호출: 작성/편집 모드의 mount element가 있으면 tiptap 인스턴스 마운트.
+// modals 재렌더로 element가 새로 생기면 이전 인스턴스를 destroy하고 새 element에 다시 마운트.
+// onUpdate가 ADF를 m.commentDraftAdf / m.editingCommentDraftAdf에 보존하므로 입력 내용은 유지된다.
+function ensureCommentEditors() {
+  const m = state.issueDetailModal
+  if (!m || !m.data) return
+
+  // ----- 작성기 -----
+  if (m.commentComposeOpen) {
+    const newMount = document.getElementById('detail-comment-compose-editor')
+    if (newMount && newMount !== m._composeMount) {
+      // 이전 인스턴스(detached element 포함) 정리
+      if (m._composeMount) destroyInstanceOnMount(m._composeMount)
+      const editor = createEditorInstance(newMount, m.commentDraftAdf, {
+        onUpdate: (adf) => {
+          const cur = state.issueDetailModal
+          if (cur) cur.commentDraftAdf = adf
+        },
+      })
+      newMount.dataset.tiptapMounted = '1'
+      if (m.commentSubmitting) editor.setEditable(false)
+      m._composeMount = newMount
+    }
+  } else if (m._composeMount) {
+    destroyInstanceOnMount(m._composeMount)
+    m._composeMount = null
+  }
+
+  // ----- 편집기 (한 번에 하나만 활성) -----
+  if (m.editingCommentId) {
+    const id = m.editingCommentId
+    const newMount = document.getElementById(`detail-comment-edit-editor-${id}`)
+    if (newMount && newMount !== m._editMount) {
+      if (m._editMount) destroyInstanceOnMount(m._editMount)
+      const editor = createEditorInstance(newMount, m.editingCommentDraftAdf, {
+        onUpdate: (adf) => {
+          const cur = state.issueDetailModal
+          if (cur) cur.editingCommentDraftAdf = adf
+        },
+      })
+      newMount.dataset.tiptapMounted = '1'
+      if (m.editingCommentSaving) editor.setEditable(false)
+      m._editMount = newMount
+    }
+  } else if (m._editMount) {
+    destroyInstanceOnMount(m._editMount)
+    m._editMount = null
+  }
+
+  // 댓글 본문 안의 이미지(미디어 노드)도 본문과 동일하게 인증 프록시로 교체
+  loadCommentImages()
+}
+
+// detail-comments 영역 안의 ADF media 이미지/썸네일을 인증된 Blob URL로 교체
+async function loadCommentImages() {
+  const m = state.issueDetailModal
+  if (!m) return
+  const root = document.querySelector('.detail-comments')
+  if (!root) return
+  const imgs = root.querySelectorAll('.detail-comment-body img[data-adf-media-url]')
+  if (imgs.length === 0) return
+  imgs.forEach(img => {
+    const url = img.getAttribute('data-adf-media-url')
+    img.removeAttribute('data-adf-media-url')
+    if (!url) {
+      img.classList.add('detail-img-error')
+      img.alt = '(이미지 원본을 찾지 못함)'
+      return
+    }
+    img.classList.add('detail-img-loading')
+    fetchAttachmentBlobUrl(url).then(blobUrl => {
+      if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
+      if (blobUrl) {
+        img.src = blobUrl
+        state.issueDetailModal.blobUrls.push(blobUrl)
+      } else {
+        img.classList.add('detail-img-error')
+        img.alt = '(이미지 로드 실패)'
+      }
+      img.classList.remove('detail-img-loading')
     })
   })
+}
 
-  // 편집 모드 textarea: draft 보존
-  if (m.editingCommentId) {
-    const editInput = document.getElementById(`detail-comment-edit-${m.editingCommentId}`)
-    if (editInput) {
-      on(editInput, 'input', () => {
-        const cur = state.issueDetailModal
-        if (cur) cur.editingCommentDraft = editInput.value
-      })
-      // 처음 편집 진입 시 포커스 + 커서 끝
-      if (!m._editFocused) {
-        m._editFocused = true
-        editInput.focus()
-        const v = editInput.value
-        editInput.setSelectionRange(v.length, v.length)
-      }
-    }
-  } else {
-    if (m._editFocused) m._editFocused = false
-  }
+function openCommentCompose() {
+  const m = state.issueDetailModal
+  if (!m) return
+  m.commentComposeOpen = true
+  m.commentDraftAdf = m.commentDraftAdf || null
+  m.commentError = null
+  render({ sections: ['modals'] })
+}
+
+function cancelCommentCompose() {
+  const m = state.issueDetailModal
+  if (!m || m.commentSubmitting) return
+  // mount destroy 후 영역 닫기
+  const mount = document.getElementById('detail-comment-compose-editor')
+  if (mount) destroyInstanceOnMount(mount)
+  m.commentComposeOpen = false
+  m.commentDraftAdf = null
+  m.commentError = null
+  render({ sections: ['modals'] })
 }
 
 async function submitNewComment() {
   const m = state.issueDetailModal
   if (!m || m.commentSubmitting) return
-  const draft = (m.commentDraft || '').trim()
-  if (!draft) {
-    m.commentError = '내용을 입력하세요.'
-    render({ sections: ['modals'] })
-    return
-  }
-  const adf = textToAdf(draft)
-  if (!adf) {
+  const mount = document.getElementById('detail-comment-compose-editor')
+  const editor = getEditorOnMount(mount)
+  const adf = editor ? getInstanceAdf(editor) : m.commentDraftAdf
+  if (!adf || isEmptyAdf(adf)) {
     m.commentError = '내용을 입력하세요.'
     render({ sections: ['modals'] })
     return
   }
   m.commentSubmitting = true
   m.commentError = null
+  if (editor) editor.setEditable(false)
   render({ sections: ['modals'] })
   try {
     const created = await addIssueComment(m.key, adf)
@@ -754,7 +864,11 @@ async function submitNewComment() {
     if (cur.data) {
       cur.data.comments = [...(cur.data.comments || []), created]
     }
-    cur.commentDraft = ''
+    // 작성기 닫고 비우기
+    const liveMount = document.getElementById('detail-comment-compose-editor')
+    if (liveMount) destroyInstanceOnMount(liveMount)
+    cur.commentComposeOpen = false
+    cur.commentDraftAdf = null
     showToast('댓글을 작성했습니다.', '✓')
   } catch (err) {
     console.error('댓글 작성 실패:', err)
@@ -774,19 +888,22 @@ function startEditComment(commentId) {
   const c = (m.data.comments || []).find(x => x.id === commentId)
   if (!c) return
   m.editingCommentId = commentId
-  m.editingCommentDraft = adfToText(c.bodyAdf)
+  m.editingCommentDraftAdf = c.bodyAdf || null
   m.editingCommentSaving = false
   m.commentError = null
   m.deletingCommentId = null
-  m._editFocused = false
   render({ sections: ['modals'] })
 }
 
 function cancelEditComment() {
   const m = state.issueDetailModal
   if (!m || m.editingCommentSaving) return
+  if (m.editingCommentId) {
+    const mount = document.getElementById(`detail-comment-edit-editor-${m.editingCommentId}`)
+    if (mount) destroyInstanceOnMount(mount)
+  }
   m.editingCommentId = null
-  m.editingCommentDraft = null
+  m.editingCommentDraftAdf = null
   m.commentError = null
   render({ sections: ['modals'] })
 }
@@ -794,20 +911,17 @@ function cancelEditComment() {
 async function saveEditComment(commentId) {
   const m = state.issueDetailModal
   if (!m || m.editingCommentSaving) return
-  const draft = (m.editingCommentDraft || '').trim()
-  if (!draft) {
-    m.commentError = '내용을 입력하세요.'
-    render({ sections: ['modals'] })
-    return
-  }
-  const adf = textToAdf(draft)
-  if (!adf) {
+  const mount = document.getElementById(`detail-comment-edit-editor-${commentId}`)
+  const editor = getEditorOnMount(mount)
+  const adf = editor ? getInstanceAdf(editor) : m.editingCommentDraftAdf
+  if (!adf || isEmptyAdf(adf)) {
     m.commentError = '내용을 입력하세요.'
     render({ sections: ['modals'] })
     return
   }
   m.editingCommentSaving = true
   m.commentError = null
+  if (editor) editor.setEditable(false)
   render({ sections: ['modals'] })
   try {
     const updated = await updateIssueComment(m.key, commentId, adf)
@@ -818,8 +932,10 @@ async function saveEditComment(commentId) {
         c.id === commentId ? updated : c
       )
     }
+    const liveMount = document.getElementById(`detail-comment-edit-editor-${commentId}`)
+    if (liveMount) destroyInstanceOnMount(liveMount)
     cur.editingCommentId = null
-    cur.editingCommentDraft = null
+    cur.editingCommentDraftAdf = null
     showToast('댓글을 수정했습니다.', '✓')
   } catch (err) {
     console.error('댓글 수정 실패:', err)
@@ -2087,31 +2203,35 @@ export function bindEvents() {
   const detailEditSaveBtn = document.getElementById('issue-detail-edit-save')
   if (detailEditSaveBtn) on(detailEditSaveBtn, 'click', saveIssueDetailEdit)
 
-  // tiptap 툴바: 각 버튼의 data-tt-cmd를 에디터 명령으로 실행
-  const toolbar = document.getElementById('issue-detail-edit-toolbar')
-  if (toolbar) {
+  // tiptap 툴바 (본문 + 댓글 작성기 + 댓글 편집기 모두 동일 핸들러)
+  // data-tt-mount-id로 어느 에디터를 조작할지 결정.
+  document.querySelectorAll('.tiptap-toolbar').forEach(toolbar => {
     on(toolbar, 'click', (e) => {
       const btn = e.target.closest('[data-tt-cmd]')
       if (!btn) return
       e.preventDefault()
       const cmd = btn.dataset.ttCmd
-      // 링크만 특별 처리 (URL 프롬프트)
+      const mountId = toolbar.dataset.ttMountId
+      const mount = mountId ? document.getElementById(mountId) : null
+      const editor = getEditorOnMount(mount)
+      if (!editor) return
       if (cmd === '__link') {
         const url = window.prompt('링크 URL을 입력하세요:')
-        if (url) runCommand('setLink', { href: url })
+        if (url) runCommandOnEditor(editor, 'setLink', { href: url })
         return
       }
       const argsRaw = btn.dataset.ttArgs
       const args = argsRaw ? JSON.parse(argsRaw) : null
-      runCommand(cmd, args)
+      runCommandOnEditor(editor, cmd, args)
     })
-  }
+  })
 
   // 편집 모드 tiptap 에디터 마운트 (중복 마운트 방지)
   ensureIssueDetailEditor()
 
   // ===== 댓글 영역 =====
   bindCommentEvents()
+  ensureCommentEditors()
 
   // 일감 미지정 세션 종료 모달의 이슈 키 입력: 자동완성 드롭다운 + blur 검증
   const finishIssueInput = document.getElementById('finish-issue-key')

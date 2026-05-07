@@ -1,5 +1,7 @@
 // tiptap 에디터 초기화/파괴 래퍼
-// 이슈 상세 모달에서만 사용. 편집 진입 시 생성하고 종료 시 파괴한다.
+// 이슈 상세 모달의 설명 본문 + 댓글 작성/편집에 사용.
+// - 본문 편집: 단일 currentEditor 싱글턴 (기존 호환)
+// - 댓글: 작성기 + 편집기 등 동시 다중 인스턴스 지원 → mount element에 직접 보관
 
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
@@ -8,51 +10,88 @@ import { adfToPm, pmToAdf } from './adfProsemirror.js'
 
 let currentEditor = null
 
-export function createEditor(mountEl, adfContent) {
-  destroyEditor()
+// 공통 extension 구성
+function buildExtensions() {
+  return [
+    StarterKit.configure({
+      codeBlock: { HTMLAttributes: { class: 'tiptap-code-block' } },
+      link: {
+        openOnClick: false,
+        autolink: true,
+        HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
+      },
+    }),
+    Table.configure({ resizable: false }),
+    TableRow,
+    TableHeader,
+    TableCell,
+  ]
+}
+
+// mountEl 위에 새 Editor 인스턴스를 생성. mount.__tt_editor에 저장.
+// onUpdate: 매 변경 시 ADF로 콜백 (state 보존용)
+export function createEditorInstance(mountEl, adfContent, { onUpdate, autofocus = true } = {}) {
+  if (!mountEl) return null
+  destroyInstanceOnMount(mountEl)
   const content = adfToPm(adfContent)
 
-  currentEditor = new Editor({
+  const editor = new Editor({
     element: mountEl,
-    extensions: [
-      StarterKit.configure({
-        codeBlock: { HTMLAttributes: { class: 'tiptap-code-block' } },
-        link: {
-          openOnClick: false,
-          autolink: true,
-          HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
-        },
-      }),
-      Table.configure({ resizable: false }),
-      TableRow,
-      TableHeader,
-      TableCell,
-    ],
+    extensions: buildExtensions(),
     editorProps: {
-      attributes: {
-        class: 'tiptap-content',
-        spellcheck: 'false',
-      },
+      attributes: { class: 'tiptap-content', spellcheck: 'false' },
+    },
+    onUpdate: () => {
+      if (typeof onUpdate !== 'function') return
+      try { onUpdate(pmToAdf(editor.getJSON())) } catch (e) { console.warn('[tiptap] onUpdate ADF 변환 실패:', e) }
     },
   })
 
-  // 생성 후 명시적으로 content 주입 (생성자 content 옵션이 일부 환경에서 무시되는 케이스 방지)
   if (content && content.content && content.content.length > 0) {
     try {
-      currentEditor.commands.setContent(content, { emitUpdate: false })
+      editor.commands.setContent(content, { emitUpdate: false })
     } catch (e) {
-      // 스키마 검증 실패 시 HTML로 폴백 시도 (거의 없지만 안전망)
       console.warn('[tiptap] setContent JSON 실패, HTML 폴백:', e)
-      try {
-        const html = currentEditor.storage?.doc?.toHTML?.() ?? ''
-        currentEditor.commands.setContent(html || '<p></p>', { emitUpdate: false })
-      } catch {}
+      try { editor.commands.setContent('<p></p>', { emitUpdate: false }) } catch {}
     }
   }
 
-  setTimeout(() => {
-    try { currentEditor?.commands.focus('end') } catch {}
-  }, 50)
+  mountEl.__tt_editor = editor
+  if (autofocus) {
+    setTimeout(() => { try { editor?.commands.focus('end') } catch {} }, 50)
+  }
+  return editor
+}
+
+export function getEditorOnMount(mountEl) {
+  return mountEl?.__tt_editor || null
+}
+
+export function destroyInstanceOnMount(mountEl) {
+  if (mountEl?.__tt_editor) {
+    try { mountEl.__tt_editor.destroy() } catch {}
+    mountEl.__tt_editor = null
+    delete mountEl.dataset.tiptapMounted
+  }
+}
+
+export function getInstanceAdf(editor) {
+  if (!editor) return null
+  try { return pmToAdf(editor.getJSON()) } catch { return null }
+}
+
+export function runCommandOnEditor(editor, name, ...args) {
+  if (!editor) return
+  const chain = editor.chain().focus()
+  const fn = chain[name]
+  if (typeof fn !== 'function') return
+  fn.apply(chain, args).run()
+}
+
+// ===== 본문 편집(싱글턴) — 기존 인터페이스 유지 =====
+export function createEditor(mountEl, adfContent) {
+  destroyEditor()
+  currentEditor = createEditorInstance(mountEl, adfContent)
   return currentEditor
 }
 
@@ -67,30 +106,20 @@ export function destroyEditor() {
   }
 }
 
-// 현재 에디터 내용을 ADF로 추출
 export function getCurrentAdf() {
-  if (!currentEditor) return null
-  const pm = currentEditor.getJSON()
-  return pmToAdf(pm)
+  return getInstanceAdf(currentEditor)
 }
 
-// 툴바 버튼의 활성/비활성 상태 갱신용: 현재 선택된 부분에 해당 서식이 걸려 있는지
 export function isActive(type, attrs) {
   if (!currentEditor) return false
   try { return currentEditor.isActive(type, attrs) } catch { return false }
 }
 
-// 에디터 입력 활성/비활성 토글 (저장 중 잠금용)
 export function setEditable(editable) {
   if (!currentEditor) return
   try { currentEditor.setEditable(!!editable) } catch {}
 }
 
-// 에디터 명령 실행 (editor.chain().focus().X().run() 래퍼)
 export function runCommand(name, ...args) {
-  if (!currentEditor) return
-  const chain = currentEditor.chain().focus()
-  const fn = chain[name]
-  if (typeof fn !== 'function') return
-  fn.apply(chain, args).run()
+  runCommandOnEditor(currentEditor, name, ...args)
 }
