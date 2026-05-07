@@ -2,11 +2,21 @@
 import './style.css'
 import 'flatpickr/dist/flatpickr.min.css'
 import { handleOAuthCallback, isLoggedIn, fetchCurrentUser, saveUser, getSavedUser } from './auth.js'
-import { applyTheme, applyPreferences } from './ui.js'
+import { applyTheme, applyPreferences, showToast } from './ui.js'
 import { loadPreferences } from './storage.js'
 import { render } from './render.js'
 import { loadIssues } from './data.js'
 import { setupAutoReload } from './autoReload.js'
+
+// 토큰 갱신 실패로 자동 로그아웃이 일어나면 즉시 로그인 화면으로 전환 + 사용자 안내
+let authClearedHandled = false
+window.addEventListener('jira-auth-cleared', () => {
+  if (authClearedHandled) return
+  authClearedHandled = true
+  try { showToast('세션이 만료되었습니다. 다시 로그인해주세요.', '⚠') } catch {}
+  try { window.alert('세션이 만료되었습니다. 다시 로그인해주세요.') } catch {}
+  render()
+})
 
 // ========== 초기화 ==========
 async function init() {

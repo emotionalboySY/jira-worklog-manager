@@ -74,32 +74,39 @@ export async function handleOAuthCallback() {
   }
 }
 
-// 토큰 갱신
+// 토큰 갱신.
+// 동시에 여러 API가 401을 받아 refresh를 동시에 시도하면 Atlassian의 일회성 refresh_token 정책상
+// 두 번째 시도가 거부되어 잘못된 logout으로 이어진다. in-flight promise를 캐시해 한 번만 실제 호출.
+let _refreshInflight = null
 export async function refreshAccessToken() {
-  const refreshToken = localStorage.getItem('jira_refresh_token')
-  if (!refreshToken) return false
-
-  try {
-    const res = await fetch('/api/auth/refresh', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    })
-
-    const data = await res.json()
-
-    if (!res.ok) {
-      console.error('토큰 갱신 실패:', data)
-      logout()
+  if (_refreshInflight) return _refreshInflight
+  _refreshInflight = (async () => {
+    const refreshToken = localStorage.getItem('jira_refresh_token')
+    if (!refreshToken) return false
+    try {
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        console.error('토큰 갱신 실패:', data)
+        logout({ reason: 'refresh-failed' })
+        return false
+      }
+      saveTokens(data)
+      return true
+    } catch (err) {
+      console.error('토큰 갱신 실패:', err)
+      logout({ reason: 'refresh-failed' })
       return false
     }
-
-    saveTokens(data)
-    return true
-  } catch (err) {
-    console.error('토큰 갱신 실패:', err)
-    logout()
-    return false
+  })()
+  try {
+    return await _refreshInflight
+  } finally {
+    _refreshInflight = null
   }
 }
 
@@ -194,13 +201,18 @@ function cleanUrl() {
 }
 
 // 로그아웃
-export function logout() {
+// reason: 'user' (기본, 사용자가 명시적으로 로그아웃) | 'refresh-failed' (자동 만료 처리)
+// 자동 만료 시에는 'jira-auth-cleared' 이벤트를 발행 → main.js가 받아 UI 전환 + 안내
+export function logout({ reason = 'user' } = {}) {
   localStorage.removeItem('jira_access_token')
   localStorage.removeItem('jira_refresh_token')
   localStorage.removeItem('jira_token_expires_at')
   localStorage.removeItem('jira_cloud_id')
   localStorage.removeItem('jira_site_name')
   localStorage.removeItem('jira_user')
+  if (reason !== 'user') {
+    try { window.dispatchEvent(new CustomEvent('jira-auth-cleared', { detail: { reason } })) } catch {}
+  }
 }
 
 // 로그인 상태 확인
