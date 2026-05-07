@@ -190,3 +190,52 @@ function applyMark(html, mark) {
       return html
   }
 }
+
+// ========== plain text ↔ ADF 변환 (댓글용 단순 변환) ==========
+// 빈 줄(\n\n+)을 paragraph 경계로, 줄바꿈은 hardBreak로.
+// 멘션/링크/이미지 등 풍부한 마크는 보존 못함 — 단순 댓글 작성/편집 용도.
+export function textToAdf(text) {
+  const trimmed = (text || '').replace(/\r\n/g, '\n').trim()
+  if (!trimmed) return null
+  const blocks = trimmed.split(/\n{2,}/)
+  const paragraphs = blocks.map(block => {
+    const lines = block.split('\n')
+    const content = []
+    lines.forEach((line, i) => {
+      if (i > 0) content.push({ type: 'hardBreak' })
+      if (line.length > 0) content.push({ type: 'text', text: line })
+    })
+    return { type: 'paragraph', content }
+  })
+  return { version: 1, type: 'doc', content: paragraphs }
+}
+
+// ADF → 보수적 plain text 추출. 편집 시 textarea 초기값으로 사용.
+export function adfToText(node) {
+  if (!node) return ''
+  return _adfToText(node).replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function _adfToText(node) {
+  if (!node) return ''
+  if (node.type === 'text') return node.text || ''
+  if (node.type === 'hardBreak') return '\n'
+  const child = (node.content || []).map(_adfToText).join('')
+  switch (node.type) {
+    case 'doc': return child
+    case 'paragraph':
+    case 'heading':
+    case 'blockquote':
+    case 'codeBlock':
+      return child + '\n\n'
+    case 'bulletList':
+    case 'orderedList':
+      return child
+    case 'listItem':
+      return '• ' + child.trim() + '\n'
+    case 'rule':
+      return '\n---\n'
+    default:
+      return child
+  }
+}

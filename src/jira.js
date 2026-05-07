@@ -438,6 +438,7 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
     'summary', 'issuetype', 'status', 'priority',
     'reporter', 'assignee', 'duedate', 'timetracking',
     'description', 'attachment', 'parent', 'created', 'updated',
+    'comment',
     SPRINT_FIELD,
   ].join(',')
   const data = await jiraFetch(
@@ -469,6 +470,7 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
     sprints: extractSprints(f[SPRINT_FIELD]),
     descriptionAdf: f.description || null,  // ADF doc or null
     attachments: extractAttachments(f.attachment),
+    comments: extractComments(f.comment),
     created: f.created || null,
     updated: f.updated || null,
   }
@@ -514,6 +516,62 @@ export async function updateIssueAssignee(issueKey, accountId) {
     `/issue/${encodeURIComponent(issueKey)}/assignee`,
     { method: 'PUT', body: { accountId: accountId || null } }
   )
+}
+
+// ========== 댓글 ==========
+// Cloud는 ADF doc을 body로 받음.
+export async function addIssueComment(issueKey, adfBody) {
+  const data = await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}/comment`,
+    { method: 'POST', body: { body: adfBody } }
+  )
+  return extractComment(data)
+}
+
+export async function updateIssueComment(issueKey, commentId, adfBody) {
+  const data = await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}/comment/${encodeURIComponent(commentId)}`,
+    { method: 'PUT', body: { body: adfBody } }
+  )
+  return extractComment(data)
+}
+
+export async function deleteIssueComment(issueKey, commentId) {
+  await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}/comment/${encodeURIComponent(commentId)}`,
+    { method: 'DELETE' }
+  )
+}
+
+// 본인 정보 — 댓글 수정/삭제 권한 가늠용 (accountId 비교)
+let _myselfPromise = null
+let _myselfCache = null
+export async function fetchMyself() {
+  if (_myselfCache) return _myselfCache
+  if (_myselfPromise) return _myselfPromise
+  _myselfPromise = (async () => {
+    try {
+      const data = await jiraFetch('/myself')
+      if (!data?.accountId) return null
+      const urls = data.avatarUrls || {}
+      _myselfCache = {
+        accountId: data.accountId,
+        displayName: data.displayName || '',
+        avatarUrl: urls['32x32'] || urls['48x48'] || urls['24x24'] || urls['16x16'] || '',
+      }
+      return _myselfCache
+    } catch (e) {
+      console.warn('현재 사용자 조회 실패:', e)
+      return null
+    } finally {
+      _myselfPromise = null
+    }
+  })()
+  return _myselfPromise
+}
+
+export function getCachedMyself() {
+  return _myselfCache
 }
 
 // 이 이슈에 대해 변경 가능한 이슈 유형 목록 조회.
@@ -569,6 +627,30 @@ function extractAttachments(value) {
     contentUrl: a.content || '',  // 원본 다운로드 URL
     thumbnailUrl: a.thumbnail || '',
   }))
+}
+
+// 댓글 단건 정규화. body는 Cloud의 ADF doc.
+function extractComment(c) {
+  if (!c) return null
+  const a = c.author || {}
+  const urls = a.avatarUrls || {}
+  return {
+    id: String(c.id || ''),
+    author: {
+      accountId: a.accountId || '',
+      displayName: a.displayName || '',
+      avatarUrl: urls['32x32'] || urls['48x48'] || urls['24x24'] || urls['16x16'] || '',
+    },
+    bodyAdf: c.body || null,
+    created: c.created || '',
+    updated: c.updated || '',
+  }
+}
+
+function extractComments(value) {
+  // 이슈 상세 응답의 comment 필드 형태: { comments: [], total, maxResults, ... }
+  const list = Array.isArray(value?.comments) ? value.comments : (Array.isArray(value) ? value : [])
+  return list.map(extractComment).filter(Boolean)
 }
 
 // 첨부/이미지 바이너리를 인증 프록시로 받아 Blob URL 생성

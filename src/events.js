@@ -20,6 +20,10 @@ import {
   updateIssueSummary,
   fetchIssueTypes,
   updateIssueType,
+  addIssueComment,
+  updateIssueComment,
+  deleteIssueComment,
+  fetchMyself,
   getCachedTransitions,
   setCachedTransitions,
   invalidateTransitionsCache,
@@ -29,6 +33,7 @@ import {
   setCachedIssueTypes,
 } from './jira.js'
 import { detectLossyFeatures, isEmptyAdf } from './adfProsemirror.js'
+import { textToAdf, adfToText } from './adf.js'
 import { createEditor, destroyEditor, getCurrentAdf, runCommand, setEditable } from './tiptap.js'
 import {
   loadSessions,
@@ -233,6 +238,17 @@ function handleGlobalKeydown(e) {
     return
   }
   if (state.issueDetailModal) {
+    // 댓글 삭제 확인 → ESC로 취소
+    if (state.issueDetailModal.deletingCommentId && !state.issueDetailModal.commentSubmitting) {
+      state.issueDetailModal.deletingCommentId = null
+      render(modalsOnly)
+      return
+    }
+    // 댓글 편집 중이면 ESC로 편집만 취소
+    if (state.issueDetailModal.editingCommentId && !state.issueDetailModal.editingCommentSaving) {
+      cancelEditComment()
+      return
+    }
     // 편집 중이면 ESC로 편집만 취소 (모달은 유지)
     if (state.issueDetailModal.editing) {
       cancelIssueDetailEdit()
@@ -626,6 +642,221 @@ async function performTypeChange(issueKey, typeInfo) {
   }
 }
 
+// ========== 댓글 CRUD ==========
+// 댓글 영역의 모든 버튼/입력을 매 bindEvents 호출마다 (재)바인드.
+// on() 헬퍼가 element별 1회만 바인드하므로 modals 재렌더로 element가 새로 생기면 자동 재바인드된다.
+function bindCommentEvents() {
+  const m = state.issueDetailModal
+  if (!m || !m.data) return
+
+  // 새 댓글 작성 textarea: draft를 state에 보존 (재렌더로 input 사라져도 복원)
+  const composeInput = document.getElementById('detail-comment-input')
+  if (composeInput) {
+    on(composeInput, 'input', () => {
+      const cur = state.issueDetailModal
+      if (cur) cur.commentDraft = composeInput.value
+    })
+  }
+
+  // 새 댓글 작성 버튼
+  const submitBtn = document.getElementById('detail-comment-submit')
+  if (submitBtn) on(submitBtn, 'click', submitNewComment)
+
+  // 각 댓글의 수정/삭제/취소/저장
+  document.querySelectorAll('[data-action="edit-comment"]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      const id = btn.dataset.commentId
+      startEditComment(id)
+    })
+  })
+  document.querySelectorAll('[data-action="cancel-edit-comment"]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      cancelEditComment()
+    })
+  })
+  document.querySelectorAll('[data-action="save-edit-comment"]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      saveEditComment(btn.dataset.commentId)
+    })
+  })
+  document.querySelectorAll('[data-action="delete-comment"]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      const cur = state.issueDetailModal
+      if (!cur) return
+      cur.deletingCommentId = btn.dataset.commentId
+      cur.commentError = null
+      render({ sections: ['modals'] })
+    })
+  })
+  document.querySelectorAll('[data-action="cancel-delete-comment"]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      const cur = state.issueDetailModal
+      if (!cur || cur.commentSubmitting) return
+      cur.deletingCommentId = null
+      render({ sections: ['modals'] })
+    })
+  })
+  document.querySelectorAll('[data-action="confirm-delete-comment"]').forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation()
+      confirmDeleteComment(btn.dataset.commentId)
+    })
+  })
+
+  // 편집 모드 textarea: draft 보존
+  if (m.editingCommentId) {
+    const editInput = document.getElementById(`detail-comment-edit-${m.editingCommentId}`)
+    if (editInput) {
+      on(editInput, 'input', () => {
+        const cur = state.issueDetailModal
+        if (cur) cur.editingCommentDraft = editInput.value
+      })
+      // 처음 편집 진입 시 포커스 + 커서 끝
+      if (!m._editFocused) {
+        m._editFocused = true
+        editInput.focus()
+        const v = editInput.value
+        editInput.setSelectionRange(v.length, v.length)
+      }
+    }
+  } else {
+    if (m._editFocused) m._editFocused = false
+  }
+}
+
+async function submitNewComment() {
+  const m = state.issueDetailModal
+  if (!m || m.commentSubmitting) return
+  const draft = (m.commentDraft || '').trim()
+  if (!draft) {
+    m.commentError = '내용을 입력하세요.'
+    render({ sections: ['modals'] })
+    return
+  }
+  const adf = textToAdf(draft)
+  if (!adf) {
+    m.commentError = '내용을 입력하세요.'
+    render({ sections: ['modals'] })
+    return
+  }
+  m.commentSubmitting = true
+  m.commentError = null
+  render({ sections: ['modals'] })
+  try {
+    const created = await addIssueComment(m.key, adf)
+    const cur = state.issueDetailModal
+    if (!cur || cur.key !== m.key) return
+    if (cur.data) {
+      cur.data.comments = [...(cur.data.comments || []), created]
+    }
+    cur.commentDraft = ''
+    showToast('댓글을 작성했습니다.', '✓')
+  } catch (err) {
+    console.error('댓글 작성 실패:', err)
+    const cur = state.issueDetailModal
+    if (cur) cur.commentError = `작성 실패: ${formatJiraError(err)}`
+    showToast(`댓글 작성 실패: ${formatJiraError(err)}`, '⚠')
+  } finally {
+    const cur = state.issueDetailModal
+    if (cur) cur.commentSubmitting = false
+    render({ sections: ['modals'] })
+  }
+}
+
+function startEditComment(commentId) {
+  const m = state.issueDetailModal
+  if (!m || !m.data) return
+  const c = (m.data.comments || []).find(x => x.id === commentId)
+  if (!c) return
+  m.editingCommentId = commentId
+  m.editingCommentDraft = adfToText(c.bodyAdf)
+  m.editingCommentSaving = false
+  m.commentError = null
+  m.deletingCommentId = null
+  m._editFocused = false
+  render({ sections: ['modals'] })
+}
+
+function cancelEditComment() {
+  const m = state.issueDetailModal
+  if (!m || m.editingCommentSaving) return
+  m.editingCommentId = null
+  m.editingCommentDraft = null
+  m.commentError = null
+  render({ sections: ['modals'] })
+}
+
+async function saveEditComment(commentId) {
+  const m = state.issueDetailModal
+  if (!m || m.editingCommentSaving) return
+  const draft = (m.editingCommentDraft || '').trim()
+  if (!draft) {
+    m.commentError = '내용을 입력하세요.'
+    render({ sections: ['modals'] })
+    return
+  }
+  const adf = textToAdf(draft)
+  if (!adf) {
+    m.commentError = '내용을 입력하세요.'
+    render({ sections: ['modals'] })
+    return
+  }
+  m.editingCommentSaving = true
+  m.commentError = null
+  render({ sections: ['modals'] })
+  try {
+    const updated = await updateIssueComment(m.key, commentId, adf)
+    const cur = state.issueDetailModal
+    if (!cur || cur.key !== m.key) return
+    if (cur.data) {
+      cur.data.comments = (cur.data.comments || []).map(c =>
+        c.id === commentId ? updated : c
+      )
+    }
+    cur.editingCommentId = null
+    cur.editingCommentDraft = null
+    showToast('댓글을 수정했습니다.', '✓')
+  } catch (err) {
+    console.error('댓글 수정 실패:', err)
+    const cur = state.issueDetailModal
+    if (cur) cur.commentError = `수정 실패: ${formatJiraError(err)}`
+    showToast(`댓글 수정 실패: ${formatJiraError(err)}`, '⚠')
+  } finally {
+    const cur = state.issueDetailModal
+    if (cur) cur.editingCommentSaving = false
+    render({ sections: ['modals'] })
+  }
+}
+
+async function confirmDeleteComment(commentId) {
+  const m = state.issueDetailModal
+  if (!m || m.commentSubmitting) return
+  m.commentSubmitting = true
+  render({ sections: ['modals'] })
+  try {
+    await deleteIssueComment(m.key, commentId)
+    const cur = state.issueDetailModal
+    if (!cur || cur.key !== m.key) return
+    if (cur.data) {
+      cur.data.comments = (cur.data.comments || []).filter(c => c.id !== commentId)
+    }
+    cur.deletingCommentId = null
+    showToast('댓글을 삭제했습니다.', '✓')
+  } catch (err) {
+    console.error('댓글 삭제 실패:', err)
+    showToast(`댓글 삭제 실패: ${formatJiraError(err)}`, '⚠')
+  } finally {
+    const cur = state.issueDetailModal
+    if (cur) cur.commentSubmitting = false
+    render({ sections: ['modals'] })
+  }
+}
+
 // 매 bindEvents 호출 후 실행: 편집 모드면 tiptap을 마운트
 // 저장 중에도 외부 사정으로 재렌더가 일어날 수 있으므로 다시 마운트하되,
 // 입력은 잠근 상태로 유지한다.
@@ -643,6 +874,13 @@ function ensureIssueDetailEditor() {
 async function openIssueDetailModal(issueKey) {
   state.issueDetailModal = { key: issueKey, loading: true, data: null, error: null, blobUrls: [] }
   render({ sections: ['modals'] })
+
+  // 본인 정보(댓글 권한 비교용)는 백그라운드로 미리 받아둠 — 결과가 늦게 와도 댓글이 다시 그려지면 반영됨
+  fetchMyself().then(me => {
+    if (me && state.issueDetailModal && state.issueDetailModal.key === issueKey) {
+      render({ sections: ['modals'] })
+    }
+  })
 
   try {
     const detail = await fetchIssueDetail(issueKey)
@@ -1871,6 +2109,9 @@ export function bindEvents() {
 
   // 편집 모드 tiptap 에디터 마운트 (중복 마운트 방지)
   ensureIssueDetailEditor()
+
+  // ===== 댓글 영역 =====
+  bindCommentEvents()
 
   // 일감 미지정 세션 종료 모달의 이슈 키 입력: 자동완성 드롭다운 + blur 검증
   const finishIssueInput = document.getElementById('finish-issue-key')

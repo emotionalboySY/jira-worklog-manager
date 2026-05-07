@@ -17,6 +17,7 @@ import {
 } from '../utils.js'
 import { loadWorklogs } from '../data.js'
 import { renderAdf } from '../adf.js'
+import { getCachedMyself } from '../jira.js'
 
 // 이슈 키 형식 검사 (예: DKT-123) — ISSUE_KEY_PATTERN도 여기에서 재노출
 export { ISSUE_KEY_PATTERN }
@@ -1124,6 +1125,7 @@ export function renderIssueDetailModal() {
         </div>
         <div class="detail-body">
           ${descriptionSection}
+          ${renderDetailComments(m, key)}
         </div>
         <div class="detail-footer">
           ${footerHtml}
@@ -1131,6 +1133,130 @@ export function renderIssueDetailModal() {
       </div>
     </div>
   `
+}
+
+// ========== 댓글 영역 ==========
+// 표시: ADF→HTML 렌더. 작성/수정: textarea(plain text) → ADF로 변환해 전송.
+// 본인 작성 댓글에만 수정/삭제 버튼 노출 (myself accountId 비교).
+function renderDetailComments(m, issueKey) {
+  // 상세 본문이 아직 로딩 중이면 비워둠 (descriptionSection이 로딩 표시 중)
+  if (m.loading && !m.data?.comments) {
+    return ''
+  }
+  if (m.error) return ''
+
+  const comments = m.data?.comments || []
+  const myAccountId = getCachedMyself()?.accountId || ''
+  const submitting = !!m.commentSubmitting
+  const commentDraft = m.commentDraft != null ? m.commentDraft : ''
+  const commentError = m.commentError || ''
+
+  const itemsHtml = comments.length === 0
+    ? `<div class="detail-comment-empty">아직 댓글이 없습니다.</div>`
+    : comments.map(c => renderCommentItem(c, m, myAccountId)).join('')
+
+  const composeError = !m.editingCommentId && commentError
+    ? `<div class="detail-comment-error">${escapeHtml(commentError)}</div>`
+    : ''
+
+  return `
+    <div class="detail-comments">
+      <div class="detail-section-label detail-comments-header">댓글 ${comments.length}</div>
+      <div class="detail-comments-list">
+        ${itemsHtml}
+      </div>
+      <div class="detail-comment-compose">
+        <textarea class="modal-textarea detail-comment-input" id="detail-comment-input"
+          placeholder="댓글을 입력하세요..." ${submitting ? 'disabled' : ''}>${escapeHtml(commentDraft)}</textarea>
+        ${composeError}
+        <div class="detail-comment-compose-actions">
+          <button class="btn btn-primary btn-sm" id="detail-comment-submit" ${submitting ? 'disabled' : ''}>
+            ${submitting ? '<span class="btn-spinner"></span> 작성 중…' : '댓글 작성'}
+          </button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function renderCommentItem(c, m, myAccountId) {
+  const isMine = !!c.author?.accountId && c.author.accountId === myAccountId
+  const isEditing = m.editingCommentId === c.id
+  const isDeleting = m.deletingCommentId === c.id
+  const editing = isEditing
+  const editingDraft = (editing && m.editingCommentDraft != null) ? m.editingCommentDraft : ''
+  const editingSaving = editing && !!m.editingCommentSaving
+  const editError = editing && m.commentError ? m.commentError : ''
+  const edited = c.updated && c.updated !== c.created
+
+  const avatar = c.author?.avatarUrl
+    ? `<img class="detail-comment-avatar" src="${escapeHtml(c.author.avatarUrl)}" alt="${escapeHtml(c.author.displayName)}" onerror="this.classList.add('broken')" />`
+    : `<span class="detail-comment-avatar detail-comment-avatar-empty"></span>`
+
+  const meta = `
+    <span class="detail-comment-author">${escapeHtml(c.author?.displayName || '')}</span>
+    <span class="detail-comment-time">${escapeHtml(formatCommentTime(c.created))}${edited ? ' · 수정됨' : ''}</span>
+  `
+
+  const actions = isMine && !editing && !isDeleting
+    ? `
+      <div class="detail-comment-actions">
+        <button class="btn-link" data-action="edit-comment" data-comment-id="${escapeHtml(c.id)}">수정</button>
+        <button class="btn-link btn-link-danger" data-action="delete-comment" data-comment-id="${escapeHtml(c.id)}">삭제</button>
+      </div>
+    `
+    : ''
+
+  const body = editing
+    ? `
+      <div class="detail-comment-edit">
+        <textarea class="modal-textarea detail-comment-edit-input" id="detail-comment-edit-${escapeHtml(c.id)}"
+          ${editingSaving ? 'disabled' : ''}>${escapeHtml(editingDraft)}</textarea>
+        ${editError ? `<div class="detail-comment-error">${escapeHtml(editError)}</div>` : ''}
+        <div class="detail-comment-edit-actions">
+          <button class="btn btn-sm" data-action="cancel-edit-comment" ${editingSaving ? 'disabled' : ''}>취소</button>
+          <button class="btn btn-primary btn-sm" data-action="save-edit-comment" data-comment-id="${escapeHtml(c.id)}" ${editingSaving ? 'disabled' : ''}>
+            ${editingSaving ? '<span class="btn-spinner"></span> 저장 중…' : '저장'}
+          </button>
+        </div>
+      </div>
+    `
+    : `<div class="detail-comment-body">${c.bodyAdf ? renderAdf(c.bodyAdf) : ''}</div>`
+
+  const deleteConfirm = isDeleting
+    ? `
+      <div class="detail-comment-delete-confirm">
+        <span>이 댓글을 삭제하시겠습니까?</span>
+        <button class="btn btn-sm" data-action="cancel-delete-comment" ${m.commentSubmitting ? 'disabled' : ''}>취소</button>
+        <button class="btn btn-danger btn-sm" data-action="confirm-delete-comment" data-comment-id="${escapeHtml(c.id)}" ${m.commentSubmitting ? 'disabled' : ''}>
+          ${m.commentSubmitting ? '<span class="btn-spinner"></span> 삭제 중…' : '삭제'}
+        </button>
+      </div>
+    `
+    : ''
+
+  return `
+    <div class="detail-comment" data-comment-id="${escapeHtml(c.id)}">
+      ${avatar}
+      <div class="detail-comment-main">
+        <div class="detail-comment-head">
+          ${meta}
+          ${actions}
+        </div>
+        ${body}
+        ${deleteConfirm}
+      </div>
+    </div>
+  `
+}
+
+// 'YYYY-MM-DDTHH:MM:SS.sss+ZZZZ' → 'YYYY-MM-DD HH:MM' (로컬)
+function formatCommentTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 // 요약 영역. 보기 모드에서는 클릭 시 인라인 편집 모드로 전환.
