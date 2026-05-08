@@ -11,6 +11,8 @@
 - 코드 수정 후 git push하면 Vercel이 자동 배포, 사용자가 Chrome에서 실제 URL로 테스트
 - git author: emotionalboySY <gs_k_bear17@naver.com>
 
-## TODO (다음 작업)
-- [ ] 이슈 목록에서 이슈 클릭 시 새 탭으로 Jira 이슈 페이지 열기 (`https://{siteName}.atlassian.net/browse/{issueKey}`)
-- [ ] 요약 탭 일별 업무 시간 차트에서 날짜 클릭 시 해당 날짜의 작업 로그 기록 탭으로 이동
+## 환경 변수 (Vercel)
+- `VITE_ATLASSIAN_CLIENT_ID`: 프론트엔드 번들에 포함되는 OAuth 클라이언트 ID (공개 가능)
+- `ATLASSIAN_CLIENT_SECRET`: 서버 전용 클라이언트 시크릿 (절대 클라이언트 노출 금지)
+- `ATLASSIAN_CLIENT_ID` (선택): 서버 전용 별칭. 미설정 시 `VITE_ATLASSIAN_CLIENT_ID` 사용
+- `ALLOWED_ORIGINS` (선택, 권장): 쉼표 구분된 화이트리스트. 예: `https://your-app.vercel.app,http://localhost:5173`. 미설정 시 동일 호스트 origin만 허용

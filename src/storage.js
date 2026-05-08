@@ -231,6 +231,11 @@ export function getDayOffLabel(type) {
 }
 
 // ========== 즐겨찾는 이슈 ==========
+// isFavorite는 이슈 행마다 호출되므로(50행 = 50번 localStorage 읽기) 키 Set만 별도 캐시.
+// loadFavorites/saveFavorites 자체는 호출자가 mutate 후 saveFavorites로 저장하는 패턴이라
+// 캐싱하면 의도치 않은 공유가 발생할 수 있어 손대지 않음.
+let _favoriteKeySet = null
+
 export function loadFavorites() {
   try {
     const raw = localStorage.getItem(FAVORITES_KEY)
@@ -242,10 +247,14 @@ export function loadFavorites() {
 
 export function saveFavorites(list) {
   try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(list)) } catch {}
+  _favoriteKeySet = null  // 다음 isFavorite 호출 시 재구축
 }
 
 export function isFavorite(issueKey) {
-  return loadFavorites().some(f => f.issueKey === issueKey)
+  if (_favoriteKeySet === null) {
+    _favoriteKeySet = new Set(loadFavorites().map(f => f.issueKey))
+  }
+  return _favoriteKeySet.has(issueKey)
 }
 
 // 특정 이슈 키의 요약 텍스트를 세션·즐겨찾기 저장소에 모두 반영

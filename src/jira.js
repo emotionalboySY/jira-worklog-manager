@@ -1,7 +1,10 @@
 // ========== Jira API 호출 모듈 ==========
 import { jiraFetch } from './auth.js'
+import { toDateString, formatHHMM, formatMinutes } from './utils.js'
 
-const FIELDS = 'summary,issuetype,status,priority,reporter,assignee,watches,parent'
+// 이슈 목록/검색에 필요한 필드. priority/priorityIconUrl은 상세 모달에서만 필요해
+// fetchIssueDetail의 별도 fetch에서 가져오도록 분리(목록 응답 크기 절감).
+const FIELDS = 'summary,issuetype,status,reporter,assignee,watches,parent'
 
 // 이슈의 parent(상위 항목/에픽) 추출. 없으면 null
 function extractParent(fields) {
@@ -39,6 +42,7 @@ async function fetchAllPages(jql, fields = FIELDS) {
   let nextPageToken = null
   // 의도치 않은 무한 루프 안전 차단 (한 번 호출에 최대 1만 건)
   const HARD_LIMIT_PAGES = 100
+  let truncated = false
 
   for (let page = 0; page < HARD_LIMIT_PAGES; page++) {
     let url = `/search/jql?jql=${encodeURIComponent(jql)}&fields=${fields}&maxResults=${maxResults}`
@@ -53,7 +57,17 @@ async function fetchAllPages(jql, fields = FIELDS) {
     if (!data.nextPageToken) break
     // 같은 토큰을 다시 받으면 서버 측 비정상 — 안전하게 종료
     if (data.nextPageToken === nextPageToken) break
+
+    // 다음 루프가 hard limit을 넘기는지 사전 감지
+    if (page === HARD_LIMIT_PAGES - 1) {
+      truncated = true
+      break
+    }
     nextPageToken = data.nextPageToken
+  }
+
+  if (truncated) {
+    console.warn(`[jira] fetchAllPages: HARD_LIMIT_PAGES(${HARD_LIMIT_PAGES}) 도달 — 결과가 잘렸을 수 있음. JQL: ${jql}`)
   }
 
   return allIssues
@@ -93,8 +107,6 @@ export async function fetchMyIssues() {
       typeIconUrl: fields.issuetype?.iconUrl || '',
       status: fields.status?.name || '',
       statusCategory: fields.status?.statusCategory?.key || 'new',
-      priority: fields.priority?.name || '',
-      priorityIconUrl: fields.priority?.iconUrl || '',
       parent: extractParent(fields),
       assignee: extractAssignee(fields),
       role,
@@ -161,8 +173,6 @@ export async function searchIssuesByKey(query, projectKeys, { signal } = {}) {
       typeIconUrl: fields.issuetype?.iconUrl || '',
       status: fields.status?.name || '',
       statusCategory: fields.status?.statusCategory?.key || 'new',
-      priority: fields.priority?.name || '',
-      priorityIconUrl: fields.priority?.iconUrl || '',
       parent: extractParent(fields),
       assignee: extractAssignee(fields),
       role,
@@ -186,23 +196,9 @@ function extractPlainText(adfDoc) {
   return text
 }
 
+// utils.js의 공통 함수 사용 (시간 포맷은 한 곳에서만 관리)
 function formatTimeHHMM(date) {
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
-function formatDurationStr(minutes) {
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  if (h === 0) return `${m}분`
-  if (m === 0) return `${h}시간`
-  return `${h}시간 ${m}분`
-}
-
-function toLocalDateStr(date) {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  return formatHHMM(date.getHours() * 60 + date.getMinutes())
 }
 
 // 내 작업 로그 조회 (날짜 범위: "YYYY-MM-DD")
@@ -260,7 +256,7 @@ export async function fetchMyWorklogs(startDate, endDate) {
       })
       .forEach(w => {
         const started = new Date(w.started)
-        const dateStr = toLocalDateStr(started)
+        const dateStr = toDateString(started)
         const timeSpentMinutes = Math.round(w.timeSpentSeconds / 60)
         const endTime = new Date(started.getTime() + w.timeSpentSeconds * 1000)
 
@@ -271,7 +267,7 @@ export async function fetchMyWorklogs(startDate, endDate) {
           startTime: formatTimeHHMM(started),
           endTime: formatTimeHHMM(endTime),
           durationMinutes: timeSpentMinutes,
-          duration: formatDurationStr(timeSpentMinutes),
+          duration: formatMinutes(timeSpentMinutes),
           comment: extractPlainText(w.comment),
         }
 
@@ -754,10 +750,14 @@ export async function fetchAttachmentBlobUrl(url) {
     const res = await fetch(`/api/attachment?url=${encodeURIComponent(apiUrl)}`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.warn('첨부 fetch 실패:', res.status, apiUrl)
+      return null
+    }
     const blob = await res.blob()
     return URL.createObjectURL(blob)
-  } catch {
+  } catch (e) {
+    console.warn('첨부 fetch 예외:', e)
     return null
   }
 }

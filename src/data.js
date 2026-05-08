@@ -17,6 +17,7 @@ import {
 } from './jira.js'
 import { showToast } from './ui.js'
 import { render, resetIssueListScroll } from './render.js'
+import { getProjectKeysOrFallback } from './utils.js'
 
 export async function loadIssues() {
   if (state.issuesLoading) return
@@ -196,14 +197,18 @@ export async function refreshIssues() {
 
 // 자동 새로고침: 토스트/로딩 스피너 없이 조용히 이슈 + 현재 월 작업 로그를 재조회
 // 사용자 액션 5분 비활동 후 호출되며, 데이터가 바뀌었어도 토스트 알림 없이 화면만 갱신
+// 이슈와 워크로그를 병렬 호출 (서로 독립이라 순차로 할 이유가 없음)
 export async function autoReloadIssuesAndWorklogs() {
   if (state.issuesLoading || state.worklogsLoading) return
 
-  let issuesUpdated = false
-  let worklogsUpdated = false
+  const year = state.calendarYear
+  const month = state.calendarMonth
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
+  const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-  // 1) 이슈 목록 (sprint 필터 상태 유지)
-  try {
+  const issuesTask = (async () => {
     const promises = [fetchMyIssues(), fetchProjects()]
     if (state.showSprintOnly) promises.push(fetchActiveSprintIssueKeys())
     const [freshIssues, freshProjects, sprintKeys] = await Promise.all(promises)
@@ -212,19 +217,9 @@ export async function autoReloadIssuesAndWorklogs() {
     state.realProjects = freshProjects
     state.issuesLoaded = true
     saveIssuesCache(freshIssues, freshProjects)
-    issuesUpdated = true
-  } catch (e) {
-    console.error('이슈 자동 새로고침 실패:', e)
-  }
+  })().catch(e => { console.error('이슈 자동 새로고침 실패:', e); return Promise.reject(e) })
 
-  // 2) 현재 보고 있는 달의 작업 로그
-  const year = state.calendarYear
-  const month = state.calendarMonth
-  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
-  try {
-    const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
-    const lastDay = new Date(year, month + 1, 0).getDate()
-    const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  const worklogsTask = (async () => {
     const freshLogs = await fetchMyWorklogs(startDate, endDate)
     for (const key of Object.keys(state.worklogsByDate)) {
       if (key.startsWith(monthKey)) delete state.worklogsByDate[key]
@@ -232,12 +227,12 @@ export async function autoReloadIssuesAndWorklogs() {
     mergeLogs(freshLogs)
     state.worklogsLoadedMonths.add(monthKey)
     saveWorklogCache(monthKey, freshLogs)
-    worklogsUpdated = true
-  } catch (e) {
-    console.error('작업 로그 자동 새로고침 실패:', e)
-  }
+  })().catch(e => { console.error('작업 로그 자동 새로고침 실패:', e); return Promise.reject(e) })
 
-  if (issuesUpdated || worklogsUpdated) render()
+  // allSettled로 한쪽이 실패해도 다른 쪽 결과는 반영
+  const results = await Promise.allSettled([issuesTask, worklogsTask])
+  const anyUpdated = results.some(r => r.status === 'fulfilled')
+  if (anyUpdated) render()
 }
 
 // 현재 월 작업 로그 강제 새로고침
@@ -291,9 +286,7 @@ export async function performSearch() {
 
   let results
   try {
-    const projectKeys = state.realProjects.length > 0
-      ? state.realProjects.map(p => p.key)
-      : ['DK', 'DKT', 'DD', 'RM']
+    const projectKeys = getProjectKeysOrFallback()
     results = await searchIssuesByKey(query, projectKeys)
   } catch (e) {
     console.error('검색 실패:', e)

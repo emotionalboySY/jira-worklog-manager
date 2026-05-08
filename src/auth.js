@@ -7,6 +7,8 @@ function getRedirectUri() {
 }
 
 // 인증 URL 생성 후 리다이렉트
+// prompt:'consent'는 매 로그인마다 동의 화면을 강제 → refresh_token 정상 흐름에서는 불필요.
+// 권한 이슈 디버깅이 필요하면 일시적으로 추가.
 export function login() {
   const state = crypto.randomUUID()
   sessionStorage.setItem('oauth_state', state)
@@ -18,7 +20,6 @@ export function login() {
     redirect_uri: getRedirectUri(),
     state,
     response_type: 'code',
-    prompt: 'consent',
   })
 
   window.location.href = `https://auth.atlassian.com/authorize?${params}`
@@ -110,6 +111,17 @@ export async function refreshAccessToken() {
   }
 }
 
+// 429 응답을 받으면 Retry-After만큼 기다렸다가 1회 재시도.
+// Atlassian의 동적 rate limit 대응 (https://developer.atlassian.com/cloud/jira/platform/rate-limiting/).
+async function fetchWithRateLimit(doFetch, token) {
+  let res = await doFetch(token)
+  if (res.status !== 429) return res
+  const headerVal = res.headers.get('Retry-After') || res.headers.get('retry-after') || '1'
+  const retrySec = Math.min(Math.max(parseInt(headerVal, 10) || 1, 1), 30)
+  await new Promise(resolve => setTimeout(resolve, retrySec * 1000))
+  return doFetch(token)
+}
+
 // Jira API 호출 (프록시 경유)
 // 성공: JSON 응답 반환 (204 No Content나 JSON이 아닌 경우 null)
 // 실패: HTTP 상태 에러는 throw하여 호출부 try/catch가 감지 가능하도록 함
@@ -132,14 +144,14 @@ export async function jiraFetch(path, options = {}) {
     ...(options.signal ? { signal: options.signal } : {}),
   })
 
-  let res = await doFetch(accessToken)
+  let res = await fetchWithRateLimit(doFetch, accessToken)
 
-  // 401이면 토큰 갱신 후 재시도
+  // 401이면 토큰 갱신 후 재시도 (재시도 안에서도 429는 한 번 더 백오프)
   if (res.status === 401) {
     const refreshed = await refreshAccessToken()
     if (!refreshed) return null
     const newToken = localStorage.getItem('jira_access_token')
-    res = await doFetch(newToken)
+    res = await fetchWithRateLimit(doFetch, newToken)
   }
 
   if (!res.ok) {
@@ -162,18 +174,27 @@ async function fetchAndSaveCloudId() {
   const accessToken = localStorage.getItem('jira_access_token')
   if (!accessToken) return
 
-  const res = await fetch(`/api/proxy?url=${encodeURIComponent('https://api.atlassian.com/oauth/token/accessible-resources')}`, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-  })
+  try {
+    const res = await fetch(`/api/proxy?url=${encodeURIComponent('https://api.atlassian.com/oauth/token/accessible-resources')}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    })
 
-  const resources = await res.json()
+    if (!res.ok) {
+      console.error('Cloud ID 조회 실패:', res.status)
+      return
+    }
 
-  if (Array.isArray(resources) && resources.length > 0) {
-    localStorage.setItem('jira_cloud_id', resources[0].id)
-    localStorage.setItem('jira_site_name', resources[0].name)
+    const resources = await res.json()
+
+    if (Array.isArray(resources) && resources.length > 0) {
+      localStorage.setItem('jira_cloud_id', resources[0].id)
+      localStorage.setItem('jira_site_name', resources[0].name)
+    }
+  } catch (e) {
+    console.error('Cloud ID 조회 실패:', e)
   }
 }
 
@@ -192,11 +213,13 @@ function saveTokens(data) {
   localStorage.setItem('jira_token_expires_at', expiresAt.toString())
 }
 
-// URL에서 OAuth 파라미터 제거
+// URL에서 OAuth 파라미터 제거 (성공/실패 양쪽 케이스 커버)
 function cleanUrl() {
   const url = new URL(window.location)
   url.searchParams.delete('code')
   url.searchParams.delete('state')
+  url.searchParams.delete('error')
+  url.searchParams.delete('error_description')
   window.history.replaceState({}, '', url.pathname)
 }
 

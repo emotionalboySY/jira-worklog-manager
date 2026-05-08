@@ -14,6 +14,7 @@ import {
   getActiveIssues,
   getStatusCss,
   getShortStatusLabel,
+  getProjectKeysOrFallback,
 } from '../utils.js'
 import { loadWorklogs } from '../data.js'
 import { renderAdf } from '../adf.js'
@@ -1049,7 +1050,7 @@ export function renderKeyDropdown(ctx, candidates, loading = false) {
       selectKeyCandidate(ctx, el.dataset.key, el.dataset.summary || '')
     })
     el.addEventListener('mouseenter', () => {
-      state[ctx.activeIdxKey] = parseInt(el.dataset.idx)
+      state[ctx.activeIdxKey] = parseInt(el.dataset.idx, 10)
       dropdown.querySelectorAll('.autocomplete-item').forEach((it, i) => {
         it.classList.toggle('active', i === state[ctx.activeIdxKey])
       })
@@ -1097,9 +1098,7 @@ export function updateKeyDropdown(ctx) {
     const controller = new AbortController()
     state[ctx.controllerKey] = controller
     try {
-      const projectKeys = (state.realProjects && state.realProjects.length)
-        ? state.realProjects.map(p => p.key)
-        : ['DK', 'DKT', 'DD', 'RM']
+      const projectKeys = getProjectKeysOrFallback()
       const apiResults = await searchIssuesByKey(q, projectKeys, { signal: controller.signal })
       if (controller.signal.aborted) return
       const currentInput = document.getElementById(ctx.inputId)

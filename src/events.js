@@ -1,7 +1,7 @@
 // 전체 이벤트 바인딩 + 타이머 업데이트
 import flatpickr from 'flatpickr'
 import { Korean } from 'flatpickr/dist/l10n/ko.js'
-import { state, NO_ISSUE_KEY, NO_ISSUE_SUMMARY, CLOSED_CATEGORY, EXCLUDED_CREATE_PROJECT_KEYS } from './state.js'
+import { state, NO_ISSUE_KEY, NO_ISSUE_SUMMARY, CLOSED_CATEGORY, EXCLUDED_CREATE_PROJECT_KEYS, resetInMemoryUserData } from './state.js'
 import { logout, isLoggedIn } from './auth.js'
 import {
   fetchIssueMeta,
@@ -69,6 +69,8 @@ import {
   buildWorklogSegments,
   formatJiraError,
   formatLunchRange,
+  getProjectKeysOrFallback,
+  withSpinner,
 } from './utils.js'
 import { toggleTheme, showToast, showContextMenu, applyPreferences } from './ui.js'
 import {
@@ -90,6 +92,7 @@ import {
   renderManualKeyHint,
   selectManualKeyCandidate,
   updateManualKeyDropdown,
+  MANUAL_KEY_CTX,
   FINISH_KEY_CTX,
   SWAP_KEY_CTX,
   renderKeyHint,
@@ -118,6 +121,42 @@ function on(el, event, handler, options) {
 // 취소/X 버튼과 ESC로만 닫는다.
 let globalKeyListenerRegistered = false
 let globalClickListenerRegistered = false
+
+// 이슈 키 자동완성 드롭다운의 키보드 네비게이션 핸들러.
+// finish-issue-key / swap-issue-key / manual-issue-key 세 곳이 동일 구조라 헬퍼로 통합.
+// ctx: { dropdownId, activeIdxKey, selectCtx }  (selectCtx = selectKeyCandidate에 넘길 ctx)
+function bindKeyDropdownNav(input, ctx) {
+  on(input, 'keydown', (e) => {
+    const dropdown = document.getElementById(ctx.dropdownId)
+    if (!dropdown || dropdown.style.display === 'none') return
+    const items = dropdown.querySelectorAll('.autocomplete-item')
+    if (items.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      state[ctx.activeIdxKey] = (state[ctx.activeIdxKey] + 1) % items.length
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      state[ctx.activeIdxKey] = (state[ctx.activeIdxKey] - 1 + items.length) % items.length
+    } else if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
+      // Enter만 누르면 드롭다운 선택, Ctrl+Enter는 제출 (전역 핸들러로 위임)
+      if (state[ctx.activeIdxKey] >= 0) {
+        e.preventDefault()
+        const el = items[state[ctx.activeIdxKey]]
+        selectKeyCandidate(ctx.selectCtx, el.dataset.key, el.dataset.summary || '')
+        return
+      }
+    } else if (e.key === 'Escape') {
+      state[ctx.activeIdxKey] = -1
+      dropdown.style.display = 'none'
+      dropdown.innerHTML = ''
+      return
+    } else {
+      return
+    }
+    items.forEach((el, i) => el.classList.toggle('active', i === state[ctx.activeIdxKey]))
+    if (state[ctx.activeIdxKey] >= 0) items[state[ctx.activeIdxKey]].scrollIntoView({ block: 'nearest' })
+  })
+}
 
 // 즐겨찾기 패널을 닫힘 애니메이션과 함께 접기.
 // .is-closing 클래스로 역방향 애니메이션을 재생한 뒤 animationend에서 재렌더.
@@ -1151,9 +1190,7 @@ function triggerLinkSearch(idx) {
     const controller = new AbortController()
     link._searchController = controller
     try {
-      const projectKeys = (state.realProjects && state.realProjects.length)
-        ? state.realProjects.map(p => p.key)
-        : ['DK', 'DKT', 'DD', 'RM']
+      const projectKeys = getProjectKeysOrFallback()
       const results = await searchIssuesByKey(q, projectKeys, { signal: controller.signal })
       if (controller.signal.aborted) return
       const cur2 = state.showCreateIssue
@@ -1856,6 +1893,8 @@ export function bindEvents() {
   if (logoutBtn) {
     on(logoutBtn, 'click', () => {
       logout()
+      // 직전 사용자의 in-memory 데이터(이슈/워크로그/캐시) 정리
+      try { resetInMemoryUserData() } catch {}
       render()
     })
   }
@@ -2064,24 +2103,37 @@ export function bindEvents() {
   })
 
   // 이슈 검색
+  // IME 조합(한글 등) 중에는 검색 발화를 보류 — compositionend 시점에 한 번만 발화.
   const searchInput = document.getElementById('issue-search')
   if (searchInput) {
     let debounceTimer
-    on(searchInput, 'input', (e) => {
-      state.searchQuery = e.target.value
+    let composing = false
+    const triggerSearch = () => {
       clearTimeout(debounceTimer)
       if (!state.searchQuery.trim()) {
         state.searchResults = null
         state.searchLoading = false
         render()
         resetIssueListScroll()
-        // 렌더 후 포커스 복원
         document.getElementById('issue-search')?.focus()
         return
       }
       debounceTimer = setTimeout(() => performSearch(), 500)
+    }
+    on(searchInput, 'input', (e) => {
+      state.searchQuery = e.target.value
+      // IME 조합 중에는 부분 발화 방지
+      if (composing || e.isComposing) return
+      triggerSearch()
+    })
+    on(searchInput, 'compositionstart', () => { composing = true })
+    on(searchInput, 'compositionend', (e) => {
+      composing = false
+      state.searchQuery = e.target.value
+      triggerSearch()
     })
     on(searchInput, 'keydown', (e) => {
+      if (e.isComposing) return
       if (e.key === 'Enter') {
         clearTimeout(debounceTimer)
         performSearch()
@@ -2145,7 +2197,7 @@ export function bindEvents() {
   const pageSizeSelect = document.getElementById('page-size')
   if (pageSizeSelect) {
     on(pageSizeSelect, 'change', (e) => {
-      state.pageSize = parseInt(e.target.value)
+      state.pageSize = parseInt(e.target.value, 10)
       state.currentPage = 1
       render()
       resetIssueListScroll()
@@ -2155,7 +2207,7 @@ export function bindEvents() {
   // 페이지네이션
   document.querySelectorAll('[data-page]').forEach(btn => {
     on(btn, 'click', () => {
-      state.currentPage = parseInt(btn.dataset.page)
+      state.currentPage = parseInt(btn.dataset.page, 10)
       render()
       // 이슈 목록 상단으로 스크롤
       resetIssueListScroll()
@@ -2194,7 +2246,7 @@ export function bindEvents() {
   const calYearSelect = document.getElementById('cal-year')
   if (calYearSelect) {
     on(calYearSelect, 'change', (e) => {
-      state.calendarYear = parseInt(e.target.value)
+      state.calendarYear = parseInt(e.target.value, 10)
       // 미래 월 보정
       const now = new Date()
       if (state.calendarYear === now.getFullYear() && state.calendarMonth > now.getMonth()) {
@@ -2208,7 +2260,7 @@ export function bindEvents() {
   const calMonthSelect = document.getElementById('cal-month')
   if (calMonthSelect) {
     on(calMonthSelect, 'change', (e) => {
-      state.calendarMonth = parseInt(e.target.value)
+      state.calendarMonth = parseInt(e.target.value, 10)
       if (isLoggedIn() && state.issuesLoaded) loadWorklogs(state.calendarYear, state.calendarMonth)
       render()
     })
@@ -2925,35 +2977,10 @@ export function bindEvents() {
     on(finishIssueInput, 'focus', () => {
       if (finishIssueInput.value.trim()) updateKeyDropdown(FINISH_KEY_CTX)
     })
-    on(finishIssueInput, 'keydown', (e) => {
-      const dropdown = document.getElementById('finish-key-dropdown')
-      if (!dropdown || dropdown.style.display === 'none') return
-      const items = dropdown.querySelectorAll('.autocomplete-item')
-      if (items.length === 0) return
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        state.finishKeyActiveIdx = (state.finishKeyActiveIdx + 1) % items.length
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        state.finishKeyActiveIdx = (state.finishKeyActiveIdx - 1 + items.length) % items.length
-      } else if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
-        // Enter만 누르면 드롭다운 선택, Ctrl+Enter는 제출 (전역 핸들러로 위임)
-        if (state.finishKeyActiveIdx >= 0) {
-          e.preventDefault()
-          const el = items[state.finishKeyActiveIdx]
-          selectKeyCandidate(FINISH_KEY_CTX, el.dataset.key, el.dataset.summary || '')
-          return
-        }
-      } else if (e.key === 'Escape') {
-        state.finishKeyActiveIdx = -1
-        dropdown.style.display = 'none'
-        dropdown.innerHTML = ''
-        return
-      } else {
-        return
-      }
-      items.forEach((el, i) => el.classList.toggle('active', i === state.finishKeyActiveIdx))
-      if (state.finishKeyActiveIdx >= 0) items[state.finishKeyActiveIdx].scrollIntoView({ block: 'nearest' })
+    bindKeyDropdownNav(finishIssueInput, {
+      dropdownId: 'finish-key-dropdown',
+      activeIdxKey: 'finishKeyActiveIdx',
+      selectCtx: FINISH_KEY_CTX,
     })
     on(finishIssueInput, 'blur', async () => {
       setTimeout(() => {
@@ -3164,34 +3191,10 @@ export function bindEvents() {
     on(swapInput, 'focus', () => {
       if (swapInput.value.trim()) updateKeyDropdown(SWAP_KEY_CTX)
     })
-    on(swapInput, 'keydown', (e) => {
-      const dropdown = document.getElementById('swap-key-dropdown')
-      if (!dropdown || dropdown.style.display === 'none') return
-      const items = dropdown.querySelectorAll('.autocomplete-item')
-      if (items.length === 0) return
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        state.swapKeyActiveIdx = (state.swapKeyActiveIdx + 1) % items.length
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        state.swapKeyActiveIdx = (state.swapKeyActiveIdx - 1 + items.length) % items.length
-      } else if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
-        if (state.swapKeyActiveIdx >= 0) {
-          e.preventDefault()
-          const el = items[state.swapKeyActiveIdx]
-          selectKeyCandidate(SWAP_KEY_CTX, el.dataset.key, el.dataset.summary || '')
-          return
-        }
-      } else if (e.key === 'Escape') {
-        state.swapKeyActiveIdx = -1
-        dropdown.style.display = 'none'
-        dropdown.innerHTML = ''
-        return
-      } else {
-        return
-      }
-      items.forEach((el, i) => el.classList.toggle('active', i === state.swapKeyActiveIdx))
-      if (state.swapKeyActiveIdx >= 0) items[state.swapKeyActiveIdx].scrollIntoView({ block: 'nearest' })
+    bindKeyDropdownNav(swapInput, {
+      dropdownId: 'swap-key-dropdown',
+      activeIdxKey: 'swapKeyActiveIdx',
+      selectCtx: SWAP_KEY_CTX,
     })
     on(swapInput, 'blur', async () => {
       setTimeout(() => {
@@ -3333,36 +3336,11 @@ export function bindEvents() {
     on(manualIssueInput, 'focus', () => {
       if (manualIssueInput.value.trim()) updateManualKeyDropdown()
     })
-    // 키보드 네비게이션
-    on(manualIssueInput, 'keydown', (e) => {
-      const dropdown = document.getElementById('manual-key-dropdown')
-      if (!dropdown || dropdown.style.display === 'none') return
-      const items = dropdown.querySelectorAll('.autocomplete-item')
-      if (items.length === 0) return
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        state.manualKeyActiveIdx = (state.manualKeyActiveIdx + 1) % items.length
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        state.manualKeyActiveIdx = (state.manualKeyActiveIdx - 1 + items.length) % items.length
-      } else if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
-        // Enter만 누르면 드롭다운 선택, Ctrl+Enter는 전역 핸들러에서 제출
-        if (state.manualKeyActiveIdx >= 0) {
-          e.preventDefault()
-          const el = items[state.manualKeyActiveIdx]
-          selectManualKeyCandidate(el.dataset.key, el.dataset.summary || '')
-          return
-        }
-      } else if (e.key === 'Escape') {
-        state.manualKeyActiveIdx = -1
-        dropdown.style.display = 'none'
-        dropdown.innerHTML = ''
-        return
-      } else {
-        return
-      }
-      items.forEach((el, i) => el.classList.toggle('active', i === state.manualKeyActiveIdx))
-      if (state.manualKeyActiveIdx >= 0) items[state.manualKeyActiveIdx].scrollIntoView({ block: 'nearest' })
+    // 키보드 네비게이션 (manual은 selectManualKeyCandidate가 MANUAL_KEY_CTX로 selectKeyCandidate를 호출하는 wrapper)
+    bindKeyDropdownNav(manualIssueInput, {
+      dropdownId: 'manual-key-dropdown',
+      activeIdxKey: 'manualKeyActiveIdx',
+      selectCtx: MANUAL_KEY_CTX,
     })
   }
 
@@ -3577,7 +3555,7 @@ export function bindEvents() {
   document.querySelectorAll('[data-action="edit-log"]').forEach(btn => {
     on(btn, 'click', (e) => {
       e.stopPropagation()
-      const idx = parseInt(btn.dataset.idx)
+      const idx = parseInt(btn.dataset.idx, 10)
       const logs = getActiveLogs(state.logDate)
       const log = logs[idx]
       if (!log?.worklogId) return
@@ -3599,7 +3577,7 @@ export function bindEvents() {
   document.querySelectorAll('[data-action="delete-log"]').forEach(btn => {
     on(btn, 'click', (e) => {
       e.stopPropagation()
-      const idx = parseInt(btn.dataset.idx)
+      const idx = parseInt(btn.dataset.idx, 10)
       const logs = getActiveLogs(state.logDate)
       const log = logs[idx]
       if (!log?.worklogId) return
@@ -3701,46 +3679,53 @@ export function bindEvents() {
   if (deleteYes) {
     on(deleteYes, 'click', async () => {
       if (deleteYes.disabled) return
-      // 버튼 스피너 + 중복 클릭 차단 (Jira 등록과 동일 패턴)
-      const originalLabel = deleteYes.innerHTML
-      deleteYes.disabled = true
-      deleteYes.classList.add('is-loading')
-      deleteYes.innerHTML = '<span class="btn-spinner"></span>'
-      if (deleteNoBtn) deleteNoBtn.disabled = true
       try {
-        await deleteWorklog(state.deletingWorklog.issueKey, state.deletingWorklog.worklogId)
-        state.deletingWorklog = null
-        // 성공 시 loadWorklogs → render가 호출되어 모달이 닫힘
-        invalidateWorklogMonth(state.logDate)
+        await withSpinner(deleteYes, async () => {
+          await deleteWorklog(state.deletingWorklog.issueKey, state.deletingWorklog.worklogId)
+          state.deletingWorklog = null
+          // 성공 시 loadWorklogs → render가 호출되어 모달이 닫힘
+          invalidateWorklogMonth(state.logDate)
+        }, [deleteNoBtn])
       } catch (e) {
         console.error('작업 로그 삭제 실패:', e)
         alert(`작업 로그 삭제에 실패했습니다.\n\n${formatJiraError(e)}`)
-        deleteYes.disabled = false
-        deleteYes.classList.remove('is-loading')
-        deleteYes.innerHTML = originalLabel
-        if (deleteNoBtn) deleteNoBtn.disabled = false
       }
     })
   }
 }
 
 // ========== 타이머 업데이트 ==========
+// active 세션이 하나도 없으면 인터벌 자체를 띄우지 않음 — 매초 querySelectorAll 비용 회피.
+// active 카드 자체가 dataset.segments JSON을 매초 파싱하지 않도록 element 프로퍼티에 한 번만 캐싱.
 export function startTimerUpdate() {
-  if (state.timerInterval) clearInterval(state.timerInterval)
+  if (state.timerInterval) {
+    clearInterval(state.timerInterval)
+    state.timerInterval = null
+  }
+
+  const activeEls = []
+  document.querySelectorAll('.session-timer').forEach(el => {
+    if (el.dataset.status !== 'active' || !el.dataset.segments) return
+    try {
+      // 매초 파싱하지 않도록 원본 dataset를 element 프로퍼티에 1회 캐싱
+      el._segments = JSON.parse(el.dataset.segments)
+      activeEls.push(el)
+    } catch {}
+  })
+
+  if (activeEls.length === 0) return
+
   state.timerInterval = setInterval(() => {
-    document.querySelectorAll('.session-timer').forEach(el => {
-      if (el.dataset.status === 'active' && el.dataset.segments) {
-        try {
-          const segments = JSON.parse(el.dataset.segments)
-          let totalMs = 0
-          for (const seg of segments) {
-            const end = seg.end || Date.now()
-            totalMs += end - seg.start
-          }
-          const totalMinutes = Math.floor(totalMs / 60000)
-          el.textContent = formatMinutes(totalMinutes)
-        } catch {}
+    const now = Date.now()
+    for (const el of activeEls) {
+      // DOM에서 떨어진 element는 정리 후 다음 render 사이클에 재구성됨
+      if (!el.isConnected) continue
+      let totalMs = 0
+      for (const seg of el._segments) {
+        const end = seg.end || now
+        totalMs += end - seg.start
       }
-    })
+      el.textContent = formatMinutes(Math.floor(totalMs / 60000))
+    }
   }, 1000)
 }

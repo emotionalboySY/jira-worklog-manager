@@ -10,6 +10,34 @@ import {
   CLOSED_CATEGORY,
 } from './state.js'
 
+// realProjects가 비어있을 때(초기 로딩 등) 사용할 프로젝트 키 fallback.
+// 자동완성/검색이 realProjects 의존이라 빈 배열이면 검색이 동작하지 않으므로 기본값 보장.
+export function getProjectKeysOrFallback() {
+  return (state.realProjects && state.realProjects.length > 0)
+    ? state.realProjects.map(p => p.key)
+    : [...DEFAULT_PROJECT_ORDER]
+}
+
+// 비동기 액션 동안 버튼을 스피너로 잠그는 패턴(Jira 등록/삭제 등) 공통화.
+// fn이 throw하면 원래 라벨로 복구 후 다시 throw.
+// extraDisabled: 같이 잠궈야 할 버튼들(취소 등)
+export async function withSpinner(btn, fn, extraDisabled = []) {
+  if (!btn) return fn()
+  const originalLabel = btn.innerHTML
+  btn.disabled = true
+  btn.classList.add('is-loading')
+  btn.innerHTML = '<span class="btn-spinner"></span>'
+  for (const el of extraDisabled) { if (el) el.disabled = true }
+  try {
+    return await fn()
+  } finally {
+    btn.disabled = false
+    btn.classList.remove('is-loading')
+    btn.innerHTML = originalLabel
+    for (const el of extraDisabled) { if (el) el.disabled = false }
+  }
+}
+
 // 사용자 설정(userPrefs) 기반 정렬 인덱스
 function statusOrderIndex(status) {
   const order = state.userPrefs?.statusOrder || DEFAULT_STATUS_ORDER
@@ -281,8 +309,8 @@ export function getLogMinutes(dateStr) {
     const parts = log.duration.match(/(\d+)h|(\d+)m/g) || []
     let mins = 0
     parts.forEach(p => {
-      if (p.endsWith('h')) mins += parseInt(p) * 60
-      if (p.endsWith('m')) mins += parseInt(p)
+      if (p.endsWith('h')) mins += parseInt(p, 10) * 60
+      if (p.endsWith('m')) mins += parseInt(p, 10)
     })
     return sum + mins
   }, 0)

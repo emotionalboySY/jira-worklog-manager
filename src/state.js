@@ -204,3 +204,38 @@ export const state = {
   flatpickrInstance: null,
   timerInterval: null,
 }
+
+// 로그아웃/세션 만료 시 직전 사용자의 in-memory 데이터를 초기화
+// (localStorage 정리는 auth.logout이 담당. 이 함수는 메모리 잔존물을 해제)
+export function resetInMemoryUserData() {
+  state.realIssues = []
+  state.realProjects = []
+  state.issuesLoaded = false
+  state.issuesLoading = false
+  state.worklogsByDate = {}
+  state.worklogsLoading = false
+  state.worklogsLoadedMonths = new Set()
+  state.activeSprintKeys = null
+  state.searchQuery = ''
+  state.searchResults = null
+  state.searchLoading = false
+  state.selectedIssues = new Set()
+  state.lastSelectedIssueKey = null
+  // 모든 모달/드롭다운 닫기
+  state.showModal = null
+  state.showCancelConfirm = null
+  state.editingWorklog = null
+  state.deletingWorklog = null
+  state.showManualLog = null
+  state.showSwapIssue = null
+  state.statusDropdown = null
+  state.assigneeDropdown = null
+  state.typeDropdown = null
+  state.transitionFieldsModal = null
+  state.issueDetailModal = null
+  state.showCreateIssue = null
+  // 진행 중 트래킹 Set
+  state.statusTransitioning = new Set()
+  state.assigneeUpdating = new Set()
+  state.typeUpdating = new Set()
+}

@@ -1,8 +1,8 @@
 // Jira API 프록시: CORS 우회
+import { applyCors, safeError } from './_cors.js'
+
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  applyCors(req, res, 'GET, POST, PUT, DELETE, OPTIONS')
 
   if (req.method === 'OPTIONS') return res.status(200).end()
 
@@ -36,8 +36,11 @@ export default async function handler(req, res) {
     const body = await apiRes.text()
     const contentType = apiRes.headers.get('content-type')
     if (contentType) res.setHeader('Content-Type', contentType)
+    // Atlassian의 rate limit 헤더는 클라이언트가 백오프 판단 시 필요
+    const retryAfter = apiRes.headers.get('retry-after')
+    if (retryAfter) res.setHeader('Retry-After', retryAfter)
     return res.status(apiRes.status).send(body)
   } catch (err) {
-    return res.status(500).json({ error: err.message })
+    return res.status(500).json(safeError(err, 'proxy'))
   }
 }
