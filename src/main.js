@@ -4,11 +4,11 @@ import 'flatpickr/dist/flatpickr.min.css'
 import { handleOAuthCallback, isLoggedIn, fetchCurrentUser, saveUser, getSavedUser } from './auth.js'
 import { applyTheme, applyPreferences, showToast } from './ui.js'
 import { loadPreferences } from './storage.js'
-import { render } from './render.js'
-import { loadIssues } from './data.js'
+import { render, registerPostRender } from './render.js'
+import { loadIssues } from './actions.js'
 import { setupAutoReload } from './autoReload.js'
 import { resetInMemoryUserData } from './state.js'
-import { installDelegatedHandlers } from './events.js'
+import { installDelegatedHandlers, bindEvents, startTimerUpdate } from './events.js'
 
 // 토큰 갱신 실패로 자동 로그아웃이 일어나면 즉시 로그인 화면으로 전환 + 사용자 안내
 let authClearedHandled = false
@@ -28,6 +28,11 @@ async function init() {
     // 이벤트 위임 1회 설치 — handleGlobalClick(bindEvents에서 등록)보다 먼저 등록되도록
     // init 첫 단계에 호출. document 리스너 순서가 클릭 후 handleGlobalClick 호출 보장에 중요.
     installDelegatedHandlers()
+
+    // render 종료 시점마다 호출될 hook 등록 (render.js는 events.js를 import하지 않음 — 모듈 순환 해소)
+    registerPostRender(bindEvents)
+    registerPostRender(startTimerUpdate)
+
     applyTheme()
     applyPreferences(loadPreferences())
 

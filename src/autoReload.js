@@ -2,7 +2,7 @@
 // 액션이 발생하면 카운트다운을 리셋하고, 재로드 후엔 다시 5분 사이클을 시작한다.
 import { state } from './state.js'
 import { isLoggedIn } from './auth.js'
-import { autoReloadIssuesAndWorklogs } from './data.js'
+import { autoReloadIssuesAndWorklogs } from './actions.js'
 
 const IDLE_MS = 5 * 60 * 1000          // 5분
 const RETRY_WHILE_BUSY_MS = 30 * 1000  // 모달/로딩 중일 때 재시도 간격

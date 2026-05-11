@@ -23,7 +23,7 @@ import {
   formatJiraError,
   getProjectKeysOrFallback,
 } from '../utils.js'
-import { refreshIssues } from '../data.js'
+import { refreshIssues } from '../actions.js'
 import {
   isValidIssueKeyFormat,
   renderLinkSuggestionsHtml,

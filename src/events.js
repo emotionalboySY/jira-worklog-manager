@@ -55,7 +55,7 @@ import {
   refreshIssues,
   refreshWorklogs,
   performSearch,
-} from './data.js'
+} from './actions.js'
 import {
   isValidIssueKeyFormat,
   findLoadedIssue,

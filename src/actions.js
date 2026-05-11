@@ -1,4 +1,6 @@
-// 비동기 데이터 로더 / 검색
+// 액션 레이어 — 비동기 데이터 로더 / 새로고침 / 검색.
+// 책임: jira API 호출 + storage 캐시 갱신 + state 변경 + render 트리거.
+// (원본 data는 jira.js / storage.js / state.js, view는 render.js. 이 파일은 그 둘을 잇는 동작 단위.)
 import { state } from './state.js'
 import {
   loadIssuesCache,

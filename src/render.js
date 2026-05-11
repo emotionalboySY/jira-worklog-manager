@@ -24,7 +24,14 @@ import {
   renderCreateIssueModal,
 } from './views/modals.js'
 import { renderSettingsFab, renderSettingsModal } from './views/settings.js'
-import { bindEvents, startTimerUpdate } from './events.js'
+
+// 모듈 그래프에서 render.js → events.js 직접 import를 제거하기 위한 post-render hook.
+// 외부(main.js)가 init 단계에서 bindEvents / startTimerUpdate 등을 등록해두면 매 render 끝에 호출됨.
+// 이로써 render.js ↔ events.js ↔ actions.js 삼각 순환이 끊긴다.
+const postRenderHooks = []
+export function registerPostRender(fn) {
+  if (typeof fn === 'function') postRenderHooks.push(fn)
+}
 
 let shellInitialized = false
 
@@ -181,10 +188,12 @@ export function render(options = {}) {
     if (newList) newList.scrollTop = savedIssueListScrollTop
   }
 
-  // 이벤트 재바인딩: on() 헬퍼가 이미 바인드된 element는 자동 스킵하므로
+  // 이벤트 재바인딩 + 타이머 — main.js에서 registerPostRender로 등록된 hook들 실행.
+  // (예: bindEvents, startTimerUpdate). on() 헬퍼가 element별 1회 바인드라
   // 갱신된 섹션의 새 element에만 리스너가 추가된다.
-  bindEvents()
-  startTimerUpdate()
+  for (const fn of postRenderHooks) {
+    try { fn() } catch (e) { console.error('[render] post-hook 실패:', e) }
+  }
 }
 
 // 페이지 이동/필터 변경 등에서 호출: 이슈 목록을 상단으로 강제 스크롤

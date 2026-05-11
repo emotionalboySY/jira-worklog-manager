@@ -1,7 +1,7 @@
 // 요약 탭
 import { state, DEFAULT_SUMMARY_WEEK_START } from '../state.js'
 import { isLoggedIn } from '../auth.js'
-import { loadWorklogs } from '../data.js'
+import { loadWorklogs } from '../actions.js'
 import { getDayOff, getDayOffLabel } from '../storage.js'
 import { getHoliday } from '../holidays.js'
 import {

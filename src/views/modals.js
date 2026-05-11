@@ -16,7 +16,7 @@ import {
   getShortStatusLabel,
   getProjectKeysOrFallback,
 } from '../utils.js'
-import { loadWorklogs } from '../data.js'
+import { loadWorklogs } from '../actions.js'
 import { renderAdf } from '../adf.js'
 import { getCachedMyself } from '../jira.js'
 
