@@ -704,6 +704,23 @@ export async function createIssueLink(typeName, inwardKey, outwardKey) {
   })
 }
 
+// 이슈 링크 삭제. linkId는 issuelinks 응답의 각 항목 id.
+export async function deleteIssueLink(linkId) {
+  await jiraFetch(`/issueLink/${encodeURIComponent(linkId)}`, { method: 'DELETE' })
+}
+
+// 여러 이슈 키의 특정 필드들을 batch로 조회. issuelinks 응답은 linked issue의 assignee를
+// 포함하지 않아서, 연결 항목 표시용으로 별도 호출.
+export async function fetchIssuesByKeys(keys, fields = 'assignee') {
+  if (!keys || keys.length === 0) return []
+  const jql = `key in (${keys.map(k => `"${k}"`).join(',')})`
+  const data = await jiraFetch(
+    `/search/jql?jql=${encodeURIComponent(jql)}&fields=${encodeURIComponent(fields)}&maxResults=${keys.length}`,
+  )
+  if (!data || !data.issues) return []
+  return data.issues
+}
+
 // 프로젝트 멤버 중 할당 가능한 사용자 (이슈 키 없을 때 — 신규 생성 흐름용)
 // query를 서버에 전달해 서버 측 검색 사용 (빈 query는 알파벳 순 첫 1000명).
 export async function fetchAssignableUsersForProject(projectKey, query = '', { signal } = {}) {

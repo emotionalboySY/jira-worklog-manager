@@ -7,7 +7,14 @@ import {
   updateIssueDescription,
   updateIssueSummary,
   fetchMyself,
+  fetchIssueLinkTypes,
+  fetchIssuesByKeys,
+  createIssueLink,
+  deleteIssueLink,
+  searchIssuesByKey,
 } from '../jira.js'
+import { getProjectKeysOrFallback, formatJiraError } from '../utils.js'
+import { renderAddLinkSuggestionsHtml } from '../views/modals.js'
 import { detectLossyFeatures, isEmptyAdf } from '../adfProsemirror.js'
 import {
   createEditor,
@@ -264,7 +271,10 @@ export function ensureIssueDetailEditor() {
 
 // 이슈 상세 모달 열기 + 상세 데이터 비동기 로드
 export async function openIssueDetailModal(issueKey) {
-  state.issueDetailModal = { key: issueKey, loading: true, data: null, error: null, blobUrls: [] }
+  state.issueDetailModal = {
+    key: issueKey, loading: true, data: null, error: null, blobUrls: [],
+    linkTypes: null, addLink: null, linkRemoving: new Set(),
+  }
   render({ sections: ['modals'] })
 
   // 본인 정보(댓글 권한 비교용)는 백그라운드로 미리 받아둠 — 결과가 늦게 와도 댓글이 다시 그려지면 반영됨
@@ -274,21 +284,179 @@ export async function openIssueDetailModal(issueKey) {
     }
   })
 
+  // 링크 타입 미리 로드 (사이트 전체 캐시)
+  fetchIssueLinkTypes().then(types => {
+    if (!state.issueDetailModal || state.issueDetailModal.key !== issueKey) return
+    state.issueDetailModal.linkTypes = types
+    render({ sections: ['modals'] })
+  }).catch(err => console.warn('링크 타입 조회 실패:', err))
+
   try {
     const detail = await fetchIssueDetail(issueKey)
-    // 모달이 이미 닫혔거나 다른 이슈로 바뀐 경우 무시
     if (!state.issueDetailModal || state.issueDetailModal.key !== issueKey) return
     state.issueDetailModal.data = detail || {}
     state.issueDetailModal.loading = false
     render({ sections: ['modals'] })
     // DOM에 붙은 후 이미지/썸네일을 인증 프록시로 교체
     loadIssueDetailImages()
+    // 연결 항목의 assignee는 issuelinks 응답에 안 와서 batch로 보강
+    loadLinkedIssueAssignees()
   } catch (err) {
     if (!state.issueDetailModal || state.issueDetailModal.key !== issueKey) return
     state.issueDetailModal.loading = false
     state.issueDetailModal.error = err?.message || '알 수 없는 오류'
     render({ sections: ['modals'] })
   }
+}
+
+// 연결 항목의 assignee를 batch로 조회해 머지 (백그라운드, 실패해도 무시)
+async function loadLinkedIssueAssignees() {
+  const m = state.issueDetailModal
+  if (!m?.data?.links?.length) return
+  const keys = m.data.links.map(l => l.issue?.key).filter(Boolean)
+  if (keys.length === 0) return
+  try {
+    const issues = await fetchIssuesByKeys(keys, 'assignee')
+    const cur = state.issueDetailModal
+    if (!cur || cur.key !== m.key) return
+    const byKey = new Map(issues.map(i => [i.key, i]))
+    for (const l of cur.data.links) {
+      const fetched = byKey.get(l.issue?.key)
+      const a = fetched?.fields?.assignee
+      if (a && a.accountId) {
+        const urls = a.avatarUrls || {}
+        l.issue.assignee = {
+          accountId: a.accountId,
+          displayName: a.displayName || '',
+          avatarUrl: urls['32x32'] || urls['48x48'] || urls['24x24'] || urls['16x16'] || '',
+        }
+      } else if (fetched) {
+        l.issue.assignee = null
+      }
+    }
+    render({ sections: ['modals'] })
+  } catch (err) {
+    console.warn('연결 항목 담당자 조회 실패:', err)
+  }
+}
+
+// 연결 항목 추가: 카테고리(value) + 검색 결과 키 → createIssueLink 호출
+async function addIssueLinkTo(targetKey) {
+  const m = state.issueDetailModal
+  if (!m || !targetKey) return
+  const linkTypes = m.linkTypes || []
+  const value = m.addLink?.value || ''
+  const [typeId, direction] = value.split(':')
+  const lt = linkTypes.find(t => String(t.id) === String(typeId))
+  if (!lt) {
+    showToast('연결 유형을 선택하세요.', '⚠')
+    return
+  }
+  const inwardKey = direction === 'outward' ? m.key : targetKey
+  const outwardKey = direction === 'outward' ? targetKey : m.key
+  try {
+    await createIssueLink(lt.name, inwardKey, outwardKey)
+    // 검색 input 초기화
+    if (m.addLink) {
+      m.addLink.query = ''
+      m.addLink.suggestions = []
+    }
+    // 상세 재로드 (링크 + assignee 모두 새로 로드)
+    await reloadIssueDetailLinks()
+    showToast('연결을 추가했습니다.', '✓')
+  } catch (err) {
+    console.error('연결 추가 실패:', err)
+    showToast(`연결 추가 실패: ${formatJiraError(err)}`, '⚠')
+  }
+}
+
+async function removeIssueLink(linkId) {
+  const m = state.issueDetailModal
+  if (!m || !linkId) return
+  if (!m.linkRemoving) m.linkRemoving = new Set()
+  m.linkRemoving.add(linkId)
+  render({ sections: ['modals'] })
+  try {
+    await deleteIssueLink(linkId)
+    await reloadIssueDetailLinks()
+    showToast('연결을 해제했습니다.', '✓')
+  } catch (err) {
+    console.error('연결 해제 실패:', err)
+    showToast(`연결 해제 실패: ${formatJiraError(err)}`, '⚠')
+  } finally {
+    if (state.issueDetailModal?.linkRemoving) state.issueDetailModal.linkRemoving.delete(linkId)
+    render({ sections: ['modals'] })
+  }
+}
+
+// 링크 변경(추가/해제) 후 상세 재로드 (전체 fetchIssueDetail 호출)
+async function reloadIssueDetailLinks() {
+  const m = state.issueDetailModal
+  if (!m) return
+  const issueKey = m.key
+  try {
+    const detail = await fetchIssueDetail(issueKey)
+    if (!state.issueDetailModal || state.issueDetailModal.key !== issueKey) return
+    state.issueDetailModal.data = detail || {}
+    render({ sections: ['modals'] })
+    loadLinkedIssueAssignees()
+  } catch (err) {
+    console.warn('상세 재로드 실패:', err)
+  }
+}
+
+// 검색: query → suggestions. createIssue 모달과 같은 패턴 (debounce 250ms).
+let _addLinkSearchController = null
+let _addLinkSearchTimer = null
+function scheduleAddLinkSearch() {
+  const m = state.issueDetailModal
+  if (!m || !m.addLink) return
+  const q = (m.addLink.query || '').trim()
+
+  if (_addLinkSearchController) { try { _addLinkSearchController.abort() } catch {} }
+  if (_addLinkSearchTimer) clearTimeout(_addLinkSearchTimer)
+
+  if (!q) {
+    m.addLink.suggestions = []
+    m.addLink.searching = false
+    refreshAddLinkSuggestions()
+    return
+  }
+
+  m.addLink.searching = true
+  refreshAddLinkSuggestions()
+
+  _addLinkSearchTimer = setTimeout(async () => {
+    const cur = state.issueDetailModal
+    if (!cur || !cur.addLink || cur.addLink.query !== q) return
+    const ctrl = new AbortController()
+    _addLinkSearchController = ctrl
+    try {
+      const results = await searchIssuesByKey(q, getProjectKeysOrFallback(), { signal: ctrl.signal })
+      const cur2 = state.issueDetailModal
+      if (!cur2 || !cur2.addLink || cur2.addLink.query !== q) return
+      // 본인 이슈는 후보에서 제외
+      cur2.addLink.suggestions = results.filter(r => r.key !== cur2.key)
+      cur2.addLink.searching = false
+      refreshAddLinkSuggestions()
+    } catch (err) {
+      if (err?.name === 'AbortError') return
+      console.warn('연결 검색 실패:', err)
+      const cur2 = state.issueDetailModal
+      if (cur2?.addLink) {
+        cur2.addLink.suggestions = []
+        cur2.addLink.searching = false
+        refreshAddLinkSuggestions()
+      }
+    }
+  }, 250)
+}
+
+// 검색 결과 영역만 부분 갱신 — input의 IME 조합 / 커서 위치 보존
+function refreshAddLinkSuggestions() {
+  const el = document.getElementById('detail-link-add-suggestions')
+  if (!el) return
+  el.innerHTML = renderAddLinkSuggestionsHtml(state.issueDetailModal?.addLink || {})
 }
 
 // 본문 설명의 <img>와 첨부 썸네일을 인증 프록시로 받아 Blob URL로 교체
@@ -418,4 +586,56 @@ export function bindDetailModalEvents() {
 
   // 본문 편집 tiptap 마운트 (중복 마운트 방지)
   ensureIssueDetailEditor()
+
+  // 연결 추가: 카테고리 select
+  const linkAddType = document.getElementById('detail-link-add-type')
+  if (linkAddType) {
+    on(linkAddType, 'change', () => {
+      const m = state.issueDetailModal
+      if (!m) return
+      if (!m.addLink) m.addLink = { value: '', query: '', suggestions: [], searching: false }
+      m.addLink.value = linkAddType.value
+    })
+  }
+
+  // 연결 추가: 검색 input
+  const linkAddSearch = document.getElementById('detail-link-add-search')
+  if (linkAddSearch) {
+    on(linkAddSearch, 'input', () => {
+      const m = state.issueDetailModal
+      if (!m) return
+      if (!m.addLink) m.addLink = { value: linkAddType?.value || '', query: '', suggestions: [], searching: false }
+      // select가 비어있으면 첫 옵션을 자동 선택
+      if (!m.addLink.value && linkAddType) m.addLink.value = linkAddType.value
+      m.addLink.query = linkAddSearch.value
+      scheduleAddLinkSearch()
+    })
+  }
+}
+
+// _delegate에 등록되는 액션 핸들러들 (모듈 로드 시 1회)
+// events.js의 bindEvents에서 일괄 register하는 패턴이지만, 도메인 응집을 위해 여기서 export.
+export const detailLinkActions = {
+  'open-linked-issue': (e, el) => {
+    e.stopImmediatePropagation()
+    const key = el.dataset.issueKey
+    if (!key) return
+    // 현재 모달 닫고 새 이슈로 전환. closeIssueDetailModal의 dirty 검사 흐름을 그대로 따른다.
+    closeIssueDetailModal()
+    // 닫기가 취소된 경우(state 그대로) 새 모달을 열지 않는다
+    if (state.issueDetailModal) return
+    openIssueDetailModal(key)
+  },
+  'remove-issue-link': async (e, el) => {
+    e.stopImmediatePropagation()
+    const linkId = el.dataset.linkId
+    if (!linkId) return
+    await removeIssueLink(linkId)
+  },
+  'pick-add-link-target': async (e, el) => {
+    e.stopImmediatePropagation()
+    const key = el.dataset.key
+    if (!key) return
+    await addIssueLinkTo(key)
+  },
 }

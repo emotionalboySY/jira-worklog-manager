@@ -1398,13 +1398,13 @@ export function renderIssueDetailModal() {
 
 // ========== 연결 항목 영역 ==========
 // fetchIssueDetail이 가져온 issuelinks를 라벨(예: '차단함', '관련됨')별로 그룹핑하여 표시.
-// 항목 클릭 시 해당 이슈를 새 탭 Jira에서 연다.
+// 각 항목: [유형 아이콘] 키 · 요약 ... [상태(전이가능)] [담당자] [X(연결해제)]
+// 항목의 빈 영역 클릭 시 현재 모달을 닫고 해당 이슈의 상세 모달을 새로 연다.
 function renderDetailLinks(m) {
   if (m.loading && !m.data?.links) return ''
   if (m.error) return ''
 
   const links = m.data?.links || []
-  if (links.length === 0) return ''
 
   // 라벨별 그룹핑 — 동일 라벨끼리 묶어 한 줄에 보여줌
   const groups = new Map()
@@ -1414,41 +1414,135 @@ function renderDetailLinks(m) {
     groups.get(label).push(l)
   }
 
-  const siteName = localStorage.getItem('jira_site_name')
-  const jiraBase = siteName ? `https://${siteName}.atlassian.net/browse/` : ''
-
-  const groupsHtml = Array.from(groups.entries()).map(([label, items]) => {
-    const itemsHtml = items.map(l => {
-      const iss = l.issue
-      const statusCss = getStatusCss(iss.statusCategory || iss.status)
-      const statusLabel = getShortStatusLabel(iss.status)
-      const typeIcon = iss.typeIconUrl
-        ? `<img class="detail-link-type-icon" src="${escapeHtml(iss.typeIconUrl)}" alt="${escapeHtml(iss.typeName)}" />`
-        : ''
-      const href = jiraBase ? `${jiraBase}${encodeURIComponent(iss.key)}` : '#'
-      return `
-        <a class="detail-link-item" href="${href}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(iss.summary || '')}">
-          ${typeIcon}
-          <span class="detail-link-key">${escapeHtml(iss.key)}</span>
-          <span class="detail-link-summary">${escapeHtml(iss.summary || '')}</span>
-          <span class="issue-status ${statusCss} detail-link-status">${escapeHtml(statusLabel || iss.status || '-')}</span>
-        </a>
-      `
-    }).join('')
+  const itemsHtml = Array.from(groups.entries()).map(([label, items]) => {
+    const rowsHtml = items.map(l => renderLinkedIssueRow(l, m)).join('')
     return `
       <div class="detail-link-group">
         <div class="detail-link-label">${escapeHtml(label)}</div>
-        <div class="detail-link-items">${itemsHtml}</div>
+        <div class="detail-link-items">${rowsHtml}</div>
       </div>
     `
   }).join('')
 
+  // 연결 추가 영역: 항상 표시
+  const addHtml = renderAddLinkBlock(m)
+
   return `
     <div class="detail-links">
-      <div class="detail-section-label">연결 항목 ${links.length}</div>
-      ${groupsHtml}
+      <div class="detail-section-label">연결 항목 (${links.length}개)</div>
+      ${itemsHtml}
+      ${addHtml}
     </div>
   `
+}
+
+function renderLinkedIssueRow(l, m) {
+  const iss = l.issue
+  const projectKey = (iss.key || '').split('-')[0] || ''
+  const statusCss = getStatusCss(iss.statusCategory || iss.status)
+  const statusLabel = getShortStatusLabel(iss.status)
+  const typeIcon = iss.typeIconUrl
+    ? `<img class="detail-link-type-icon" src="${escapeHtml(iss.typeIconUrl)}" alt="${escapeHtml(iss.typeName || '')}" title="${escapeHtml(iss.typeName || '')}" />`
+    : ''
+
+  // 상태 — 기존 패턴 재사용 (toggle-status-menu)
+  const isTransitioning = state.statusTransitioning?.has(iss.key)
+  const statusBtnHtml = isTransitioning
+    ? `<button type="button" class="issue-status ${statusCss} is-loading detail-link-status" disabled aria-label="상태 변경 중"><span class="btn-spinner"></span></button>`
+    : `<button type="button" class="issue-status ${statusCss} detail-link-status" data-action="toggle-status-menu" data-key="${escapeHtml(iss.key)}" data-current-status="${escapeHtml(iss.status || '')}" title="${escapeHtml(iss.status || '-')} · 클릭하여 상태 변경">${escapeHtml(statusLabel || iss.status || '-')}</button>`
+
+  // 담당자 — 표시만 (편집 X)
+  const assignee = iss.assignee || null
+  const assigneeHtml = (() => {
+    if (!assignee) {
+      return `<span class="detail-link-assignee detail-link-assignee-empty" title="미할당">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>
+      </span>`
+    }
+    const av = assignee.avatarUrl
+      ? `<img class="detail-link-assignee" src="${escapeHtml(assignee.avatarUrl)}" alt="${escapeHtml(assignee.displayName)}" title="${escapeHtml(assignee.displayName)}" />`
+      : `<span class="detail-link-assignee detail-link-assignee-empty" title="${escapeHtml(assignee.displayName)}"></span>`
+    return av
+  })()
+
+  // X 버튼 — 연결 해제
+  const isRemoving = m.linkRemoving?.has?.(l.id)
+  const removeBtnHtml = isRemoving
+    ? `<button type="button" class="detail-link-remove is-loading" disabled aria-label="해제 중"><span class="btn-spinner"></span></button>`
+    : `<button type="button" class="detail-link-remove" data-action="remove-issue-link" data-link-id="${escapeHtml(l.id)}" aria-label="연결 해제" title="연결 해제">✕</button>`
+
+  // 행은 클릭 가능 영역과 우측 컨트롤로 분리. 좌측 영역에 data-action=open-linked-issue
+  return `
+    <div class="detail-link-item">
+      <button type="button" class="detail-link-main" data-action="open-linked-issue" data-issue-key="${escapeHtml(iss.key)}" title="${escapeHtml(iss.summary || '')}">
+        ${typeIcon}
+        <span class="issue-key" data-project="${escapeHtml(projectKey)}">${escapeHtml(iss.key)}</span>
+        <span class="detail-link-summary">${escapeHtml(iss.summary || '')}</span>
+      </button>
+      <div class="detail-link-side">
+        ${statusBtnHtml}
+        ${assigneeHtml}
+        ${removeBtnHtml}
+      </div>
+    </div>
+  `
+}
+
+// 연결 추가 영역. 카테고리(링크 타입 + 방향) 드롭다운 + 검색 input.
+// 검색 결과 클릭 시 즉시 link 생성 요청.
+function renderAddLinkBlock(m) {
+  const linkTypes = m.linkTypes || []
+  const linkOptions = []
+  for (const lt of linkTypes) {
+    if (lt.outward) linkOptions.push({ value: `${lt.id}:outward`, label: lt.outward, typeName: lt.name, direction: 'outward' })
+    if (lt.inward && lt.inward !== lt.outward) linkOptions.push({ value: `${lt.id}:inward`, label: lt.inward, typeName: lt.name, direction: 'inward' })
+  }
+
+  const add = m.addLink || { value: linkOptions[0]?.value || '', query: '', suggestions: [], searching: false }
+  const selectedValue = add.value || (linkOptions[0]?.value || '')
+
+  const selectHtml = linkOptions.length === 0
+    ? `<select class="modal-input detail-link-add-type" disabled><option>로딩 중...</option></select>`
+    : `<select class="modal-input detail-link-add-type" id="detail-link-add-type">
+        ${linkOptions.map(o => `<option value="${escapeHtml(o.value)}" ${o.value === selectedValue ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+      </select>`
+
+  const suggestHtml = renderAddLinkSuggestionsHtml(add)
+
+  return `
+    <div class="detail-link-add">
+      <div class="detail-link-add-row">
+        ${selectHtml}
+        <div class="detail-link-add-search-wrap">
+          <input type="text" class="modal-input detail-link-add-search" id="detail-link-add-search"
+            placeholder="이슈 키 또는 키워드로 검색" value="${escapeHtml(add.query || '')}" autocomplete="off" />
+          <div class="detail-link-add-suggestions" id="detail-link-add-suggestions">${suggestHtml}</div>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+export function renderAddLinkSuggestionsHtml(add) {
+  const q = (add?.query || '').trim()
+  const searching = !!add?.searching
+  const candidates = add?.suggestions || []
+  if (!q && !searching) return ''
+  if (candidates.length === 0 && !searching) {
+    return `<div class="autocomplete-empty">검색 결과가 없습니다.</div>`
+  }
+  const itemsHtml = candidates.map((c) => `
+    <div class="autocomplete-item" data-action="pick-add-link-target" data-key="${escapeHtml(c.key)}">
+      <span class="autocomplete-key">${escapeHtml(c.key)}</span>
+      <span class="autocomplete-summary">${escapeHtml(c.summary || '')}</span>
+    </div>
+  `).join('')
+  const footer = searching
+    ? (candidates.length === 0
+        ? `<div class="autocomplete-loading"><span class="btn-spinner"></span><span>검색 중...</span></div>`
+        : `<div class="autocomplete-footer"><span class="btn-spinner"></span><span>더 검색 중...</span></div>`)
+    : ''
+  return itemsHtml + footer
 }
 
 // ========== 댓글 영역 ==========

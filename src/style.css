@@ -2742,6 +2742,17 @@ span.flatpickr-weekday {
   margin-top: 20px;
 }
 
+/* 새 일감 생성 모달은 본문 스크롤 시에도 푸터를 항상 보이도록 sticky 처리 */
+.modal-create-issue .modal-actions {
+  position: sticky;
+  bottom: 0;
+  margin-top: 16px;
+  padding: 12px 0;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  z-index: 2;
+}
+
 /* ========== 로그인 화면 ========== */
 .login-screen {
   display: flex;
@@ -4309,10 +4320,10 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 }
 
 .detail-link-group {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
-.detail-link-group:last-child {
+.detail-link-group:last-of-type {
   margin-bottom: 0;
 }
 
@@ -4335,31 +4346,37 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 4px 8px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  text-decoration: none;
-  color: var(--text);
   font-size: 13px;
   transition: border-color 0.15s, background 0.15s;
 }
 
 .detail-link-item:hover {
   border-color: var(--accent);
-  background: var(--bg-hover, var(--bg));
+}
+
+/* 클릭 가능한 좌측 영역 — 항목 클릭 시 상세 모달 전환 */
+.detail-link-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
 }
 
 .detail-link-type-icon {
   width: 16px;
   height: 16px;
-  flex-shrink: 0;
-}
-
-.detail-link-key {
-  font-family: var(--font-mono, monospace);
-  font-size: 12px;
-  color: var(--text-dim);
   flex-shrink: 0;
 }
 
@@ -4372,9 +4389,101 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   color: var(--text-bright);
 }
 
-.detail-link-status {
+/* 우측 컨트롤: 상태 · 담당자 · X */
+.detail-link-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
+}
+
+.detail-link-status {
   font-size: 11px;
+}
+
+.detail-link-assignee {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: var(--border);
+  object-fit: cover;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.detail-link-assignee-empty {
+  color: var(--text-dim);
+}
+
+.detail-link-assignee-empty svg {
+  width: 14px;
+  height: 14px;
+}
+
+.detail-link-remove {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.detail-link-remove:hover {
+  background: var(--red-bg);
+  color: var(--red);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.detail-link-remove.is-loading {
+  cursor: default;
+}
+
+/* 연결 추가 영역 */
+.detail-link-add {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.detail-link-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.detail-link-add-type {
+  flex: 0 0 160px;
+}
+
+.detail-link-add-search-wrap {
+  flex: 1;
+  position: relative;
+}
+
+.detail-link-add-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  z-index: 30;
+  display: none;
+}
+
+.detail-link-add-suggestions:not(:empty) {
+  display: block;
 }
 
 /* ========== 상세 모달 댓글 ========== */

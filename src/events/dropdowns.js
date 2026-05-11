@@ -170,6 +170,16 @@ function updateIssueStatusInState(issueKey, { status, statusCategory }) {
     state.issueDetailModal.data.status = status
     state.issueDetailModal.data.statusCategory = statusCategory
   }
+  // 상세 모달 연결 항목 안의 동일 키 이슈도 동기화
+  const links = state.issueDetailModal?.data?.links
+  if (Array.isArray(links)) {
+    for (const l of links) {
+      if (l.issue?.key === issueKey) {
+        l.issue.status = status
+        l.issue.statusCategory = statusCategory
+      }
+    }
+  }
   if (statusCategory === CLOSED_CATEGORY) {
     if (removeFavorite(issueKey)) {
       render({ sections: ['favorites'] })

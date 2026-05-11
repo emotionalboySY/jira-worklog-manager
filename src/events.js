@@ -58,6 +58,7 @@ import {
   cancelIssueDetailEdit,
   openIssueDetailModal,
   bindDetailModalEvents,
+  detailLinkActions,
 } from './events/detail.js'
 import {
   closeAssigneeDropdown,
@@ -626,6 +627,11 @@ export function installDelegatedHandlers() {
     render({ sections: ['modals'] })
     await performTransition(issueKey, transition, null)
   })
+
+  // 상세 모달의 연결 항목 관련 액션 (열기 전환 / 해제 / 추가 선택)
+  for (const [action, handler] of Object.entries(detailLinkActions)) {
+    registerClickAction(action, handler)
+  }
 
   // 이슈 목록에서 작업 시작
   registerClickAction('start', (e, btn) => {
