@@ -1,6 +1,7 @@
 // ========== Jira API 호출 모듈 ==========
 import { jiraFetch } from './auth.js'
 import { toDateString, formatHHMM, formatMinutes } from './utils.js'
+import { getFallbackTemplateForType } from './issueTemplates.js'
 
 // 이슈 목록/검색에 필요한 필드. priority/priorityIconUrl은 상세 모달에서만 필요해
 // fetchIssueDetail의 별도 fetch에서 가져오도록 분리(목록 응답 크기 절감).
@@ -434,7 +435,7 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
     'summary', 'issuetype', 'status', 'priority',
     'reporter', 'assignee', 'duedate', 'timetracking',
     'description', 'attachment', 'parent', 'created', 'updated',
-    'comment',
+    'comment', 'issuelinks',
     SPRINT_FIELD,
   ].join(',')
   const data = await jiraFetch(
@@ -467,8 +468,48 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
     descriptionAdf: f.description || null,  // ADF doc or null
     attachments: extractAttachments(f.attachment),
     comments: extractComments(f.comment),
+    links: extractIssueLinks(f.issuelinks),
     created: f.created || null,
     updated: f.updated || null,
+  }
+}
+
+// 이슈 링크 배열 정규화. 각 항목은 {direction: 'inward'|'outward', label, issue: {...}}
+// label은 사용자에게 보일 관계 문자열(예: '차단함', '관련됨'). Jira가 한국어 라벨을 내려줌.
+function extractIssueLinks(value) {
+  if (!Array.isArray(value)) return []
+  return value.map(l => {
+    const type = l.type || {}
+    if (l.outwardIssue) {
+      return {
+        id: String(l.id || ''),
+        direction: 'outward',
+        label: type.outward || type.name || '',
+        issue: extractLinkedIssue(l.outwardIssue),
+      }
+    }
+    if (l.inwardIssue) {
+      return {
+        id: String(l.id || ''),
+        direction: 'inward',
+        label: type.inward || type.name || '',
+        issue: extractLinkedIssue(l.inwardIssue),
+      }
+    }
+    return null
+  }).filter(x => x && x.issue)
+}
+
+function extractLinkedIssue(li) {
+  if (!li || !li.key) return null
+  const f = li.fields || {}
+  return {
+    key: li.key,
+    summary: f.summary || '',
+    typeName: f.issuetype?.name || '',
+    typeIconUrl: f.issuetype?.iconUrl || '',
+    status: f.status?.name || '',
+    statusCategory: f.status?.statusCategory?.key || 'new',
   }
 }
 
@@ -610,11 +651,12 @@ export async function fetchCreateMeta(projectKey, { signal } = {}) {
     .map(t => {
       const fields = t.fields || {}
       const fieldKeys = Object.keys(fields)
-      // 설명 기본값(템플릿) — 보통 ADF doc. issuetype별로 정해진 양식이 있을 수 있음.
+      // 설명 기본값(템플릿) — 보통 ADF doc. Jira Cloud의 Description Templates 기능은
+      // createmeta로 노출되지 않으므로, 응답이 비어있으면 이름으로 매칭되는 fallback 양식 사용.
       const descField = fields.description || {}
       const descDefault = descField.hasDefaultValue && descField.defaultValue
         ? descField.defaultValue
-        : null
+        : getFallbackTemplateForType(t.name || '')
       return {
         id: String(t.id),
         name: t.name || '',

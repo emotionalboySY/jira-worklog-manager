@@ -4303,6 +4303,80 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   border-top: 1px solid var(--border);
 }
 
+/* ========== 상세 모달 연결 항목 ========== */
+.detail-links {
+  margin-top: 16px;
+}
+
+.detail-link-group {
+  margin-bottom: 8px;
+}
+
+.detail-link-group:last-child {
+  margin-bottom: 0;
+}
+
+.detail-link-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 8px 0 4px;
+}
+
+.detail-link-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-link-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--text);
+  font-size: 13px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.detail-link-item:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover, var(--bg));
+}
+
+.detail-link-type-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.detail-link-key {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.detail-link-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-bright);
+}
+
+.detail-link-status {
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
 /* ========== 상세 모달 댓글 ========== */
 .detail-comments {
   margin-top: 24px;

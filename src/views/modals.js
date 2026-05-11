@@ -1385,12 +1385,68 @@ export function renderIssueDetailModal() {
         </div>
         <div class="detail-body">
           ${descriptionSection}
+          ${renderDetailLinks(m)}
           ${renderDetailComments(m, key)}
         </div>
         <div class="detail-footer">
           ${footerHtml}
         </div>
       </div>
+    </div>
+  `
+}
+
+// ========== 연결 항목 영역 ==========
+// fetchIssueDetail이 가져온 issuelinks를 라벨(예: '차단함', '관련됨')별로 그룹핑하여 표시.
+// 항목 클릭 시 해당 이슈를 새 탭 Jira에서 연다.
+function renderDetailLinks(m) {
+  if (m.loading && !m.data?.links) return ''
+  if (m.error) return ''
+
+  const links = m.data?.links || []
+  if (links.length === 0) return ''
+
+  // 라벨별 그룹핑 — 동일 라벨끼리 묶어 한 줄에 보여줌
+  const groups = new Map()
+  for (const l of links) {
+    const label = l.label || '연결됨'
+    if (!groups.has(label)) groups.set(label, [])
+    groups.get(label).push(l)
+  }
+
+  const siteName = localStorage.getItem('jira_site_name')
+  const jiraBase = siteName ? `https://${siteName}.atlassian.net/browse/` : ''
+
+  const groupsHtml = Array.from(groups.entries()).map(([label, items]) => {
+    const itemsHtml = items.map(l => {
+      const iss = l.issue
+      const statusCss = getStatusCss(iss.statusCategory || iss.status)
+      const statusLabel = getShortStatusLabel(iss.status)
+      const typeIcon = iss.typeIconUrl
+        ? `<img class="detail-link-type-icon" src="${escapeHtml(iss.typeIconUrl)}" alt="${escapeHtml(iss.typeName)}" />`
+        : ''
+      const href = jiraBase ? `${jiraBase}${encodeURIComponent(iss.key)}` : '#'
+      return `
+        <a class="detail-link-item" href="${href}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(iss.summary || '')}">
+          ${typeIcon}
+          <span class="detail-link-key">${escapeHtml(iss.key)}</span>
+          <span class="detail-link-summary">${escapeHtml(iss.summary || '')}</span>
+          <span class="issue-status ${statusCss} detail-link-status">${escapeHtml(statusLabel || iss.status || '-')}</span>
+        </a>
+      `
+    }).join('')
+    return `
+      <div class="detail-link-group">
+        <div class="detail-link-label">${escapeHtml(label)}</div>
+        <div class="detail-link-items">${itemsHtml}</div>
+      </div>
+    `
+  }).join('')
+
+  return `
+    <div class="detail-links">
+      <div class="detail-section-label">연결 항목 ${links.length}</div>
+      ${groupsHtml}
     </div>
   `
 }
