@@ -81,6 +81,13 @@ import { render, resetIssueListScroll } from './render.js'
 
 import { on } from './events/_dom.js'
 import {
+  registerClickAction,
+  registerClickData,
+  registerClickSelector,
+  registerContextMenu,
+  installGlobalDelegation,
+} from './events/_delegate.js'
+import {
   openCreateIssueModal,
   closeCreateIssueModal,
   ensureCreateIssueEditor,
@@ -573,46 +580,7 @@ export function bindEvents() {
     on(refreshWorklogsBtn, 'click', () => refreshWorklogs())
   }
 
-  // 프로젝트 선택
-  document.querySelectorAll('.project-chip').forEach(chip => {
-    on(chip, 'click', () => {
-      state.currentProject = chip.dataset.project
-      state.currentFilterTab = 'all'
-      state.currentPage = 1
-      // 검색 모드 해제
-      state.searchQuery = ''
-      state.searchResults = null
-      render()
-      resetIssueListScroll()
-    })
-  })
-
-  // 메인 탭
-  document.querySelectorAll('.main-tab').forEach(tab => {
-    on(tab, 'click', () => {
-      state.currentMainTab = tab.dataset.mainTab
-      if (tab.dataset.mainTab === 'logs' && isLoggedIn() && state.issuesLoaded) {
-        loadWorklogs(state.calendarYear, state.calendarMonth)
-      }
-      if (tab.dataset.mainTab === 'summary') {
-        ensureSummaryWorklogs()
-      }
-      render()
-    })
-  })
-
-  // 필터 탭
-  document.querySelectorAll('.filter-tab').forEach(tab => {
-    on(tab, 'click', () => {
-      state.currentFilterTab = tab.dataset.filter
-      state.currentPage = 1
-      // 검색 모드 해제
-      state.searchQuery = ''
-      state.searchResults = null
-      render()
-      resetIssueListScroll()
-    })
-  })
+  // (.project-chip, .main-tab, .filter-tab 클릭은 events/_delegate.js로 위임됨)
 
   // 이슈 검색
   // IME 조합(한글 등) 중에는 검색 발화를 보류 — compositionend 시점에 한 번만 발화.
@@ -716,25 +684,7 @@ export function bindEvents() {
     })
   }
 
-  // 페이지네이션
-  document.querySelectorAll('[data-page]').forEach(btn => {
-    on(btn, 'click', () => {
-      state.currentPage = parseInt(btn.dataset.page, 10)
-      render()
-      // 이슈 목록 상단으로 스크롤
-      resetIssueListScroll()
-      document.querySelector('.issue-list')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    })
-  })
-
-  // 연반차 토글
-  document.querySelectorAll('[data-day-off]').forEach(btn => {
-    on(btn, 'click', () => {
-      const value = btn.dataset.dayOff
-      setDayOff(state.logDate, value === 'none' ? null : value)
-      render()
-    })
-  })
+  // ([data-page], [data-day-off] 클릭은 events/_delegate.js로 위임됨)
 
   // 달력 열기/닫기 토글
   // render()를 호출하면 log-body DOM이 교체되어 grid-template-columns transition이
@@ -817,13 +767,7 @@ export function bindEvents() {
     })
   }
 
-  // 달력 날짜 클릭
-  document.querySelectorAll('[data-cal-date]').forEach(cell => {
-    on(cell, 'click', () => {
-      state.logDate = cell.dataset.calDate
-      render()
-    })
-  })
+  // ([data-cal-date] 클릭은 events/_delegate.js로 위임됨)
 
   // 목록 뷰 날짜 네비게이션
   const logPrev = document.getElementById('log-prev')
@@ -879,65 +823,8 @@ export function bindEvents() {
     })
   }
 
-  // 이슈 행 우클릭 → 컨텍스트 메뉴
-  document.querySelectorAll('.issue-row[data-issue-key]').forEach(row => {
-    on(row, 'contextmenu', (e) => {
-      const key = row.dataset.issueKey
-      const summary = row.dataset.issueSummary
-      if (key) showContextMenu(e, key, summary)
-    })
-    // 이슈 행 좌클릭 → 상세 모달. 이슈 키/별/상태/아바타/액션 버튼은 제외
-    on(row, 'click', (e) => {
-      if (e.target.closest('a, button, [data-action]')) return
-      const key = row.dataset.issueKey
-      if (key) openIssueDetailModal(key)
-    })
-  })
-
-  // 다중 선택 체크박스
-  document.querySelectorAll('[data-action="toggle-select"]').forEach(el => {
-    on(el, 'click', (e) => {
-      e.stopPropagation()
-      e.preventDefault()  // native checkbox 토글 막고 직접 컨트롤
-      toggleIssueSelection(el.dataset.key, e.shiftKey)
-      render({ sections: ['content'] })
-    })
-  })
-
-  // 일괄 복사 액션 바
-  document.querySelectorAll('[data-bulk]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      const action = btn.dataset.bulk
-      if (action === 'clear') {
-        clearIssueSelection()
-        render({ sections: ['content'] })
-        return
-      }
-      copySelectedIssues(action)
-    })
-  })
-
-  // 작업 로그 상세 행 우클릭 → 컨텍스트 메뉴 (이슈 행과 동일)
-  document.querySelectorAll('.log-row[data-issue-key]').forEach(row => {
-    on(row, 'contextmenu', (e) => {
-      const key = row.dataset.issueKey
-      const summary = row.dataset.issueSummary
-      if (key) showContextMenu(e, key, summary)
-    })
-  })
-
-  // 즐겨찾기 별표 토글
-  document.querySelectorAll('[data-action="toggle-favorite"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      const key = btn.dataset.key
-      const pool = [...getActiveIssues(), ...(state.searchResults || [])]
-      const issue = pool.find(i => i.key === key)
-      toggleFavorite(key, issue?.summary || '')
-      render()
-    })
-  })
+  // (.issue-row 클릭/우클릭, [data-action="toggle-select"], [data-bulk],
+  //  .log-row 우클릭, [data-action="toggle-favorite"]는 events/_delegate.js로 위임됨)
 
   // 플로팅 패널 펼치기/접기
   const favToggle = document.getElementById('favorites-toggle')
@@ -959,49 +846,8 @@ export function bindEvents() {
     })
   }
 
-  // 즐겨찾기 패널의 시작 버튼
-  document.querySelectorAll('[data-action="fav-start"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      const key = btn.dataset.key
-      const summary = btn.dataset.summary || ''
-      addSession(key, summary)
-      render()
-    })
-  })
-
-  // 즐겨찾기 해제 (패널 내부)
-  document.querySelectorAll('[data-action="fav-remove"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      const key = btn.dataset.key
-      toggleFavorite(key, '')
-      render()
-    })
-  })
-
-  // 즐겨찾기 항목 우클릭 → 컨텍스트 메뉴
-  document.querySelectorAll('.favorite-item[data-issue-key]').forEach(row => {
-    on(row, 'contextmenu', (e) => {
-      const key = row.dataset.issueKey
-      const summary = row.dataset.issueSummary
-      if (key) showContextMenu(e, key, summary)
-    })
-  })
-
-  // 이슈 행 호버 시 표시되는 '수동 기록' 버튼
-  document.querySelectorAll('[data-action="manual-log"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      const key = btn.dataset.key
-      const pool = [...getActiveIssues(), ...(state.searchResults || [])]
-      const issue = pool.find(i => i.key === key)
-      if (!issue) return
-      state.showManualLog = { issueKey: key, summary: issue.summary }
-      state.manualIssueCheck = { status: 'ok', key, summary: issue.summary }
-      render()
-    })
-  })
+  // ([data-action="fav-start"], "fav-remove", "manual-log",
+  //  .favorite-item 우클릭은 events/_delegate.js로 위임됨)
 
   // 일감 없이 작업 시작하기 (세션 목록이 비어있을 때만 노출)
   const startNoIssueBtn = document.getElementById('btn-start-no-issue')
@@ -1019,140 +865,8 @@ export function bindEvents() {
     })
   }
 
-  // 이슈 유형 버튼 → 유형 변경 드롭다운 토글 (상세 모달 좌상단)
-  document.querySelectorAll('[data-action="toggle-type-menu"]').forEach(btn => {
-    on(btn, 'click', async (e) => {
-      e.stopPropagation()
-      const key = btn.dataset.key
-      if (!key) return
-      if (state.typeDropdown && state.typeDropdown.issueKey === key) {
-        state.typeDropdown = null
-        render({ sections: ['modals'] })
-        return
-      }
-      const rect = btn.getBoundingClientRect()
-      const cached = getCachedIssueTypes(key)
-      state.typeDropdown = {
-        issueKey: key,
-        currentTypeName: btn.dataset.currentType || '',
-        rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
-        types: cached,
-        loading: !cached,
-      }
-      // 다른 드롭다운은 닫음
-      if (state.statusDropdown) state.statusDropdown = null
-      if (state.assigneeDropdown) closeAssigneeDropdown({ skipRender: true })
-      render({ sections: ['modals'] })
-      try {
-        const types = await fetchIssueTypes(key)
-        setCachedIssueTypes(key, types)
-        if (state.typeDropdown && state.typeDropdown.issueKey === key) {
-          state.typeDropdown.types = types
-          state.typeDropdown.loading = false
-          render({ sections: ['modals'] })
-        }
-      } catch (err) {
-        console.error('이슈 유형 조회 실패:', err)
-        if (cached) return
-        if (state.typeDropdown && state.typeDropdown.issueKey === key) {
-          state.typeDropdown = null
-          render({ sections: ['modals'] })
-        }
-        showToast(`유형 조회 실패: ${formatJiraError(err)}`, '⚠')
-      }
-    })
-  })
-
-  // 유형 드롭다운 항목 선택 → 즉시 변경
-  document.querySelectorAll('[data-action="apply-type"]').forEach(btn => {
-    on(btn, 'click', async (e) => {
-      e.stopPropagation()
-      const dd = state.typeDropdown
-      if (!dd) return
-      const issueKey = dd.issueKey
-      const typeInfo = {
-        id: btn.dataset.typeId,
-        name: btn.dataset.typeName || '',
-        iconUrl: btn.dataset.typeIcon || '',
-      }
-      state.typeDropdown = null
-      render({ sections: ['modals'] })
-      await performTypeChange(issueKey, typeInfo)
-    })
-  })
-
-  // 이슈 상태 버튼 → 전이 드롭다운 토글
-  document.querySelectorAll('[data-action="toggle-status-menu"]').forEach(btn => {
-    on(btn, 'click', async (e) => {
-      e.stopPropagation()
-      const key = btn.dataset.key
-      if (!key) return
-      // 이미 이 이슈에 대해 드롭다운이 열려있으면 닫기 (토글)
-      if (state.statusDropdown && state.statusDropdown.issueKey === key) {
-        state.statusDropdown = null
-        render({ sections: ['modals'] })
-        return
-      }
-      const rect = btn.getBoundingClientRect()
-      // 캐시가 있으면 즉시 표시(loading=false), 그렇지 않으면 로딩 표시
-      const cached = getCachedTransitions(key)
-      state.statusDropdown = {
-        issueKey: key,
-        currentStatus: btn.dataset.currentStatus || '',
-        rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
-        transitions: cached,
-        loading: !cached,
-      }
-      render({ sections: ['modals'] })
-      // 캐시 유무와 무관하게 백그라운드 fetch로 최신화 (stale-while-revalidate)
-      try {
-        const transitions = await fetchTransitions(key)
-        setCachedTransitions(key, transitions)
-        if (state.statusDropdown && state.statusDropdown.issueKey === key) {
-          state.statusDropdown.transitions = transitions
-          state.statusDropdown.loading = false
-          render({ sections: ['modals'] })
-        }
-      } catch (err) {
-        console.error('전이 조회 실패:', err)
-        // 캐시로 이미 표시 중이면 사용자 흐름을 끊지 않음 (네트워크 일시 오류 가능)
-        if (cached) return
-        if (state.statusDropdown && state.statusDropdown.issueKey === key) {
-          state.statusDropdown = null
-          render({ sections: ['modals'] })
-        }
-        showToast(`상태 조회 실패: ${formatJiraError(err)}`, '⚠')
-      }
-    })
-  })
-
-  // 담당자 아바타 클릭 → 드롭다운 토글
-  document.querySelectorAll('[data-action="toggle-assignee-menu"]').forEach(el => {
-    on(el, 'click', (e) => {
-      e.stopPropagation()
-      const key = el.dataset.issueKey
-      if (!key) return
-      if (state.assigneeDropdown && state.assigneeDropdown.issueKey === key) {
-        closeAssigneeDropdown()
-        return
-      }
-      if (state.assigneeDropdown) closeAssigneeDropdown({ skipRender: true })
-      const rect = el.getBoundingClientRect()
-      // 캐시가 있으면 즉시 리스트 표시(loading=false), 그렇지 않으면 로딩 표시
-      const cached = getCachedAssignableUsers(key)
-      state.assigneeDropdown = {
-        issueKey: key,
-        rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
-        allUsers: cached,
-        loading: !cached,
-        query: '',
-      }
-      if (state.statusDropdown) state.statusDropdown = null
-      render({ sections: ['modals'] })
-      // 캐시 유무와 무관하게 백그라운드 fetch로 최신화 (stale-while-revalidate)
-      loadAssignableUsers(key)
-    })
-  })
+  // (data-action: toggle-type-menu / apply-type / toggle-status-menu /
+  //  toggle-assignee-menu 클릭은 events/_delegate.js로 위임됨)
 
   // 담당자 검색 입력: 로컬 필터 즉시 적용 (API 재호출 없음)
   const assigneeSearchInput = document.getElementById('assignee-search-input')
@@ -1188,30 +902,7 @@ export function bindEvents() {
     })
   }
 
-  // 드롭다운의 전이 항목 선택 → 필드 필요하면 2차 모달, 아니면 즉시 실행
-  document.querySelectorAll('[data-action="apply-transition"]').forEach(btn => {
-    on(btn, 'click', async (e) => {
-      e.stopPropagation()
-      const dd = state.statusDropdown
-      if (!dd) return
-      const transitionId = btn.dataset.transitionId
-      const needsFields = btn.dataset.needsFields === '1'
-      const transition = (dd.transitions || []).find(t => String(t.id) === String(transitionId))
-      if (!transition) return
-      const issueKey = dd.issueKey
-      // 드롭다운 닫기
-      state.statusDropdown = null
-
-      if (needsFields) {
-        // 필수 필드 있는 전이 → 2차 모달
-        state.transitionFieldsModal = { issueKey, transition, values: {}, submitting: false }
-        render({ sections: ['modals'] })
-        return
-      }
-      render({ sections: ['modals'] })
-      await performTransition(issueKey, transition, null)
-    })
-  })
+  // ([data-action="apply-transition"] 클릭은 events/_delegate.js로 위임됨)
 
   // 필드 모달: 입력값을 state.values에 실시간 반영 (재렌더로 값 날아가지 않도록)
   document.querySelectorAll('.transition-field').forEach(input => {
@@ -1275,107 +966,8 @@ export function bindEvents() {
     })
   }
 
-  // 이슈 목록에서 작업 시작
-  document.querySelectorAll('[data-action="start"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      const key = btn.dataset.key
-      // 이슈 목록 또는 검색 결과에서 찾기
-      const allIssues = [...getActiveIssues(), ...(state.searchResults || [])]
-      const issue = allIssues.find(i => i.key === key)
-      if (issue) {
-        addSession(key, issue.summary)
-        render()
-      }
-    })
-  })
-
-  // 세션 시작 시간을 직전 로그 종료 시간으로 조정
-  document.querySelectorAll('[data-action="adjust-session-start"]').forEach(btn => {
-    on(btn, 'click', async (e) => {
-      e.stopPropagation()
-      if (btn.disabled) return
-      const key = btn.dataset.key
-      const sessions = loadSessions()
-      const s = sessions.find(x => x.issueKey === key)
-      if (!s || !s.segments.length) return
-      const firstSeg = s.segments[0]
-      const startDate = firstSeg.start
-      const dateStr = toDateString(startDate)
-
-      const originalLabel = btn.textContent
-      btn.disabled = true
-      btn.textContent = '불러오는 중...'
-      try {
-        await ensureMonthWorklogsLoaded(startDate.getFullYear(), startDate.getMonth())
-      } catch (err) {
-        console.error('작업 로그 로드 실패:', err)
-        showToast('작업 로그를 불러오지 못했습니다.', '⚠')
-        btn.disabled = false
-        btn.textContent = originalLabel
-        return
-      }
-      btn.disabled = false
-      btn.textContent = originalLabel
-
-      const logs = state.worklogsByDate[dateStr] || []
-      if (!logs.length) {
-        showToast('해당 날짜에 기록된 작업 로그가 없습니다.', 'ℹ')
-        return
-      }
-      const latestEnd = logs.reduce((max, l) => (l.endTime > max ? l.endTime : max), '00:00')
-      const [h, m] = latestEnd.split(':').map(Number)
-      const newStart = new Date(startDate)
-      newStart.setHours(h, m, 0, 0)
-
-      if (newStart.getTime() >= firstSeg.start.getTime()) {
-        showToast('직전 종료 시간이 현재 시작 시간보다 늦어 조정할 수 없습니다.', 'ℹ')
-        return
-      }
-      firstSeg.start = newStart
-      saveSessions(sessions)
-      showToast(`시작 시간을 ${latestEnd}(으)로 조정했습니다.`, '✓')
-      render()
-    })
-  })
-
-  // 세션 중단
-  document.querySelectorAll('[data-action="pause"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      pauseSession(btn.dataset.key)
-      render()
-    })
-  })
-
-  // 세션 재개
-  document.querySelectorAll('[data-action="resume"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      resumeSession(btn.dataset.key)
-      render()
-    })
-  })
-
-  // 작업 종료 버튼 → 종료 모달
-  document.querySelectorAll('[data-action="finish"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      state.showModal = btn.dataset.key
-      state.finishIssueCheck = null
-      state.finishKeyActiveIdx = -1
-      render({ sections: ['modals'] })
-    })
-  })
-
-  // 작업 취소 버튼 → 컨펌 모달
-  document.querySelectorAll('[data-action="cancel"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      state.showCancelConfirm = btn.dataset.key
-      render({ sections: ['modals'] })
-    })
-  })
+  // (data-action: start / adjust-session-start / pause / resume / finish / cancel
+  //  클릭은 events/_delegate.js로 위임됨)
 
   // 종료 모달은 ESC 또는 취소 버튼으로만 닫힘
 
@@ -1538,22 +1130,7 @@ export function bindEvents() {
     on(inp, 'input', updateFinishDurationReadouts)
   })
 
-  // 종료 모달: 구간 삭제 버튼 (다중 구간일 때만 노출)
-  // 주의: 재렌더 시 사용자가 편집 중이던 시간 input 값은 리셋됨 (편집 후 삭제는 드문 조합이라 단순화)
-  document.querySelectorAll('[data-action="delete-segment"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      const segIdx = parseInt(btn.dataset.segIdx, 10)
-      if (!Number.isFinite(segIdx)) return
-      if (!confirm(`구간 ${segIdx + 1}을(를) 삭제할까요?\n이 구간의 작업 시간은 Jira에 기록되지 않습니다.`)) return
-      const result = deleteSessionSegment(state.showModal, segIdx)
-      if (!result.ok) {
-        alert(result.error || '구간 삭제에 실패했습니다.')
-        return
-      }
-      render({ sections: ['sessions', 'modals'] })
-    })
-  })
+  // ([data-action="delete-segment"] 클릭은 events/_delegate.js로 위임됨)
 
   // 종료 모달: 마지막 구간의 '지금' 버튼 → 종료 시간을 현재 시각으로 + 재계산
   document.querySelectorAll('.finish-seg-now').forEach(btn => {
@@ -1667,20 +1244,7 @@ export function bindEvents() {
     })
   }
 
-  // 일감 교체 버튼 → 교체 모달
-  // 세션 카드 + 종료 모달의 modal-issue-info 안 양쪽 모두에서 동일 액션 사용
-  document.querySelectorAll('[data-action="swap-issue"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      const oldKey = btn.dataset.key
-      const summary = btn.dataset.summary || ''
-      if (!oldKey) return
-      state.showSwapIssue = { oldKey, summary }
-      state.swapIssueCheck = null
-      state.swapKeyActiveIdx = -1
-      render({ sections: ['modals'] })
-    })
-  })
+  // ([data-action="swap-issue"] 클릭은 events/_delegate.js로 위임됨)
 
   // 일감 교체 모달: 취소
   const swapCancel = document.getElementById('swap-issue-cancel')
@@ -2044,63 +1608,7 @@ export function bindEvents() {
     })
   }
 
-  // 요약 탭 일별 차트 막대 클릭 → 로그 탭으로 이동
-  document.querySelectorAll('[data-chart-date]').forEach(col => {
-    on(col, 'click', () => {
-      const dateStr = col.dataset.chartDate
-      if (!dateStr) return
-      const d = new Date(dateStr + 'T00:00:00')
-      state.currentMainTab = 'logs'
-      state.calendarYear = d.getFullYear()
-      state.calendarMonth = d.getMonth()
-      state.logDate = dateStr
-      state.calendarOpen = true
-      localStorage.setItem('log_calendar_open', '1')
-      if (isLoggedIn() && state.issuesLoaded) {
-        loadWorklogs(d.getFullYear(), d.getMonth())
-      }
-      render()
-    })
-  })
-
-  // 작업 로그 수정 버튼
-  document.querySelectorAll('[data-action="edit-log"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      const idx = parseInt(btn.dataset.idx, 10)
-      const logs = getActiveLogs(state.logDate)
-      const log = logs[idx]
-      if (!log?.worklogId) return
-      state.editingWorklog = {
-        worklogId: log.worklogId,
-        issueKey: log.issueKey,
-        summary: log.summary,
-        startTime: log.startTime,
-        durationHours: Math.floor(log.durationMinutes / 60),
-        durationMins: log.durationMinutes % 60,
-        comment: log.comment || '',
-        date: state.logDate,
-      }
-      render({ sections: ['modals'] })
-    })
-  })
-
-  // 작업 로그 삭제 버튼
-  document.querySelectorAll('[data-action="delete-log"]').forEach(btn => {
-    on(btn, 'click', (e) => {
-      e.stopPropagation()
-      const idx = parseInt(btn.dataset.idx, 10)
-      const logs = getActiveLogs(state.logDate)
-      const log = logs[idx]
-      if (!log?.worklogId) return
-      state.deletingWorklog = {
-        worklogId: log.worklogId,
-        issueKey: log.issueKey,
-        summary: log.summary,
-      }
-      render({ sections: ['modals'] })
-    })
-  })
+  // ([data-chart-date], [data-action="edit-log"], "delete-log" 클릭은 events/_delegate.js로 위임됨)
 
   // 수정 모달은 ESC 또는 취소 버튼으로만 닫힘
 
@@ -2204,6 +1712,468 @@ export function bindEvents() {
       }
     })
   }
+}
+
+// ========== 이벤트 위임 등록 (1회) ==========
+// 자주 갱신되는 element들의 클릭/우클릭/data-* 핸들러는 모두 document 레벨로 위임.
+// 기존: render마다 수십 개의 querySelectorAll + addEventListener
+// 변경: 앱 시작 시 1회만 등록. element가 새로 그려져도 재바인드 불필요.
+let delegationInstalled = false
+export function installDelegatedHandlers() {
+  if (delegationInstalled) return
+  delegationInstalled = true
+
+  // ===== data-action 기반 핸들러 =====
+
+  // 다중 선택 체크박스
+  registerClickAction('toggle-select', (e, el) => {
+    e.stopImmediatePropagation()
+    e.preventDefault()  // native checkbox 토글 막고 직접 컨트롤
+    toggleIssueSelection(el.dataset.key, e.shiftKey)
+    render({ sections: ['content'] })
+  })
+
+  // 즐겨찾기 토글 (이슈 행의 별표)
+  registerClickAction('toggle-favorite', (e, btn) => {
+    e.stopImmediatePropagation()
+    const key = btn.dataset.key
+    const pool = [...getActiveIssues(), ...(state.searchResults || [])]
+    const issue = pool.find(i => i.key === key)
+    toggleFavorite(key, issue?.summary || '')
+    render()
+  })
+
+  // 즐겨찾기 패널의 시작 버튼
+  registerClickAction('fav-start', (e, btn) => {
+    e.stopImmediatePropagation()
+    const key = btn.dataset.key
+    const summary = btn.dataset.summary || ''
+    addSession(key, summary)
+    render()
+  })
+
+  // 즐겨찾기 해제 (패널 내부)
+  registerClickAction('fav-remove', (e, btn) => {
+    e.stopImmediatePropagation()
+    toggleFavorite(btn.dataset.key, '')
+    render()
+  })
+
+  // 이슈 행 호버 시 표시되는 '수동 기록' 버튼
+  registerClickAction('manual-log', (e, btn) => {
+    e.stopImmediatePropagation()
+    const key = btn.dataset.key
+    const pool = [...getActiveIssues(), ...(state.searchResults || [])]
+    const issue = pool.find(i => i.key === key)
+    if (!issue) return
+    state.showManualLog = { issueKey: key, summary: issue.summary }
+    state.manualIssueCheck = { status: 'ok', key, summary: issue.summary }
+    render()
+  })
+
+  // 이슈 유형 드롭다운 토글
+  registerClickAction('toggle-type-menu', async (e, btn) => {
+    e.stopImmediatePropagation()
+    const key = btn.dataset.key
+    if (!key) return
+    if (state.typeDropdown && state.typeDropdown.issueKey === key) {
+      state.typeDropdown = null
+      render({ sections: ['modals'] })
+      return
+    }
+    const rect = btn.getBoundingClientRect()
+    const cached = getCachedIssueTypes(key)
+    state.typeDropdown = {
+      issueKey: key,
+      currentTypeName: btn.dataset.currentType || '',
+      rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+      types: cached,
+      loading: !cached,
+    }
+    if (state.statusDropdown) state.statusDropdown = null
+    if (state.assigneeDropdown) closeAssigneeDropdown({ skipRender: true })
+    render({ sections: ['modals'] })
+    try {
+      const types = await fetchIssueTypes(key)
+      setCachedIssueTypes(key, types)
+      if (state.typeDropdown && state.typeDropdown.issueKey === key) {
+        state.typeDropdown.types = types
+        state.typeDropdown.loading = false
+        render({ sections: ['modals'] })
+      }
+    } catch (err) {
+      console.error('이슈 유형 조회 실패:', err)
+      if (cached) return
+      if (state.typeDropdown && state.typeDropdown.issueKey === key) {
+        state.typeDropdown = null
+        render({ sections: ['modals'] })
+      }
+      showToast(`유형 조회 실패: ${formatJiraError(err)}`, '⚠')
+    }
+  })
+
+  // 유형 드롭다운 항목 선택
+  registerClickAction('apply-type', async (e, btn) => {
+    e.stopImmediatePropagation()
+    const dd = state.typeDropdown
+    if (!dd) return
+    const issueKey = dd.issueKey
+    const typeInfo = {
+      id: btn.dataset.typeId,
+      name: btn.dataset.typeName || '',
+      iconUrl: btn.dataset.typeIcon || '',
+    }
+    state.typeDropdown = null
+    render({ sections: ['modals'] })
+    await performTypeChange(issueKey, typeInfo)
+  })
+
+  // 이슈 상태 버튼 → 전이 드롭다운 토글
+  registerClickAction('toggle-status-menu', async (e, btn) => {
+    e.stopImmediatePropagation()
+    const key = btn.dataset.key
+    if (!key) return
+    if (state.statusDropdown && state.statusDropdown.issueKey === key) {
+      state.statusDropdown = null
+      render({ sections: ['modals'] })
+      return
+    }
+    const rect = btn.getBoundingClientRect()
+    const cached = getCachedTransitions(key)
+    state.statusDropdown = {
+      issueKey: key,
+      currentStatus: btn.dataset.currentStatus || '',
+      rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+      transitions: cached,
+      loading: !cached,
+    }
+    render({ sections: ['modals'] })
+    try {
+      const transitions = await fetchTransitions(key)
+      setCachedTransitions(key, transitions)
+      if (state.statusDropdown && state.statusDropdown.issueKey === key) {
+        state.statusDropdown.transitions = transitions
+        state.statusDropdown.loading = false
+        render({ sections: ['modals'] })
+      }
+    } catch (err) {
+      console.error('전이 조회 실패:', err)
+      if (cached) return
+      if (state.statusDropdown && state.statusDropdown.issueKey === key) {
+        state.statusDropdown = null
+        render({ sections: ['modals'] })
+      }
+      showToast(`상태 조회 실패: ${formatJiraError(err)}`, '⚠')
+    }
+  })
+
+  // 담당자 아바타 클릭 → 드롭다운 토글
+  registerClickAction('toggle-assignee-menu', (e, el) => {
+    e.stopImmediatePropagation()
+    const key = el.dataset.issueKey
+    if (!key) return
+    if (state.assigneeDropdown && state.assigneeDropdown.issueKey === key) {
+      closeAssigneeDropdown()
+      return
+    }
+    if (state.assigneeDropdown) closeAssigneeDropdown({ skipRender: true })
+    const rect = el.getBoundingClientRect()
+    const cached = getCachedAssignableUsers(key)
+    state.assigneeDropdown = {
+      issueKey: key,
+      rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+      allUsers: cached,
+      loading: !cached,
+      query: '',
+    }
+    if (state.statusDropdown) state.statusDropdown = null
+    render({ sections: ['modals'] })
+    loadAssignableUsers(key)
+  })
+
+  // 드롭다운의 전이 항목 선택
+  registerClickAction('apply-transition', async (e, btn) => {
+    e.stopImmediatePropagation()
+    const dd = state.statusDropdown
+    if (!dd) return
+    const transitionId = btn.dataset.transitionId
+    const needsFields = btn.dataset.needsFields === '1'
+    const transition = (dd.transitions || []).find(t => String(t.id) === String(transitionId))
+    if (!transition) return
+    const issueKey = dd.issueKey
+    state.statusDropdown = null
+    if (needsFields) {
+      state.transitionFieldsModal = { issueKey, transition, values: {}, submitting: false }
+      render({ sections: ['modals'] })
+      return
+    }
+    render({ sections: ['modals'] })
+    await performTransition(issueKey, transition, null)
+  })
+
+  // 이슈 목록에서 작업 시작
+  registerClickAction('start', (e, btn) => {
+    e.stopImmediatePropagation()
+    const key = btn.dataset.key
+    const allIssues = [...getActiveIssues(), ...(state.searchResults || [])]
+    const issue = allIssues.find(i => i.key === key)
+    if (issue) {
+      addSession(key, issue.summary)
+      render()
+    }
+  })
+
+  // 세션 시작 시간을 직전 로그 종료 시간으로 조정
+  registerClickAction('adjust-session-start', async (e, btn) => {
+    e.stopImmediatePropagation()
+    if (btn.disabled) return
+    const key = btn.dataset.key
+    const sessions = loadSessions()
+    const s = sessions.find(x => x.issueKey === key)
+    if (!s || !s.segments.length) return
+    const firstSeg = s.segments[0]
+    const startDate = firstSeg.start
+    const dateStr = toDateString(startDate)
+
+    const originalLabel = btn.textContent
+    btn.disabled = true
+    btn.textContent = '불러오는 중...'
+    try {
+      await ensureMonthWorklogsLoaded(startDate.getFullYear(), startDate.getMonth())
+    } catch (err) {
+      console.error('작업 로그 로드 실패:', err)
+      showToast('작업 로그를 불러오지 못했습니다.', '⚠')
+      btn.disabled = false
+      btn.textContent = originalLabel
+      return
+    }
+    btn.disabled = false
+    btn.textContent = originalLabel
+
+    const logs = state.worklogsByDate[dateStr] || []
+    if (!logs.length) {
+      showToast('해당 날짜에 기록된 작업 로그가 없습니다.', 'ℹ')
+      return
+    }
+    const latestEnd = logs.reduce((max, l) => (l.endTime > max ? l.endTime : max), '00:00')
+    const [h, m] = latestEnd.split(':').map(Number)
+    const newStart = new Date(startDate)
+    newStart.setHours(h, m, 0, 0)
+
+    if (newStart.getTime() >= firstSeg.start.getTime()) {
+      showToast('직전 종료 시간이 현재 시작 시간보다 늦어 조정할 수 없습니다.', 'ℹ')
+      return
+    }
+    firstSeg.start = newStart
+    saveSessions(sessions)
+    showToast(`시작 시간을 ${latestEnd}(으)로 조정했습니다.`, '✓')
+    render()
+  })
+
+  // 세션 중단
+  registerClickAction('pause', (e, btn) => {
+    e.stopImmediatePropagation()
+    pauseSession(btn.dataset.key)
+    render()
+  })
+
+  // 세션 재개
+  registerClickAction('resume', (e, btn) => {
+    e.stopImmediatePropagation()
+    resumeSession(btn.dataset.key)
+    render()
+  })
+
+  // 작업 종료 버튼 → 종료 모달
+  registerClickAction('finish', (e, btn) => {
+    e.stopImmediatePropagation()
+    state.showModal = btn.dataset.key
+    state.finishIssueCheck = null
+    state.finishKeyActiveIdx = -1
+    render({ sections: ['modals'] })
+  })
+
+  // 작업 취소 버튼 → 컨펌 모달
+  registerClickAction('cancel', (e, btn) => {
+    e.stopImmediatePropagation()
+    state.showCancelConfirm = btn.dataset.key
+    render({ sections: ['modals'] })
+  })
+
+  // 종료 모달의 구간 삭제
+  registerClickAction('delete-segment', (e, btn) => {
+    e.stopImmediatePropagation()
+    const segIdx = parseInt(btn.dataset.segIdx, 10)
+    if (!Number.isFinite(segIdx)) return
+    if (!confirm(`구간 ${segIdx + 1}을(를) 삭제할까요?\n이 구간의 작업 시간은 Jira에 기록되지 않습니다.`)) return
+    const result = deleteSessionSegment(state.showModal, segIdx)
+    if (!result.ok) {
+      alert(result.error || '구간 삭제에 실패했습니다.')
+      return
+    }
+    render({ sections: ['sessions', 'modals'] })
+  })
+
+  // 일감 교체 버튼 → 교체 모달
+  registerClickAction('swap-issue', (e, btn) => {
+    e.stopImmediatePropagation()
+    const oldKey = btn.dataset.key
+    const summary = btn.dataset.summary || ''
+    if (!oldKey) return
+    state.showSwapIssue = { oldKey, summary }
+    state.swapIssueCheck = null
+    state.swapKeyActiveIdx = -1
+    render({ sections: ['modals'] })
+  })
+
+  // 작업 로그 수정 버튼
+  registerClickAction('edit-log', (e, btn) => {
+    e.stopImmediatePropagation()
+    const idx = parseInt(btn.dataset.idx, 10)
+    const logs = getActiveLogs(state.logDate)
+    const log = logs[idx]
+    if (!log?.worklogId) return
+    state.editingWorklog = {
+      worklogId: log.worklogId,
+      issueKey: log.issueKey,
+      summary: log.summary,
+      startTime: log.startTime,
+      durationHours: Math.floor(log.durationMinutes / 60),
+      durationMins: log.durationMinutes % 60,
+      comment: log.comment || '',
+      date: state.logDate,
+    }
+    render({ sections: ['modals'] })
+  })
+
+  // 작업 로그 삭제 버튼
+  registerClickAction('delete-log', (e, btn) => {
+    e.stopImmediatePropagation()
+    const idx = parseInt(btn.dataset.idx, 10)
+    const logs = getActiveLogs(state.logDate)
+    const log = logs[idx]
+    if (!log?.worklogId) return
+    state.deletingWorklog = {
+      worklogId: log.worklogId,
+      issueKey: log.issueKey,
+      summary: log.summary,
+    }
+    render({ sections: ['modals'] })
+  })
+
+  // ===== data-* 키 기반 핸들러 =====
+
+  // 일괄 복사 액션 바 (data-bulk)
+  registerClickData('bulk', (e, btn) => {
+    e.stopImmediatePropagation()
+    const action = btn.dataset.bulk
+    if (action === 'clear') {
+      clearIssueSelection()
+      render({ sections: ['content'] })
+      return
+    }
+    copySelectedIssues(action)
+  })
+
+  // 페이지네이션 (data-page)
+  registerClickData('page', (e, btn) => {
+    state.currentPage = parseInt(btn.dataset.page, 10)
+    render()
+    resetIssueListScroll()
+    document.querySelector('.issue-list')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  })
+
+  // 연반차 토글 (data-day-off)
+  registerClickData('dayOff', (e, btn) => {
+    const value = btn.dataset.dayOff
+    setDayOff(state.logDate, value === 'none' ? null : value)
+    render()
+  })
+
+  // 달력 날짜 셀 (data-cal-date)
+  registerClickData('calDate', (e, cell) => {
+    state.logDate = cell.dataset.calDate
+    render()
+  })
+
+  // 요약 탭 일별 차트 막대 (data-chart-date)
+  registerClickData('chartDate', (e, col) => {
+    const dateStr = col.dataset.chartDate
+    if (!dateStr) return
+    const d = new Date(dateStr + 'T00:00:00')
+    state.currentMainTab = 'logs'
+    state.calendarYear = d.getFullYear()
+    state.calendarMonth = d.getMonth()
+    state.logDate = dateStr
+    state.calendarOpen = true
+    localStorage.setItem('log_calendar_open', '1')
+    if (isLoggedIn() && state.issuesLoaded) {
+      loadWorklogs(d.getFullYear(), d.getMonth())
+    }
+    render()
+  })
+
+  // ===== 셀렉터 기반 핸들러 (class 기반) =====
+
+  // 프로젝트 선택 칩
+  registerClickSelector('.project-chip', (e, chip) => {
+    state.currentProject = chip.dataset.project
+    state.currentFilterTab = 'all'
+    state.currentPage = 1
+    state.searchQuery = ''
+    state.searchResults = null
+    render()
+    resetIssueListScroll()
+  })
+
+  // 메인 탭
+  registerClickSelector('.main-tab', (e, tab) => {
+    state.currentMainTab = tab.dataset.mainTab
+    if (tab.dataset.mainTab === 'logs' && isLoggedIn() && state.issuesLoaded) {
+      loadWorklogs(state.calendarYear, state.calendarMonth)
+    }
+    if (tab.dataset.mainTab === 'summary') {
+      ensureSummaryWorklogs()
+    }
+    render()
+  })
+
+  // 필터 탭
+  registerClickSelector('.filter-tab', (e, tab) => {
+    state.currentFilterTab = tab.dataset.filter
+    state.currentPage = 1
+    state.searchQuery = ''
+    state.searchResults = null
+    render()
+    resetIssueListScroll()
+  })
+
+  // 이슈 행 좌클릭 → 상세 모달 (action/링크/버튼 영역은 위에서 처리되어 여기 도달 안 함)
+  registerClickSelector('.issue-row[data-issue-key]', (e, row) => {
+    // dispatchClick은 data-action 매칭에서 이미 return하므로 보수적 가드만
+    if (e.target.closest('a, button')) return
+    const key = row.dataset.issueKey
+    if (key) openIssueDetailModal(key)
+  })
+
+  // ===== 우클릭 (contextmenu) =====
+  registerContextMenu('.issue-row[data-issue-key]', (e, row) => {
+    const key = row.dataset.issueKey
+    const summary = row.dataset.issueSummary
+    if (key) showContextMenu(e, key, summary)
+  })
+  registerContextMenu('.log-row[data-issue-key]', (e, row) => {
+    const key = row.dataset.issueKey
+    const summary = row.dataset.issueSummary
+    if (key) showContextMenu(e, key, summary)
+  })
+  registerContextMenu('.favorite-item[data-issue-key]', (e, row) => {
+    const key = row.dataset.issueKey
+    const summary = row.dataset.issueSummary
+    if (key) showContextMenu(e, key, summary)
+  })
+
+  installGlobalDelegation()
 }
 
 // ========== 타이머 업데이트 ==========

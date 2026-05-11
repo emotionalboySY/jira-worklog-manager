@@ -8,6 +8,7 @@ import { render } from './render.js'
 import { loadIssues } from './data.js'
 import { setupAutoReload } from './autoReload.js'
 import { resetInMemoryUserData } from './state.js'
+import { installDelegatedHandlers } from './events.js'
 
 // 토큰 갱신 실패로 자동 로그아웃이 일어나면 즉시 로그인 화면으로 전환 + 사용자 안내
 let authClearedHandled = false
@@ -24,6 +25,9 @@ window.addEventListener('jira-auth-cleared', () => {
 // ========== 초기화 ==========
 async function init() {
   try {
+    // 이벤트 위임 1회 설치 — handleGlobalClick(bindEvents에서 등록)보다 먼저 등록되도록
+    // init 첫 단계에 호출. document 리스너 순서가 클릭 후 handleGlobalClick 호출 보장에 중요.
+    installDelegatedHandlers()
     applyTheme()
     applyPreferences(loadPreferences())
 
