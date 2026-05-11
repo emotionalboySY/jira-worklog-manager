@@ -28,6 +28,7 @@ import {
   cancelCommentCompose,
   cancelEditComment,
 } from './comments.js'
+import { on } from './_dom.js'
 
 // 이슈 상세 모달 닫기 + Blob URL 해제 + 에디터 파괴
 export function closeIssueDetailModal() {
@@ -350,3 +351,71 @@ export async function loadIssueDetailImages() {
 
 // closeIssueDetailModal의 ESC 흐름에서 댓글 작성기/편집기 취소도 같이 처리되도록 재export
 export { cancelCommentCompose, cancelEditComment }
+
+// 상세 모달의 버튼/클릭 바인딩 (modals 섹션 재렌더 시마다 호출)
+export function bindDetailModalEvents() {
+  // 닫기 버튼들
+  const detailCloseBtn = document.getElementById('issue-detail-close')
+  if (detailCloseBtn) on(detailCloseBtn, 'click', closeIssueDetailModal)
+  const detailCloseFooterBtn = document.getElementById('issue-detail-close-footer')
+  if (detailCloseFooterBtn) on(detailCloseFooterBtn, 'click', closeIssueDetailModal)
+
+  // 첨부 클릭 → 새 탭으로 Jira 다운로드 URL 열기
+  document.querySelectorAll('#issue-detail-overlay .detail-attachment').forEach(el => {
+    on(el, 'click', async (e) => {
+      e.preventDefault()
+      const url = el.dataset.attachmentUrl
+      if (!url) return
+      const blobUrl = await fetchAttachmentBlobUrl(url)
+      if (blobUrl) {
+        window.open(blobUrl, '_blank', 'noopener,noreferrer')
+        // 메모리 누수 방지를 위해 일정 시간 후 revoke
+        setTimeout(() => { try { URL.revokeObjectURL(blobUrl) } catch {} }, 60000)
+      } else {
+        showToast('첨부파일을 불러오지 못했습니다.', '⚠')
+      }
+    })
+  })
+
+  // 설명 영역 클릭 → 편집 모드 진입
+  const detailDescEl = document.getElementById('issue-detail-description')
+  if (detailDescEl) {
+    on(detailDescEl, 'click', (e) => {
+      // 설명 내부 링크/이미지 클릭은 기본 동작 유지
+      if (e.target.closest('a, img')) return
+      enterIssueDetailEditMode()
+    })
+  }
+
+  // 요약 영역 클릭 → 인라인 편집 모드 진입
+  const detailSummaryEl = document.getElementById('issue-detail-summary')
+  if (detailSummaryEl) on(detailSummaryEl, 'click', enterSummaryEdit)
+
+  // 요약 편집: Enter=저장 / Esc=취소
+  const summaryInput = document.getElementById('issue-detail-summary-input')
+  if (summaryInput) {
+    on(summaryInput, 'keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault()
+        saveSummaryEdit()
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()  // 전역 ESC 리스너의 모달 닫기 동작 차단
+        cancelSummaryEdit()
+      }
+    })
+  }
+  const summaryCancelBtn = document.getElementById('issue-detail-summary-cancel')
+  if (summaryCancelBtn) on(summaryCancelBtn, 'click', cancelSummaryEdit)
+  const summarySaveBtn = document.getElementById('issue-detail-summary-save')
+  if (summarySaveBtn) on(summarySaveBtn, 'click', saveSummaryEdit)
+
+  // 본문 편집 취소/저장 버튼
+  const detailEditCancelBtn = document.getElementById('issue-detail-edit-cancel')
+  if (detailEditCancelBtn) on(detailEditCancelBtn, 'click', cancelIssueDetailEdit)
+  const detailEditSaveBtn = document.getElementById('issue-detail-edit-save')
+  if (detailEditSaveBtn) on(detailEditSaveBtn, 'click', saveIssueDetailEdit)
+
+  // 본문 편집 tiptap 마운트 (중복 마운트 방지)
+  ensureIssueDetailEditor()
+}
