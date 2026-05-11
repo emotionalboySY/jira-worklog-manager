@@ -14,6 +14,24 @@ import { render, resetIssueListScroll } from '../render.js'
 import { openCreateIssueModal } from './create.js'
 import { on } from './_dom.js'
 
+// 검색 발화 — Enter 또는 검색 버튼 클릭 시에만 호출. 비어 있으면 검색 모드 종료.
+function triggerIssueSearch() {
+  const q = (state.searchQuery || '').trim()
+  if (!q) {
+    clearIssueSearch()
+    return
+  }
+  performSearch()
+}
+
+function clearIssueSearch() {
+  state.searchQuery = ''
+  state.searchResults = null
+  state.searchLoading = false
+  render()
+  resetIssueListScroll()
+}
+
 export function bindHeaderEvents() {
   // 테마 토글
   const themeBtn = document.getElementById('btn-theme')
@@ -50,59 +68,45 @@ export function bindHeaderEvents() {
     on(refreshWorklogsBtn, 'click', () => refreshWorklogs())
   }
 
-  // 이슈 검색
-  // IME 조합(한글 등) 중에는 검색 발화를 보류 — compositionend 시점에 한 번만 발화.
+  // 이슈 검색 — 실시간 자동 검색 X. Enter 또는 검색 버튼 클릭 시에만 검색 발화.
   const searchInput = document.getElementById('issue-search')
   if (searchInput) {
-    let debounceTimer
-    let composing = false
-    const triggerSearch = () => {
-      clearTimeout(debounceTimer)
-      if (!state.searchQuery.trim()) {
-        state.searchResults = null
-        state.searchLoading = false
-        render()
-        resetIssueListScroll()
-        document.getElementById('issue-search')?.focus()
-        return
-      }
-      debounceTimer = setTimeout(() => performSearch(), 500)
-    }
     on(searchInput, 'input', (e) => {
       state.searchQuery = e.target.value
-      // IME 조합 중에는 부분 발화 방지
-      if (composing || e.isComposing) return
-      triggerSearch()
     })
-    on(searchInput, 'compositionstart', () => { composing = true })
     on(searchInput, 'compositionend', (e) => {
-      composing = false
       state.searchQuery = e.target.value
-      triggerSearch()
     })
     on(searchInput, 'keydown', (e) => {
       if (e.isComposing) return
       if (e.key === 'Enter') {
-        clearTimeout(debounceTimer)
-        performSearch()
-      }
-      if (e.key === 'Escape') {
-        state.searchQuery = ''
-        state.searchResults = null
-        render()
-        resetIssueListScroll()
+        e.preventDefault()
+        triggerIssueSearch()
+      } else if (e.key === 'Escape') {
+        clearIssueSearch()
       }
     })
+  }
+
+  const searchSubmitBtn = document.getElementById('search-submit')
+  if (searchSubmitBtn) {
+    on(searchSubmitBtn, 'click', triggerIssueSearch)
   }
 
   const searchClearBtn = document.getElementById('search-clear')
   if (searchClearBtn) {
     on(searchClearBtn, 'click', () => {
-      state.searchQuery = ''
-      state.searchResults = null
-      render()
-      resetIssueListScroll()
+      clearIssueSearch()
       document.getElementById('issue-search')?.focus()
+    })
+  }
+
+  // 검색 결과 모드의 "내 이슈 목록으로 돌아가기" 링크
+  const searchBackLink = document.getElementById('search-mode-back')
+  if (searchBackLink) {
+    on(searchBackLink, 'click', (e) => {
+      e.preventDefault()
+      clearIssueSearch()
     })
   }
 

@@ -538,18 +538,25 @@ function pickLinkTarget(idx, rawKey) {
 }
 
 function handleLinkSearchKeydown(e, idx) {
+  // IME 조합 중 ArrowDown/Up은 일부 환경에서 가로채지므로 무시
+  if (e.isComposing) return
   const cur = state.showCreateIssue
   if (!cur || !cur.links[idx]) return
   const link = cur.links[idx]
   const sugg = link.suggestions || []
   if (e.key === 'ArrowDown') {
+    if (sugg.length === 0) return
     e.preventDefault()
-    const next = Math.min((link.activeSuggestionIdx ?? -1) + 1, sugg.length - 1)
+    e.stopPropagation()
+    const next = ((link.activeSuggestionIdx ?? -1) + 1) % sugg.length
     link.activeSuggestionIdx = next
     refreshLinkSuggestions(idx)
   } else if (e.key === 'ArrowUp') {
+    if (sugg.length === 0) return
     e.preventDefault()
-    const prev = Math.max((link.activeSuggestionIdx ?? -1) - 1, -1)
+    e.stopPropagation()
+    const cur_idx = link.activeSuggestionIdx ?? -1
+    const prev = cur_idx <= 0 ? sugg.length - 1 : cur_idx - 1
     link.activeSuggestionIdx = prev
     refreshLinkSuggestions(idx)
   } else if (e.key === 'Enter') {

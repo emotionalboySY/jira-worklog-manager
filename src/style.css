@@ -1596,12 +1596,16 @@ span.flatpickr-weekday {
 /* ========== 검색 바 ========== */
 .search-bar {
   position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
   margin-bottom: 14px;
 }
 
 .search-input {
-  width: 100%;
-  padding: 8px 56px 8px 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 64px 8px 12px;
   font-size: 13px;
   font-family: inherit;
   color: var(--text-bright);
@@ -1620,27 +1624,69 @@ span.flatpickr-weekday {
   border-color: var(--accent);
 }
 
+/* X 버튼: 검색 input 우측 안쪽에 위치. 가시성 위해 둥근 배경 + hover 강조. */
 .search-clear {
   position: absolute;
-  right: 8px;
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: var(--text-dim);
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text);
   cursor: pointer;
-  font-size: 14px;
-  padding: 2px 4px;
+  padding: 0;
   line-height: 1;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 
 .search-clear:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.search-clear svg {
+  display: block;
+}
+
+/* 검색 발화 버튼 — 검색 input 옆에 붙어 있는 별도 버튼 */
+.search-submit {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text-bright);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.search-submit:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.search-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .search-spinner {
   position: absolute;
-  right: 32px;
+  /* X 버튼이 보이는 경우 그 왼쪽에, 없으면 오른쪽 끝에 가깝게 */
+  right: 44px;
   top: 50%;
   transform: translateY(-50%);
   width: 14px;
@@ -1659,6 +1705,31 @@ span.flatpickr-weekday {
   font-size: 12px;
   color: var(--text-dim);
   margin-bottom: 12px;
+}
+
+/* 검색 결과 모드 안내 (필터 영역 자리 대체) */
+.search-mode-notice {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.search-mode-back {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.search-mode-back:hover {
+  text-decoration: none;
+  color: var(--accent);
 }
 
 /* ========== 완료/보류 토글 ========== */
