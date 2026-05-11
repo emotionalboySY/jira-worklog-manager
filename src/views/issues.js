@@ -40,28 +40,32 @@ export function renderIssuesTab() {
   const selectedCount = state.selectedIssues.size
   const hasSelection = selectedCount > 0
 
-  // 검색 모드 안내: 프로젝트 필터/내 역할 필터를 숨기고 안내 메시지 + 복귀 링크로 대체.
-  const searchModeNotice = isSearchMode ? `
+  // 검색 모드/검색 중일 때 표시되는 상태 박스 (프로젝트 필터/내 역할 필터 자리 대체).
+  // 검색 중에는 스피너 + "검색 중..." / 완료 후에는 복귀 안내 링크.
+  const showStatusBox = isSearchMode || state.searchLoading
+  const statusBoxHtml = showStatusBox ? `
     <div class="search-mode-notice">
-      <span>현재 검색 결과를 보고 있습니다. </span>
-      <a href="#" class="search-mode-back" id="search-mode-back">내 이슈 목록으로 돌아가려면 클릭하기</a>
+      ${state.searchLoading
+        ? `<span class="search-spinner"></span><span>검색 중...</span>`
+        : `<span>현재 검색 결과를 보고 있습니다. </span><a href="#" class="search-mode-back" id="search-mode-back">내 이슈 목록으로 돌아가려면 클릭하기</a>`}
     </div>
   ` : ''
 
   return `
     <div class="search-bar">
-      <input type="text" class="search-input" id="issue-search" placeholder="이슈 키 또는 요약 검색 (예: DKT-123, 키워드)" value="${state.searchQuery}" />
-      ${state.searchQuery ? `<button class="search-clear" id="search-clear" type="button" aria-label="검색어 지우기" title="검색어 지우기">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
-      </button>` : ''}
-      ${state.searchLoading ? `<span class="search-spinner"></span>` : ''}
+      <div class="search-input-wrap">
+        <input type="text" class="search-input" id="issue-search" placeholder="이슈 키 또는 요약 검색 (예: DKT-123, 키워드)" value="${state.searchQuery}" />
+        ${state.searchQuery ? `<button class="search-clear" id="search-clear" type="button" aria-label="검색어 지우기" title="검색어 지우기">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+        </button>` : ''}
+      </div>
       <button class="search-submit" id="search-submit" type="button" title="검색" aria-label="검색"${state.searchLoading ? ' disabled' : ''}>
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/></svg>
         <span>검색</span>
       </button>
     </div>
-    ${isSearchMode ? searchModeNotice : renderProjectSelector(false)}
-    ${isSearchMode ? '' : `
+    ${showStatusBox ? statusBoxHtml : renderProjectSelector(false)}
+    ${showStatusBox ? '' : `
       <div class="filter-row">
         <div class="filter-tabs">
           ${filters.map(f => `

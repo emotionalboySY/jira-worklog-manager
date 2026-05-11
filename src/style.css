@@ -1595,17 +1595,22 @@ span.flatpickr-weekday {
 
 /* ========== 검색 바 ========== */
 .search-bar {
-  position: relative;
   display: flex;
   align-items: stretch;
   gap: 8px;
   margin-bottom: 14px;
 }
 
-.search-input {
+/* input + X 버튼을 하나의 시각 컴포넌트로 묶는 래퍼 */
+.search-input-wrap {
+  position: relative;
   flex: 1;
   min-width: 0;
-  padding: 8px 64px 8px 12px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 36px 8px 12px;
   font-size: 13px;
   font-family: inherit;
   color: var(--text-bright);
@@ -1624,10 +1629,10 @@ span.flatpickr-weekday {
   border-color: var(--accent);
 }
 
-/* X 버튼: 검색 input 우측 안쪽에 위치. 가시성 위해 둥근 배경 + hover 강조. */
+/* X 버튼: 검색 input 우측 안쪽에 위치. wrap 기준 absolute. 가시성 위해 둥근 배경 + hover 강조. */
 .search-clear {
   position: absolute;
-  right: 12px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
   width: 22px;
@@ -1683,22 +1688,20 @@ span.flatpickr-weekday {
   cursor: default;
 }
 
+/* 검색 진행 스피너 — 검색 바가 아닌 결과 안내 박스 안에서 인라인 표시 */
 .search-spinner {
-  position: absolute;
-  /* X 버튼이 보이는 경우 그 왼쪽에, 없으면 오른쪽 끝에 가깝게 */
-  right: 44px;
-  top: 50%;
-  transform: translateY(-50%);
+  display: inline-block;
   width: 14px;
   height: 14px;
   border: 2px solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;
-  animation: spin 0.6s linear infinite;
+  animation: search-spin 0.6s linear infinite;
+  vertical-align: middle;
 }
 
-@keyframes spin {
-  to { transform: translateY(-50%) rotate(360deg); }
+@keyframes search-spin {
+  to { transform: rotate(360deg); }
 }
 
 .search-result-info {
