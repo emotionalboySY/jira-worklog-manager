@@ -4996,6 +4996,81 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   margin-top: 10px;
 }
 
+/* ========== tiptap 미디어(이미지) 노드 ========== */
+.tt-media-single {
+  display: block;
+  margin: 10px 0;
+  text-align: center;
+}
+
+.tt-media-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  border-radius: var(--radius);
+  overflow: hidden;
+  vertical-align: top;
+  background: var(--bg-card);
+  line-height: 0;
+}
+
+.tt-media-wrap.tt-media-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tt-media-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.tt-media-img.tt-media-loading {
+  opacity: 0.5;
+}
+
+.tt-media-img.tt-media-error {
+  min-width: 120px;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--red-bg);
+  color: var(--red);
+  font-size: 12px;
+}
+
+/* 우측 하단 리사이즈 핸들 */
+.tt-media-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border: 2px solid var(--bg-card);
+  border-radius: 3px;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 2;
+}
+
+.tt-media-wrap:hover .tt-media-handle,
+.tt-media-wrap.tt-media-selected .tt-media-handle,
+body.tt-media-resizing .tt-media-handle {
+  opacity: 1;
+}
+
+/* 리사이즈 중 전역 커서 + 선택 방지 */
+body.tt-media-resizing {
+  cursor: nwse-resize !important;
+  user-select: none;
+}
+
 /* ========== 접근성: 모션 최소화 설정 시 애니메이션 축소 ========== */
 @media (prefers-reduced-motion: reduce) {
   *,

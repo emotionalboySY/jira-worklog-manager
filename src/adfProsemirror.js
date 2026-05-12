@@ -22,10 +22,12 @@ const PM_TO_ADF_MARK = {
 }
 
 // ADF 중 Markdown/tiptap MVP로 표현 못 하는 요소 (경고 대상)
+// mediaSingle/media는 커스텀 노드로 지원하므로 손실 대상에서 제외.
+// mediaGroup은 여전히 미지원 — 다중 인라인 이미지는 평탄화된다.
 const LOSSY_NODES = new Set([
   'panel', 'mention', 'status', 'date', 'emoji',
   'inlineCard', 'blockCard',
-  'mediaSingle', 'mediaGroup', 'media',
+  'mediaGroup',
   'taskList', 'taskItem',
   'decisionList', 'decisionItem',
   'expand', 'nestedExpand',
@@ -54,6 +56,9 @@ const ADF_NODE_ATTRS = {
   tableRow: [],
   tableCell: ['colspan', 'rowspan', 'colwidth', 'background'],
   tableHeader: ['colspan', 'rowspan', 'colwidth', 'background'],
+  // 이미지 노드. mediaSingle.width는 % (레이아웃), media.width/height는 픽셀
+  mediaSingle: ['layout', 'width'],
+  media: ['id', 'type', 'collection', 'width', 'height', 'alt'],
 }
 
 const ADF_MARK_ATTRS = {

@@ -7,6 +7,7 @@ import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
 import { adfToPm, pmToAdf } from './adfProsemirror.js'
+import { MediaSingle, Media, MediaPaste, setMountAttachments, releaseMountBlobUrls } from './tiptapMedia.js'
 
 let currentEditor = null
 
@@ -25,15 +26,33 @@ function buildExtensions() {
     TableRow,
     TableHeader,
     TableCell,
+    MediaSingle,
+    Media,
+    MediaPaste,
   ]
 }
 
 // mountEl 위에 새 Editor 인스턴스를 생성. mount.__tt_editor에 저장.
 // onUpdate: 매 변경 시 ADF로 콜백 (state 보존용)
-export function createEditorInstance(mountEl, adfContent, { onUpdate, autofocus = true } = {}) {
+// onImagePaste(file) → Promise<{ id, contentUrl, filename, ... }>
+//   클립보드/드롭 이미지를 받아 첨부 업로드 후 결과 반환. 미지정 시 paste 무시.
+// attachments: 편집 시작 시점의 첨부 목록 (id ↔ contentUrl 매핑)
+// onUploadError(err): 업로드 실패 시 토스트 등 표시
+export function createEditorInstance(mountEl, adfContent, {
+  onUpdate,
+  autofocus = true,
+  onImagePaste,
+  attachments,
+  onUploadError,
+} = {}) {
   if (!mountEl) return null
   destroyInstanceOnMount(mountEl)
   const content = adfToPm(adfContent)
+
+  // 이미지 paste/업로드 후크와 첨부 메타를 마운트에 주입
+  if (typeof onImagePaste === 'function') mountEl.__tt_on_image_paste = onImagePaste
+  if (typeof onUploadError === 'function') mountEl.__tt_on_upload_error = onUploadError
+  if (attachments) setMountAttachments(mountEl, attachments)
 
   const editor = new Editor({
     element: mountEl,
@@ -73,6 +92,13 @@ export function destroyInstanceOnMount(mountEl) {
     mountEl.__tt_editor = null
     delete mountEl.dataset.tiptapMounted
   }
+  // 이미지 paste로 만들어진 임시/실제 blob URL 정리 + 후크/캐시 해제
+  if (mountEl) {
+    releaseMountBlobUrls(mountEl)
+    mountEl.__tt_on_image_paste = null
+    mountEl.__tt_on_upload_error = null
+    mountEl.__tt_attachments_by_id = null
+  }
 }
 
 export function getInstanceAdf(editor) {
@@ -89,9 +115,18 @@ export function runCommandOnEditor(editor, name, ...args) {
 }
 
 // ===== 본문 편집(싱글턴) — 기존 인터페이스 유지 =====
-export function createEditor(mountEl, adfContent) {
+// 이전 mount가 detached된 채 blob URL/후크가 남아 있을 수 있어 함께 정리.
+let _previousMount = null
+export function createEditor(mountEl, adfContent, options = {}) {
   destroyEditor()
-  currentEditor = createEditorInstance(mountEl, adfContent)
+  if (_previousMount && _previousMount !== mountEl) {
+    try { releaseMountBlobUrls(_previousMount) } catch {}
+    _previousMount.__tt_on_image_paste = null
+    _previousMount.__tt_on_upload_error = null
+    _previousMount.__tt_attachments_by_id = null
+  }
+  currentEditor = createEditorInstance(mountEl, adfContent, options)
+  _previousMount = mountEl
   return currentEditor
 }
 
@@ -103,6 +138,14 @@ export function destroyEditor() {
   if (currentEditor) {
     try { currentEditor.destroy() } catch {}
     currentEditor = null
+  }
+  // 본문 편집기 종료 시 paste로 만들어진 blob URL/후크도 같이 정리
+  if (_previousMount) {
+    try { releaseMountBlobUrls(_previousMount) } catch {}
+    _previousMount.__tt_on_image_paste = null
+    _previousMount.__tt_on_upload_error = null
+    _previousMount.__tt_attachments_by_id = null
+    _previousMount = null
   }
 }
 

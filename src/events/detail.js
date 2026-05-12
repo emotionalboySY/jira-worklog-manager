@@ -6,6 +6,7 @@ import {
   fetchAttachmentBlobUrl,
   updateIssueDescription,
   updateIssueSummary,
+  uploadIssueAttachment,
   fetchMyself,
   fetchIssueLinkTypes,
   fetchIssuesByKeys,
@@ -264,7 +265,35 @@ export function ensureIssueDetailEditor() {
   if (!m?.editing) return
   const mount = document.getElementById('issue-detail-edit-editor')
   if (!mount || mount.dataset.tiptapMounted === '1') return
-  createEditor(mount, m.editAdf)
+  createEditor(mount, m.editAdf, {
+    attachments: m.data?.attachments || [],
+    // 모달 부분 재렌더로 mount가 다시 만들어질 때 입력 내용/이미지가 사라지지 않도록
+    // editAdf를 지속 동기화 → 다음 마운트가 이 값을 그대로 복원
+    onUpdate: (adf) => {
+      const cur = state.issueDetailModal
+      if (cur && cur.editing) cur.editAdf = adf
+    },
+    onImagePaste: async (file) => {
+      // 업로드 → 모달 상태의 attachments에 즉시 반영 (이후 같은 이미지를 같은 id로 매칭하기 위함)
+      const result = await uploadIssueAttachment(m.key, file)
+      const cur = state.issueDetailModal
+      if (cur && cur.key === m.key && cur.data) {
+        if (!Array.isArray(cur.data.attachments)) cur.data.attachments = []
+        cur.data.attachments.push({
+          id: result.id,
+          filename: result.filename,
+          mimeType: result.mimeType,
+          size: result.size,
+          contentUrl: result.contentUrl,
+          thumbnailUrl: result.thumbnailUrl,
+        })
+      }
+      return result
+    },
+    onUploadError: (err) => {
+      showToast(`이미지 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠')
+    },
+  })
   if (m.saving) setEditable(false)
   mount.dataset.tiptapMounted = '1'
 }

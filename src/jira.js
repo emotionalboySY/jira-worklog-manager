@@ -795,6 +795,43 @@ function extractComments(value) {
   return list.map(extractComment).filter(Boolean)
 }
 
+// 이슈에 첨부 파일 업로드. 반환: { id, filename, mimeType, size, contentUrl, thumbnailUrl }
+// Jira는 응답을 배열로 주는데 한 번에 한 파일만 업로드하므로 첫 항목만 사용.
+export async function uploadIssueAttachment(issueKey, file) {
+  const accessToken = localStorage.getItem('jira_access_token')
+  const cloudId = localStorage.getItem('jira_cloud_id')
+  if (!accessToken || !cloudId) throw new Error('인증되지 않음')
+  if (!issueKey || !file) throw new Error('issueKey/file 필요')
+
+  const fd = new FormData()
+  // filename이 없으면 'pasted-image.png' 폴백 (클립보드 paste 시 보통 비어있음)
+  const filename = file.name || `pasted-${Date.now()}.${(file.type || 'image/png').split('/')[1] || 'png'}`
+  fd.append('file', file, filename)
+
+  const url = `/api/attachment-upload?cloudId=${encodeURIComponent(cloudId)}&issueKey=${encodeURIComponent(issueKey)}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${accessToken}` },
+    body: fd,
+  })
+  if (!res.ok) {
+    let detail = ''
+    try { detail = await res.text() } catch {}
+    throw new Error(`첨부 업로드 실패 ${res.status}: ${detail.slice(0, 200)}`)
+  }
+  const data = await res.json()
+  const a = Array.isArray(data) ? data[0] : data
+  if (!a || !a.id) throw new Error('첨부 응답이 비어있음')
+  return {
+    id: String(a.id),
+    filename: a.filename || filename,
+    mimeType: a.mimeType || file.type || '',
+    size: a.size || file.size || 0,
+    contentUrl: a.content || '',
+    thumbnailUrl: a.thumbnail || '',
+  }
+}
+
 // 첨부/이미지 바이너리를 인증 프록시로 받아 Blob URL 생성
 // 호출 측이 URL.revokeObjectURL로 해제해야 함
 export async function fetchAttachmentBlobUrl(url) {

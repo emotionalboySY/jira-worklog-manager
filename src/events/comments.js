@@ -6,6 +6,7 @@ import {
   updateIssueComment,
   deleteIssueComment,
   fetchAttachmentBlobUrl,
+  uploadIssueAttachment,
 } from '../jira.js'
 import { isEmptyAdf } from '../adfProsemirror.js'
 import {
@@ -120,6 +121,9 @@ export function ensureCommentEditors() {
           const cur = state.issueDetailModal
           if (cur) cur.commentDraftAdf = adf
         },
+        attachments: m.data?.attachments || [],
+        onImagePaste: makeCommentImagePaste(m.key),
+        onUploadError: (err) => showToast(`이미지 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠'),
       })
       newMount.dataset.tiptapMounted = '1'
       if (m.commentSubmitting) editor.setEditable(false)
@@ -141,6 +145,9 @@ export function ensureCommentEditors() {
           const cur = state.issueDetailModal
           if (cur) cur.editingCommentDraftAdf = adf
         },
+        attachments: m.data?.attachments || [],
+        onImagePaste: makeCommentImagePaste(m.key),
+        onUploadError: (err) => showToast(`이미지 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠'),
       })
       newMount.dataset.tiptapMounted = '1'
       if (m.editingCommentSaving) editor.setEditable(false)
@@ -153,6 +160,26 @@ export function ensureCommentEditors() {
 
   // 댓글 본문 안의 이미지(미디어 노드)도 본문과 동일하게 인증 프록시로 교체
   loadCommentImages()
+}
+
+// 댓글 에디터의 이미지 paste/drop 후크. 업로드 결과를 모달 상태의 첨부 목록에도 즉시 머지.
+function makeCommentImagePaste(issueKey) {
+  return async (file) => {
+    const result = await uploadIssueAttachment(issueKey, file)
+    const cur = state.issueDetailModal
+    if (cur && cur.key === issueKey && cur.data) {
+      if (!Array.isArray(cur.data.attachments)) cur.data.attachments = []
+      cur.data.attachments.push({
+        id: result.id,
+        filename: result.filename,
+        mimeType: result.mimeType,
+        size: result.size,
+        contentUrl: result.contentUrl,
+        thumbnailUrl: result.thumbnailUrl,
+      })
+    }
+    return result
+  }
 }
 
 // detail-comments 영역 안의 ADF media 이미지/썸네일을 인증된 Blob URL로 교체
