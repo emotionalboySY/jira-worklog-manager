@@ -77,6 +77,7 @@ import { bindManualModalEvents } from './events/manual.js'
 import { bindEditWorklogEvents, bindDeleteWorklogEvents } from './events/edit.js'
 import { bindTransitionFieldsEvents } from './events/transition.js'
 import { bindSummaryNavEvents } from './events/summary.js'
+import { ensureSummaryWorklogs } from './views/summary.js'
 
 // ESC 키로 가장 위(나중에 열린) 모달 닫기.
 // 오버레이 바깥 클릭 닫기는 textarea 드래그 선택이 밖에서 끝날 때 오탐하므로 제거.
