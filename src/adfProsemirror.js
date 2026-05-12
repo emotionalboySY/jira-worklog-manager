@@ -59,6 +59,8 @@ const ADF_NODE_ATTRS = {
   // 이미지 노드. mediaSingle.width는 % (레이아웃), media.width/height는 픽셀
   mediaSingle: ['layout', 'width'],
   media: ['id', 'type', 'collection', 'width', 'height', 'alt'],
+  // 업로드 중 자리표시자 — 에디터 내부 전용. Jira 저장 직전 stripUploadPlaceholders로 제거.
+  mediaPlaceholder: ['uploadId', 'previewUrl', 'filename'],
 }
 
 const ADF_MARK_ATTRS = {
@@ -144,6 +146,29 @@ export function detectLossyFeatures(adf) {
     }
   })
   return Array.from(found)
+}
+
+// ADF 트리에 업로드 중 자리표시자(mediaPlaceholder)가 남아 있는지
+export function hasUploadPlaceholders(adf) {
+  let found = false
+  walk(adf, node => {
+    if (!node || found) return
+    if (node.type === 'mediaPlaceholder') found = true
+  })
+  return found
+}
+
+// Jira 저장 직전 호출: ADF 트리에서 자리표시자 노드만 제거하고 나머지는 보존
+export function stripUploadPlaceholders(adf) {
+  if (!adf) return adf
+  function clean(node) {
+    if (!node) return null
+    if (node.type === 'mediaPlaceholder') return null
+    if (!Array.isArray(node.content)) return node
+    const out = { ...node, content: node.content.map(clean).filter(Boolean) }
+    return out
+  }
+  return clean(adf)
 }
 
 // ADF doc이 사실상 비어있는지 (빈 paragraph만 있거나 content 없음)

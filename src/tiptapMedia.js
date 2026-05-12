@@ -77,6 +77,78 @@ export const Media = Node.create({
   },
 })
 
+// ---------- mediaPlaceholder: 업로드 중 표시되는 자리표시자 (저장 직전 제거됨) ----------
+// uploadId로 비동기 업로드 결과를 다시 찾아 mediaSingle로 교체한다.
+// pmToAdf는 그대로 통과시켜 m.editAdf에도 유지 → 모달 부분 재렌더 시에도 사라지지 않음.
+// 최종 Jira 저장 직전에 stripUploadPlaceholders로 제거.
+export const MediaPlaceholder = Node.create({
+  name: 'mediaPlaceholder',
+  group: 'block',
+  atom: true,
+  selectable: false,
+  draggable: false,
+
+  addAttributes() {
+    return {
+      uploadId: { default: null },
+      previewUrl: { default: null },
+      filename: { default: null },
+    }
+  },
+
+  parseHTML() {
+    // ADF/HTML에서 파싱되지 않도록 — 임시 노드는 메모리(prosemirror state)에만 존재
+    return []
+  },
+
+  renderHTML({ node }) {
+    return ['div', { 'data-media-placeholder': '', 'data-upload-id': node.attrs.uploadId || '' }]
+  },
+
+  addNodeView() {
+    return ({ node }) => new MediaPlaceholderView(node)
+  },
+})
+
+class MediaPlaceholderView {
+  constructor(node) {
+    const wrap = document.createElement('div')
+    wrap.className = 'tt-media-placeholder'
+    wrap.contentEditable = 'false'
+
+    // 미리보기(반투명) — 로컬 blob URL이 있으면 표시
+    if (node.attrs.previewUrl) {
+      const img = document.createElement('img')
+      img.src = node.attrs.previewUrl
+      img.draggable = false
+      img.className = 'tt-media-placeholder-preview'
+      wrap.appendChild(img)
+    }
+
+    // 스켈레톤 shimmer + 스피너 + 라벨 오버레이
+    const shimmer = document.createElement('div')
+    shimmer.className = 'tt-media-placeholder-shimmer'
+    wrap.appendChild(shimmer)
+
+    const overlay = document.createElement('div')
+    overlay.className = 'tt-media-placeholder-overlay'
+    const spinner = document.createElement('div')
+    spinner.className = 'tt-media-placeholder-spinner'
+    const label = document.createElement('div')
+    label.className = 'tt-media-placeholder-label'
+    label.textContent = '이미지 업로드 중…'
+    overlay.appendChild(spinner)
+    overlay.appendChild(label)
+    wrap.appendChild(overlay)
+
+    this.dom = wrap
+  }
+
+  update() { return true }
+  stopEvent() { return true }
+  ignoreMutation() { return true }
+}
+
 // ---------- mediaSingle용 NodeView ----------
 class MediaSingleView {
   constructor(node, getPos, editor) {
@@ -294,64 +366,146 @@ async function handleImageFiles(editor, view, files) {
     return
   }
 
+  // 여러 이미지를 동시에 paste하면 병렬로 업로드. 자리표시자는 paste 즉시 순서대로 삽입.
   for (const file of files) {
-    // 1) 임시 blob URL — 업로드 동안 즉시 표시
+    // 1) 임시 blob URL — 자리표시자에 흐릿한 미리보기로 표시
     let tempUrl = null
     try { tempUrl = URL.createObjectURL(file) } catch {}
-
-    let uploaded = null
-    try {
-      uploaded = await onImagePaste(file)
-    } catch (err) {
-      console.warn('[tt-media] 업로드 실패:', err)
-      if (typeof onError === 'function') onError(err)
-      if (tempUrl) { try { URL.revokeObjectURL(tempUrl) } catch {} }
-      continue
-    }
-    if (!uploaded || !uploaded.id) {
-      if (tempUrl) { try { URL.revokeObjectURL(tempUrl) } catch {} }
-      continue
-    }
-
-    const id = String(uploaded.id)
-
-    // 2) 마운트에 첨부 메타/임시 URL 기록
-    if (!mountEl.__tt_attachments_by_id) mountEl.__tt_attachments_by_id = {}
-    mountEl.__tt_attachments_by_id[id] = {
-      contentUrl: uploaded.contentUrl || '',
-      filename: uploaded.filename || '',
-    }
+    // 업로드 도중 모달이 닫혀도 누수되지 않도록 mount의 소유 목록에 바로 등록
     if (tempUrl) {
-      if (!mountEl.__tt_temp_blob_urls) mountEl.__tt_temp_blob_urls = {}
-      mountEl.__tt_temp_blob_urls[id] = tempUrl
-      // 에디터 파괴 시 같이 revoke
       if (!mountEl.__tt_owned_blob_urls) mountEl.__tt_owned_blob_urls = []
       mountEl.__tt_owned_blob_urls.push(tempUrl)
     }
 
-    // 3) 픽셀 사이즈 측정 (선택)
-    const dims = await loadImageDims(tempUrl || uploaded.contentUrl).catch(() => ({ w: null, h: null }))
-
-    // 4) mediaSingle > media 삽입 (insertContent가 단락 분할/래핑을 자동 처리)
+    // 2) 자리표시자 노드 즉시 삽입 (스켈레톤 표시)
+    const uploadId = generateUploadId()
     try {
       editor.chain().focus().insertContent({
-        type: 'mediaSingle',
-        attrs: { layout: 'center' },
-        content: [{
-          type: 'media',
-          attrs: {
-            id,
-            type: 'file',
-            collection: '',
-            width: dims.w || null,
-            height: dims.h || null,
-            alt: uploaded.filename || '',
-          },
-        }],
+        type: 'mediaPlaceholder',
+        attrs: { uploadId, previewUrl: tempUrl, filename: file.name || '' },
       }).run()
     } catch (err) {
-      console.warn('[tt-media] 노드 삽입 실패:', err)
+      console.warn('[tt-media] 자리표시자 삽입 실패:', err)
+      if (tempUrl) { try { URL.revokeObjectURL(tempUrl) } catch {} }
+      continue
     }
+
+    // 3) 업로드 + 노드 교체는 비동기로 진행 (다음 파일/입력을 막지 않음)
+    finalizeUpload(editor, uploadId, file, tempUrl, onImagePaste, onError)
+  }
+}
+
+// 업로드 완료 후 자리표시자를 실제 mediaSingle 노드로 교체.
+// 실패 시 자리표시자만 제거.
+async function finalizeUpload(editor, uploadId, file, tempUrl, onImagePaste, onError) {
+  let uploaded = null
+  try {
+    uploaded = await onImagePaste(file)
+  } catch (err) {
+    console.warn('[tt-media] 업로드 실패:', err)
+    if (typeof onError === 'function') onError(err)
+    removePlaceholder(editor, uploadId)
+    if (tempUrl) { try { URL.revokeObjectURL(tempUrl) } catch {} }
+    return
+  }
+  if (!uploaded || !uploaded.id) {
+    removePlaceholder(editor, uploadId)
+    if (tempUrl) { try { URL.revokeObjectURL(tempUrl) } catch {} }
+    return
+  }
+
+  const id = String(uploaded.id)
+
+  // 마운트가 그 사이 destroy 되었다면 정리만 하고 종료
+  const mountEl = editor.options.element
+  if (!mountEl || editor.isDestroyed) {
+    if (tempUrl) { try { URL.revokeObjectURL(tempUrl) } catch {} }
+    return
+  }
+
+  // 첨부 메타 + 임시 URL 기록 → NodeView가 즉시 표시 가능
+  if (!mountEl.__tt_attachments_by_id) mountEl.__tt_attachments_by_id = {}
+  mountEl.__tt_attachments_by_id[id] = {
+    contentUrl: uploaded.contentUrl || '',
+    filename: uploaded.filename || '',
+  }
+  if (tempUrl) {
+    // 이미 owned_blob_urls에는 들어가 있음(paste 시작 시 등록). 여기선 id 매핑만 추가.
+    if (!mountEl.__tt_temp_blob_urls) mountEl.__tt_temp_blob_urls = {}
+    mountEl.__tt_temp_blob_urls[id] = tempUrl
+  }
+
+  const dims = await loadImageDims(tempUrl || uploaded.contentUrl).catch(() => ({ w: null, h: null }))
+
+  // 자리표시자를 mediaSingle > media로 교체
+  const replaced = replacePlaceholder(editor, uploadId, {
+    type: 'mediaSingle',
+    attrs: { layout: 'center' },
+    content: [{
+      type: 'media',
+      attrs: {
+        id,
+        type: 'file',
+        collection: '',
+        width: dims.w || null,
+        height: dims.h || null,
+        alt: uploaded.filename || '',
+      },
+    }],
+  })
+  if (!replaced && tempUrl) {
+    // 자리표시자가 사라졌으면 (사용자가 지웠거나 모달 닫힘) 임시 URL만 해제
+    try { URL.revokeObjectURL(tempUrl) } catch {}
+  }
+}
+
+function generateUploadId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return `up_${crypto.randomUUID()}`
+  return `up_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+}
+
+// 문서 트리에서 uploadId로 자리표시자 위치 검색
+function findPlaceholderPos(doc, uploadId) {
+  let found = null
+  doc.descendants((node, pos) => {
+    if (found != null) return false
+    if (node.type.name === 'mediaPlaceholder' && node.attrs.uploadId === uploadId) {
+      found = { pos, size: node.nodeSize }
+      return false
+    }
+    return true
+  })
+  return found
+}
+
+// 자리표시자를 새 노드로 교체. 성공 시 true, 못 찾으면 false.
+function replacePlaceholder(editor, uploadId, newNodeJson) {
+  if (editor.isDestroyed) return false
+  const view = editor.view
+  const target = findPlaceholderPos(view.state.doc, uploadId)
+  if (!target) return false
+  try {
+    const newNode = editor.schema.nodeFromJSON(newNodeJson)
+    const tr = view.state.tr.replaceWith(target.pos, target.pos + target.size, newNode)
+    view.dispatch(tr)
+    return true
+  } catch (err) {
+    console.warn('[tt-media] 자리표시자 교체 실패:', err)
+    return false
+  }
+}
+
+// 자리표시자 제거 (업로드 실패 시)
+function removePlaceholder(editor, uploadId) {
+  if (editor.isDestroyed) return
+  const view = editor.view
+  const target = findPlaceholderPos(view.state.doc, uploadId)
+  if (!target) return
+  try {
+    const tr = view.state.tr.delete(target.pos, target.pos + target.size)
+    view.dispatch(tr)
+  } catch (err) {
+    console.warn('[tt-media] 자리표시자 제거 실패:', err)
   }
 }
 

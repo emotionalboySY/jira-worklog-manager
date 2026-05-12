@@ -7,7 +7,7 @@ import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
 import { adfToPm, pmToAdf } from './adfProsemirror.js'
-import { MediaSingle, Media, MediaPaste, setMountAttachments, releaseMountBlobUrls } from './tiptapMedia.js'
+import { MediaSingle, Media, MediaPlaceholder, MediaPaste, setMountAttachments, releaseMountBlobUrls } from './tiptapMedia.js'
 
 let currentEditor = null
 
@@ -28,6 +28,7 @@ function buildExtensions() {
     TableCell,
     MediaSingle,
     Media,
+    MediaPlaceholder,
     MediaPaste,
   ]
 }

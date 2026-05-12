@@ -5071,6 +5071,119 @@ body.tt-media-resizing {
   user-select: none;
 }
 
+/* 업로드 중 자리표시자 (스켈레톤) */
+.tt-media-placeholder {
+  position: relative;
+  display: block;
+  margin: 10px auto;
+  width: min(380px, 80%);
+  min-height: 200px;
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* 반투명 미리보기 */
+.tt-media-placeholder-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  opacity: 0.35;
+  filter: blur(2px);
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* shimmer 줄무늬 — preview 위에 흐르는 빛띠 */
+.tt-media-placeholder-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.08) 45%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.08) 55%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: tt-media-shimmer 1.4s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+:root.light .tt-media-placeholder-shimmer {
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(0, 0, 0, 0.04) 45%,
+    rgba(0, 0, 0, 0.10) 50%,
+    rgba(0, 0, 0, 0.04) 55%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+}
+
+@keyframes tt-media-shimmer {
+  from { background-position: -150% 0; }
+  to   { background-position:  250% 0; }
+}
+
+/* 미리보기가 없을 때(아직 blob URL 생성 전)도 면 표시 유지 */
+.tt-media-placeholder:not(:has(.tt-media-placeholder-preview))::before {
+  content: '';
+  display: block;
+  width: 100%;
+  padding-top: 56%;
+}
+
+/* 중앙 스피너 + 라벨 */
+.tt-media-placeholder-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.tt-media-placeholder-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  animation: tt-media-spin 0.9s linear infinite;
+}
+
+@keyframes tt-media-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tt-media-placeholder-label {
+  color: var(--text-bright);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 4px 10px;
+  border-radius: 999px;
+  backdrop-filter: blur(4px);
+}
+
+:root.light .tt-media-placeholder-label {
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+}
+
 /* ========== 접근성: 모션 최소화 설정 시 애니메이션 축소 ========== */
 @media (prefers-reduced-motion: reduce) {
   *,

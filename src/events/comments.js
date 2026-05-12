@@ -8,7 +8,7 @@ import {
   fetchAttachmentBlobUrl,
   uploadIssueAttachment,
 } from '../jira.js'
-import { isEmptyAdf } from '../adfProsemirror.js'
+import { isEmptyAdf, hasUploadPlaceholders } from '../adfProsemirror.js'
 import {
   createEditorInstance,
   destroyInstanceOnMount,
@@ -245,6 +245,10 @@ async function submitNewComment() {
     render({ sections: ['modals'] })
     return
   }
+  if (hasUploadPlaceholders(adf)) {
+    showToast('이미지 업로드가 끝나면 다시 시도해 주세요.', '⚠')
+    return
+  }
   m.commentSubmitting = true
   m.commentError = null
   if (editor) editor.setEditable(false)
@@ -309,6 +313,10 @@ async function saveEditComment(commentId) {
   if (!adf || isEmptyAdf(adf)) {
     m.commentError = '내용을 입력하세요.'
     render({ sections: ['modals'] })
+    return
+  }
+  if (hasUploadPlaceholders(adf)) {
+    showToast('이미지 업로드가 끝나면 다시 시도해 주세요.', '⚠')
     return
   }
   m.editingCommentSaving = true

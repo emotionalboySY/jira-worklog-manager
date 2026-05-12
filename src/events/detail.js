@@ -16,7 +16,7 @@ import {
 } from '../jira.js'
 import { getProjectKeysOrFallback, formatJiraError } from '../utils.js'
 import { renderAddLinkSuggestionsHtml } from '../views/modals.js'
-import { detectLossyFeatures, isEmptyAdf } from '../adfProsemirror.js'
+import { detectLossyFeatures, isEmptyAdf, hasUploadPlaceholders, stripUploadPlaceholders } from '../adfProsemirror.js'
 import {
   createEditor,
   destroyEditor,
@@ -108,6 +108,11 @@ export async function saveIssueDetailEdit() {
   if (!m || !m.editing || m.saving) return
   const adfDoc = getCurrentAdf()
   if (!adfDoc) return
+  // 업로드 중인 이미지가 있으면 저장 차단 — 자리표시자는 Jira ADF에 들어가면 안 됨
+  if (hasUploadPlaceholders(adfDoc)) {
+    showToast('이미지 업로드가 끝나면 다시 저장해 주세요.', '⚠')
+    return
+  }
   const empty = isEmptyAdf(adfDoc)
 
   m.saving = true
