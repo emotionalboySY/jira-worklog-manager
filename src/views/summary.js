@@ -145,7 +145,10 @@ export function renderSummaryTab() {
       </div>
     </div>
     <div class="weekly-chart">
-      <div class="weekly-chart-title">${isCurrentWeek ? '금주' : ''}(${weekMonth}월 ${weekNum}주차) 일별 작업 시간</div>
+      <div class="weekly-chart-title">
+        ${isCurrentWeek ? '금주' : ''}(${weekMonth}월 ${weekNum}주차) 일별 작업 시간
+        <span class="weekly-chart-legend">— 점선: 8시간</span>
+      </div>
       <div class="chart-bars">
         ${weekData.map(d => {
           const dowClass = d.holiday ? 'holiday' : d.isSunday ? 'sunday' : d.isSaturday ? 'saturday' : ''
@@ -161,7 +164,7 @@ export function renderSummaryTab() {
           <div class="chart-bar-col ${d.isFuture ? 'future' : ''} ${dowClass} ${!d.isFuture ? 'clickable' : ''}" ${!d.isFuture ? `data-chart-date="${d.dateStr}" title="${d.date} 기록 보기"` : ''}>
             <span class="chart-bar-value">${d.minutes > 0 ? formatMinutes(d.minutes) : '-'}</span>
             <div class="chart-bar-track">
-              <div class="chart-bar ${d.today ? 'today' : ''}" style="height: ${Math.max(Math.min((d.minutes / 480) * 100, 100), d.minutes > 0 ? 2 : 0)}%"></div>
+              <div class="chart-bar ${d.today ? 'today' : ''}" style="height: ${Math.max(Math.min((d.minutes / 720) * 100, 100), d.minutes > 0 ? 2 : 0)}%"></div>
             </div>
             <span class="chart-bar-label">${d.date} (${d.day})</span>
             ${badge}

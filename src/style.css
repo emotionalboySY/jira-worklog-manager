@@ -2298,6 +2298,13 @@ span.flatpickr-weekday {
   margin-bottom: 16px;
 }
 
+.weekly-chart-legend {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-dim);
+  margin-left: 6px;
+}
+
 .chart-bars {
   display: flex;
   align-items: stretch;
@@ -2332,6 +2339,20 @@ span.flatpickr-weekday {
   min-height: 0;
   display: flex;
   align-items: flex-end;
+  position: relative;
+}
+
+/* 8시간(=12시간 스케일의 8/12) 위치 가이드 라인 */
+.chart-bar-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 66.6667%;
+  border-top: 1px dashed var(--text-dim);
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .chart-bar-col.future {
@@ -2355,6 +2376,8 @@ span.flatpickr-weekday {
   border-radius: 4px 4px 0 0;
   opacity: 0.7;
   transition: opacity 0.15s, height 0.2s ease;
+  position: relative;
+  z-index: 1;
 }
 
 .chart-bar:hover {
