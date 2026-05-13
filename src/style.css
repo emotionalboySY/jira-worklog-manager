@@ -4865,6 +4865,11 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   padding: 0;
 }
 
+.tiptap-tb-btn .tt-ic {
+  display: block;
+  pointer-events: none;
+}
+
 .tiptap-tb-sep {
   display: inline-block;
   width: 1px;

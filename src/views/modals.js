@@ -1713,25 +1713,34 @@ function renderDetailSummary(m, summary) {
 
 // 일반화된 tiptap 툴바. 어느 mount element를 조작하는지 data 속성으로 표시.
 // 본문 편집/댓글 작성/댓글 편집 모두 같은 디자인 재사용.
+// 단축키는 tiptap StarterKit 기본 + src/tiptap.js의 EditorKeymap 확장.
 export function renderTiptapToolbar(toolbarId = 'issue-detail-edit-toolbar', mountId = 'issue-detail-edit-editor') {
   const btn = (cmd, label, title, args = '') =>
     `<button type="button" class="tiptap-tb-btn" data-tt-cmd="${cmd}"${args ? ` data-tt-args='${args}'` : ''} title="${title}">${label}</button>`
+
+  // 16x16 SVG 아이콘 (currentColor stroke)
+  const svgBulletList = `<svg class="tt-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4.5" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.6" fill="currentColor" stroke="none"/></svg>`
+  const svgOrderedList = `<svg class="tt-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="2.5" y="8.5" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="currentColor" stroke="none">1</text><text x="2.5" y="14.5" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="currentColor" stroke="none">2</text><text x="2.5" y="20.5" font-family="ui-monospace,monospace" font-size="7" font-weight="700" fill="currentColor" stroke="none">3</text></svg>`
+  const svgQuote = `<svg class="tt-ic" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" stroke="none" aria-hidden="true"><path d="M7.17 4C4.87 4 3 5.87 3 8.17v2.5C3 12.94 4.87 14.83 7.17 14.83h.5v-2.5h-.5c-1.06 0-1.83-.77-1.83-1.83V8.17c0-1.06.77-1.83 1.83-1.83h.5V4h-.5zm9.66 0c-2.3 0-4.17 1.87-4.17 4.17v2.5c0 2.27 1.87 4.16 4.17 4.16h.5v-2.5h-.5c-1.06 0-1.83-.77-1.83-1.83V8.17c0-1.06.77-1.83 1.83-1.83h.5V4h-.5z"/><rect x="3" y="18" width="18" height="2" rx="1"/></svg>`
+  const svgInlineCode = `<svg class="tt-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`
+  const svgCodeBlock = `<svg class="tt-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><polyline points="9 9 6 12 9 15"/><polyline points="15 9 18 12 15 15"/></svg>`
+
   return `
     <div class="tiptap-toolbar" id="${toolbarId}" data-tt-mount-id="${mountId}">
       ${btn('toggleBold', '<b>B</b>', '굵게 (Ctrl+B)')}
       ${btn('toggleItalic', '<i>I</i>', '이탤릭 (Ctrl+I)')}
-      ${btn('toggleStrike', '<span style="text-decoration:line-through">S</span>', '취소선 (Ctrl+Shift+X)')}
-      ${btn('toggleCode', '<code>&lt;&gt;</code>', '인라인 코드 (Ctrl+E)')}
+      ${btn('toggleStrike', '<span style="text-decoration:line-through">S</span>', '취소선 (Ctrl+Shift+S)')}
+      ${btn('toggleCode', svgInlineCode, '인라인 코드 (Ctrl+E)')}
       <span class="tiptap-tb-sep"></span>
-      ${btn('setHeading', 'H1', '제목 1', JSON.stringify({ level: 1 }))}
-      ${btn('setHeading', 'H2', '제목 2', JSON.stringify({ level: 2 }))}
-      ${btn('setHeading', 'H3', '제목 3', JSON.stringify({ level: 3 }))}
-      ${btn('setParagraph', 'P', '본문 문단')}
+      ${btn('setHeading', 'H1', '제목 1 (Ctrl+Alt+1)', JSON.stringify({ level: 1 }))}
+      ${btn('setHeading', 'H2', '제목 2 (Ctrl+Alt+2)', JSON.stringify({ level: 2 }))}
+      ${btn('setHeading', 'H3', '제목 3 (Ctrl+Alt+3)', JSON.stringify({ level: 3 }))}
+      ${btn('setParagraph', 'P', '본문 문단 (Ctrl+Alt+0)')}
       <span class="tiptap-tb-sep"></span>
-      ${btn('toggleBulletList', '•', '불릿 목록')}
-      ${btn('toggleOrderedList', '1.', '번호 목록')}
-      ${btn('toggleBlockquote', '❝', '인용')}
-      ${btn('toggleCodeBlock', '{ }', '코드 블록')}
+      ${btn('toggleBulletList', svgBulletList, '불릿 목록 (Ctrl+Shift+8)')}
+      ${btn('toggleOrderedList', svgOrderedList, '번호 목록 (Ctrl+Shift+7)')}
+      ${btn('toggleBlockquote', svgQuote, '인용 (Ctrl+Shift+B)')}
+      ${btn('toggleCodeBlock', svgCodeBlock, '코드 블록 (Ctrl+Alt+C)')}
       ${btn('setHorizontalRule', '―', '구분선')}
       <span class="tiptap-tb-sep"></span>
       <button type="button" class="tiptap-tb-btn" data-tt-cmd="__link" title="링크 (Ctrl+K)">🔗</button>

@@ -3,13 +3,85 @@
 // - 본문 편집: 단일 currentEditor 싱글턴 (기존 호환)
 // - 댓글: 작성기 + 편집기 등 동시 다중 인스턴스 지원 → mount element에 직접 보관
 
-import { Editor } from '@tiptap/core'
+import { Editor, Extension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
 import { adfToPm, pmToAdf } from './adfProsemirror.js'
 import { MediaSingle, Media, MediaPlaceholder, MediaPaste, setMountAttachments, releaseMountBlobUrls } from './tiptapMedia.js'
 
 let currentEditor = null
+
+// 현재 selection의 listItem 노드 정보 — 없으면 null
+function findListItemAtSelection(editor) {
+  const { $from } = editor.state.selection
+  for (let d = $from.depth; d > 0; d--) {
+    const node = $from.node(d)
+    if (node.type.name === 'listItem') {
+      return { node, depth: d }
+    }
+  }
+  return null
+}
+
+// 리스트 탈출 + 포커스 이탈 방지 + Jira 호환 단축키
+// - Enter: 빈 listItem에서 한 번 더 누르면 lift (리스트 밖으로)
+// - Backspace: 빈 listItem 시작 위치에서 lift
+// - Tab/Shift-Tab: listItem 안이면 항상 처리 → 브라우저 포커스 이동 차단
+// - Mod-Shift-s: 취소선 (Jira 호환)
+// - Mod-k: 링크 (Jira 호환)
+const EditorKeymap = Extension.create({
+  name: 'editorKeymap',
+  addKeyboardShortcuts() {
+    return {
+      Enter: () => {
+        const editor = this.editor
+        if (!editor.isActive('listItem')) return false
+        const { empty } = editor.state.selection
+        if (!empty) return false
+        const li = findListItemAtSelection(editor)
+        if (li && li.node.textContent === '') {
+          return editor.commands.liftListItem('listItem')
+        }
+        return false
+      },
+      Backspace: () => {
+        const editor = this.editor
+        if (!editor.isActive('listItem')) return false
+        const { $from, empty } = editor.state.selection
+        if (!empty) return false
+        const li = findListItemAtSelection(editor)
+        // listItem이 비어있고, 자식 paragraph 시작 위치(parentOffset 0)면 lift
+        if (li && li.node.textContent === '' && $from.parentOffset === 0) {
+          return editor.commands.liftListItem('listItem')
+        }
+        return false
+      },
+      Tab: () => {
+        const editor = this.editor
+        if (editor.isActive('listItem')) {
+          editor.commands.sinkListItem('listItem')
+          // sink 불가(첫 항목 등)여도 true 반환 → 브라우저 포커스 이동 차단
+          return true
+        }
+        return false
+      },
+      'Shift-Tab': () => {
+        const editor = this.editor
+        if (editor.isActive('listItem')) {
+          editor.commands.liftListItem('listItem')
+          return true
+        }
+        return false
+      },
+      'Mod-Shift-s': () => this.editor.commands.toggleStrike(),
+      'Mod-k': () => {
+        const url = window.prompt('링크 URL을 입력하세요:')
+        if (url) this.editor.commands.setLink({ href: url })
+        return true
+      },
+    }
+  },
+})
 
 // 공통 extension 구성
 function buildExtensions() {
@@ -22,6 +94,7 @@ function buildExtensions() {
         HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
       },
     }),
+    EditorKeymap,
     Table.configure({ resizable: false }),
     TableRow,
     TableHeader,
