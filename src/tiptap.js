@@ -23,6 +23,22 @@ function findListItemAtSelection(editor) {
   return null
 }
 
+// 에디터 mount element id → 대응 저장 버튼 element
+// (각 사용처별로 별도 마운트 id를 쓰고 있어 매핑 테이블로 일괄 처리)
+function findSaveButtonForMount(mountEl) {
+  if (!mountEl) return null
+  const id = mountEl.id || ''
+  if (id === 'create-issue-desc-editor') return document.getElementById('create-issue-submit')
+  if (id === 'issue-detail-edit-editor') return document.getElementById('issue-detail-edit-save')
+  if (id === 'detail-comment-compose-editor') return document.getElementById('detail-comment-submit')
+  const editPrefix = 'detail-comment-edit-editor-'
+  if (id.startsWith(editPrefix)) {
+    const cid = id.slice(editPrefix.length)
+    return document.querySelector(`[data-action="save-edit-comment"][data-comment-id="${CSS.escape(cid)}"]`)
+  }
+  return null
+}
+
 // 리스트 탈출 + 포커스 이탈 방지 + Jira 호환 단축키
 // - Enter: 빈 listItem에서 한 번 더 누르면 lift (리스트 밖으로)
 // - Backspace: 빈 listItem 시작 위치에서 lift
@@ -77,6 +93,12 @@ const EditorKeymap = Extension.create({
       'Mod-k': () => {
         const url = window.prompt('링크 URL을 입력하세요:')
         if (url) this.editor.commands.setLink({ href: url })
+        return true
+      },
+      // Ctrl/⌘ + Enter: 새 줄/문단 삽입 없이 대응 저장 버튼만 트리거
+      'Mod-Enter': () => {
+        const btn = findSaveButtonForMount(this.editor.options.element)
+        if (btn && !btn.disabled) btn.click()
         return true
       },
     }
