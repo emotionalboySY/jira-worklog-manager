@@ -133,6 +133,17 @@ export function createEditorInstance(mountEl, adfContent, {
     extensions: buildExtensions(),
     editorProps: {
       attributes: { class: 'tiptap-content', spellcheck: 'false' },
+      // 편집 중 링크 열기: Ctrl/⌘ + 클릭으로만 새 탭 열기 (일반 클릭은 캐럿 이동)
+      handleClick: (_view, _pos, event) => {
+        if (!(event.ctrlKey || event.metaKey)) return false
+        const anchor = event.target?.closest?.('a[href]')
+        if (!anchor) return false
+        const href = anchor.getAttribute('href')
+        if (!href) return false
+        event.preventDefault()
+        window.open(href, '_blank', 'noopener,noreferrer')
+        return true
+      },
     },
     onUpdate: () => {
       if (typeof onUpdate !== 'function') return
