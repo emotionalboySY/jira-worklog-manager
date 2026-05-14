@@ -1334,14 +1334,19 @@ export function renderIssueDetailModal() {
     }
 
     // 보기 모드: ADF → HTML
+    // 옛 이슈는 ADF media attrs.id가 Media Services UUID라 numeric 첨부 id와 매칭이 안 됨.
+    // attrs.alt에 박힌 파일명으로 폴백 매칭하기 위해 파일명 인덱스도 함께 만든다.
     const attachmentsById = {}
-    for (const a of (d.attachments || [])) attachmentsById[a.id] = a
-    // 옛 이슈는 ADF media attrs.id가 Media Services UUID라 numeric 첨부 id와 매칭 안 됨.
-    // 서버 렌더 HTML에서 추출한 mediaId → src URL 매핑을 폴백으로 머지.
-    for (const [key, entry] of Object.entries(d.descriptionMediaUrlsByMediaId || {})) {
-      if (!attachmentsById[key]) attachmentsById[key] = entry
+    const attachmentsByFilename = {}
+    for (const a of (d.attachments || [])) {
+      attachmentsById[a.id] = a
+      if (a.filename && !attachmentsByFilename[a.filename]) {
+        attachmentsByFilename[a.filename] = a
+      }
     }
-    const rendered = d.descriptionAdf ? renderAdf(d.descriptionAdf, { attachmentsById }) : ''
+    const rendered = d.descriptionAdf
+      ? renderAdf(d.descriptionAdf, { attachmentsById, attachmentsByFilename })
+      : ''
 
     const descHtml = rendered
       ? `<div class="detail-description" id="issue-detail-description" title="클릭하여 편집">${rendered}</div>`
@@ -1561,12 +1566,19 @@ function renderDetailComments(m, issueKey) {
   const comments = m.data?.comments || []
   const myAccountId = getCachedMyself()?.accountId || ''
   // 댓글 본문 안의 미디어/첨부 노드는 이슈 attachments에서 해석
+  // 옛 댓글은 ADF media attrs.id가 Media Services UUID라 파일명 기반 폴백도 만들어둠
   const attachmentsById = {}
-  for (const a of (m.data?.attachments || [])) attachmentsById[a.id] = a
+  const attachmentsByFilename = {}
+  for (const a of (m.data?.attachments || [])) {
+    attachmentsById[a.id] = a
+    if (a.filename && !attachmentsByFilename[a.filename]) {
+      attachmentsByFilename[a.filename] = a
+    }
+  }
 
   const itemsHtml = comments.length === 0
     ? `<div class="detail-comment-empty">아직 댓글이 없습니다.</div>`
-    : comments.map(c => renderCommentItem(c, m, myAccountId, attachmentsById)).join('')
+    : comments.map(c => renderCommentItem(c, m, myAccountId, attachmentsById, attachmentsByFilename)).join('')
 
   return `
     <div class="detail-comments">
@@ -1608,7 +1620,7 @@ function renderCommentCompose(m) {
   `
 }
 
-function renderCommentItem(c, m, myAccountId, attachmentsById) {
+function renderCommentItem(c, m, myAccountId, attachmentsById, attachmentsByFilename) {
   const isMine = !!c.author?.accountId && c.author.accountId === myAccountId
   const isEditing = m.editingCommentId === c.id
   const isDeleting = m.deletingCommentId === c.id
@@ -1652,14 +1664,7 @@ function renderCommentItem(c, m, myAccountId, attachmentsById) {
         </div>
       </div>
     `
-    : (() => {
-        // 댓글 본문도 옛 ADF media UUID 폴백 매핑을 머지 (description과 동일 사유)
-        const merged = { ...attachmentsById }
-        for (const [k, v] of Object.entries(c.mediaUrlsByMediaId || {})) {
-          if (!merged[k]) merged[k] = v
-        }
-        return `<div class="detail-comment-body">${c.bodyAdf ? renderAdf(c.bodyAdf, { attachmentsById: merged }) : ''}</div>`
-      })()
+    : `<div class="detail-comment-body">${c.bodyAdf ? renderAdf(c.bodyAdf, { attachmentsById, attachmentsByFilename }) : ''}</div>`
 
   const deleteConfirm = isDeleting
     ? `

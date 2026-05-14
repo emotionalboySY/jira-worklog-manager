@@ -104,9 +104,15 @@ function renderNode(node, ctx) {
 
     case 'media': {
       const id = attrs?.id || ''
-      const att = ctx.attachmentsById?.[id]
+      const altAttr = attrs?.alt || ''
+      // 1) attrs.id 매칭 (Jira 내부 ADF가 attachment id를 그대로 박은 경우)
+      // 2) 폴백: attrs.alt(파일명) 매칭 — 옛 이슈는 attrs.id가 Media Services UUID라
+      //    첨부의 numeric id와 안 맞음. 첨부 파일명이 alt와 일치하면 그쪽으로 매칭.
+      const att =
+        ctx.attachmentsById?.[id] ||
+        (altAttr ? ctx.attachmentsByFilename?.[altAttr] : null)
       const contentUrl = att?.contentUrl || ''
-      const alt = escapeHtml(att?.filename || attrs?.alt || '')
+      const alt = escapeHtml(att?.filename || altAttr)
       // src는 이후 이벤트 레이어에서 Blob URL로 교체됨
       return `<img data-adf-media-url="${escapeHtml(contentUrl)}" alt="${alt}" />`
     }

@@ -427,11 +427,10 @@ export async function fetchProjects() {
 // 스프린트 커스텀 필드 ID (확인 완료)
 const SPRINT_FIELD = 'customfield_10020'
 
-// 이슈 상세 정보 조회: ADF 설명 + 메타 + 첨부 목록
-// 본문 렌더는 클라이언트의 ADF 렌더러가 담당. 다만 옛 이슈의 ADF media 노드는
-// attrs.id가 Media Services UUID로 박혀있어 첨부 목록의 numeric id와 매칭이 안 되는
-// 케이스가 있어, 서버 렌더 HTML(renderedFields)을 함께 받아 mediaId → src URL을
-// 폴백 매핑으로 사용한다.
+// 이슈 상세 정보 조회: ADF 설명 + 메타 + 첨부 목록.
+// 본문 렌더는 클라이언트의 ADF 렌더러가 담당. 옛 이슈의 ADF media 노드는 attrs.id가
+// Media Services UUID로 박혀있어 첨부의 numeric id와 매칭이 안 되는데, 그건 렌더
+// 단계에서 attrs.alt(파일명) ↔ 첨부 filename 매칭으로 폴백 처리한다.
 export async function fetchIssueDetail(issueKey, { signal } = {}) {
   const fields = [
     'summary', 'issuetype', 'status', 'priority',
@@ -441,37 +440,13 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
     SPRINT_FIELD,
   ].join(',')
   const data = await jiraFetch(
-    `/issue/${encodeURIComponent(issueKey)}?fields=${fields}&expand=renderedFields`,
+    `/issue/${encodeURIComponent(issueKey)}?fields=${fields}`,
     { signal }
   )
   if (!data) return null
 
   const f = data.fields || {}
-  const rf = data.renderedFields || {}
   const tt = f.timetracking || {}
-
-  // 렌더된 댓글 HTML을 id로 인덱싱 → ADF 매칭 폴백용
-  const renderedCommentsById = {}
-  for (const rc of (rf.comment?.comments || [])) {
-    if (rc && rc.id != null) renderedCommentsById[String(rc.id)] = rc.body || ''
-  }
-
-  const descriptionMediaUrlsByMediaId = parseRenderedMediaUrls(rf.description || '')
-
-  // 디버그: renderedFields 구조와 파싱 결과 확인
-  console.log('[issueDetail] renderedFields keys:', Object.keys(rf))
-  console.log('[issueDetail] description HTML preview:', (rf.description || '').slice(0, 500))
-  console.log('[issueDetail] parsed mediaUrls keys:', Object.keys(descriptionMediaUrlsByMediaId))
-
-  // ADF에서 직접 추출한 media id들도 비교용으로 로깅
-  const adfMediaIds = []
-  collectMediaIds(f.description, adfMediaIds)
-  console.log('[issueDetail] ADF media ids:', adfMediaIds)
-
-  const comments = extractComments(f.comment).map(c => ({
-    ...c,
-    mediaUrlsByMediaId: parseRenderedMediaUrls(renderedCommentsById[c.id] || ''),
-  }))
 
   return {
     key: data.key,
@@ -492,50 +467,12 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
     timeSpentSeconds: tt.timeSpentSeconds ?? null,
     sprints: extractSprints(f[SPRINT_FIELD]),
     descriptionAdf: f.description || null,  // ADF doc or null
-    descriptionMediaUrlsByMediaId,
     attachments: extractAttachments(f.attachment),
-    comments,
+    comments: extractComments(f.comment),
     links: extractIssueLinks(f.issuelinks),
     created: f.created || null,
     updated: f.updated || null,
   }
-}
-
-// ADF 트리에서 media 노드의 id/alt/collection을 재귀로 수집 (디버그용)
-function collectMediaIds(node, out) {
-  if (!node || typeof node !== 'object') return
-  if (node.type === 'media') {
-    out.push({ id: node.attrs?.id, alt: node.attrs?.alt, collection: node.attrs?.collection })
-  }
-  if (Array.isArray(node.content)) {
-    for (const child of node.content) collectMediaIds(child, out)
-  }
-}
-
-// 서버가 렌더한 description/댓글 HTML에서 ADF media id(UUID) → src URL 매핑을 추출.
-// ADF media 노드의 attrs.id가 첨부 numeric id와 다른 옛 이슈에서 폴백 경로로 사용.
-function parseRenderedMediaUrls(html) {
-  if (!html || typeof DOMParser === 'undefined') return {}
-  const map = {}
-  try {
-    const doc = new DOMParser().parseFromString(html, 'text/html')
-    doc.querySelectorAll('img').forEach(img => {
-      const src = img.getAttribute('src') || ''
-      if (!src) return
-      const filename = img.getAttribute('data-attachment-name') || img.getAttribute('alt') || ''
-      const candidates = [
-        img.getAttribute('data-media-services-id'),
-        img.getAttribute('data-media-id'),
-        img.getAttribute('data-attachment-id'),
-      ]
-      for (const key of candidates) {
-        if (key && !map[key]) map[key] = { contentUrl: src, filename }
-      }
-    })
-  } catch (e) {
-    console.warn('[jira] 렌더된 미디어 파싱 실패:', e)
-  }
-  return map
 }
 
 // 이슈 링크 배열 정규화. 각 항목은 {direction: 'inward'|'outward', label, issue: {...}}
