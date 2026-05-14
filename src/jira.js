@@ -456,6 +456,18 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
     if (rc && rc.id != null) renderedCommentsById[String(rc.id)] = rc.body || ''
   }
 
+  const descriptionMediaUrlsByMediaId = parseRenderedMediaUrls(rf.description || '')
+
+  // 디버그: renderedFields 구조와 파싱 결과 확인
+  console.log('[issueDetail] renderedFields keys:', Object.keys(rf))
+  console.log('[issueDetail] description HTML preview:', (rf.description || '').slice(0, 500))
+  console.log('[issueDetail] parsed mediaUrls keys:', Object.keys(descriptionMediaUrlsByMediaId))
+
+  // ADF에서 직접 추출한 media id들도 비교용으로 로깅
+  const adfMediaIds = []
+  collectMediaIds(f.description, adfMediaIds)
+  console.log('[issueDetail] ADF media ids:', adfMediaIds)
+
   const comments = extractComments(f.comment).map(c => ({
     ...c,
     mediaUrlsByMediaId: parseRenderedMediaUrls(renderedCommentsById[c.id] || ''),
@@ -480,12 +492,23 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
     timeSpentSeconds: tt.timeSpentSeconds ?? null,
     sprints: extractSprints(f[SPRINT_FIELD]),
     descriptionAdf: f.description || null,  // ADF doc or null
-    descriptionMediaUrlsByMediaId: parseRenderedMediaUrls(rf.description || ''),
+    descriptionMediaUrlsByMediaId,
     attachments: extractAttachments(f.attachment),
     comments,
     links: extractIssueLinks(f.issuelinks),
     created: f.created || null,
     updated: f.updated || null,
+  }
+}
+
+// ADF 트리에서 media 노드의 id/alt/collection을 재귀로 수집 (디버그용)
+function collectMediaIds(node, out) {
+  if (!node || typeof node !== 'object') return
+  if (node.type === 'media') {
+    out.push({ id: node.attrs?.id, alt: node.attrs?.alt, collection: node.attrs?.collection })
+  }
+  if (Array.isArray(node.content)) {
+    for (const child of node.content) collectMediaIds(child, out)
   }
 }
 
