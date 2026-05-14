@@ -13,6 +13,7 @@ import {
   createIssueLink,
   deleteIssueLink,
   searchIssuesByKey,
+  normalizeMediaForSave,
 } from '../jira.js'
 import { getProjectKeysOrFallback, formatJiraError } from '../utils.js'
 import { renderAddLinkSuggestionsHtml } from '../views/modals.js'
@@ -124,7 +125,12 @@ export async function saveIssueDetailEdit() {
   setDescSavingButtons(true)
 
   try {
-    await updateIssueDescription(m.key, empty ? null : adfDoc)
+    // 옛 이슈의 ADF media는 attrs.id가 Media Services UUID라 v3 PUT에서
+    // INVALID_INPUT으로 거부됨. 첨부 numeric id로 정규화한 뒤 전송.
+    const adfToSave = empty
+      ? null
+      : normalizeMediaForSave(adfDoc, m.data?.attachments || [])
+    await updateIssueDescription(m.key, adfToSave)
     const fresh = await fetchIssueDetail(m.key)
     if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
     destroyEditor()

@@ -6,6 +6,7 @@ import {
   updateIssueComment,
   deleteIssueComment,
   uploadIssueAttachment,
+  normalizeMediaForSave,
 } from '../jira.js'
 import { isEmptyAdf, hasUploadPlaceholders } from '../adfProsemirror.js'
 import {
@@ -220,7 +221,8 @@ async function submitNewComment() {
   if (editor) editor.setEditable(false)
   render({ sections: ['modals'] })
   try {
-    const created = await addIssueComment(m.key, adf)
+    const adfToSave = normalizeMediaForSave(adf, m.data?.attachments || [])
+    const created = await addIssueComment(m.key, adfToSave)
     const cur = state.issueDetailModal
     if (!cur || cur.key !== m.key) return
     if (cur.data) {
@@ -290,7 +292,8 @@ async function saveEditComment(commentId) {
   if (editor) editor.setEditable(false)
   render({ sections: ['modals'] })
   try {
-    const updated = await updateIssueComment(m.key, commentId, adf)
+    const adfToSave = normalizeMediaForSave(adf, m.data?.attachments || [])
+    const updated = await updateIssueComment(m.key, commentId, adfToSave)
     const cur = state.issueDetailModal
     if (!cur || cur.key !== m.key) return
     if (cur.data) {

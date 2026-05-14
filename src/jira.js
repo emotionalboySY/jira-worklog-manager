@@ -516,10 +516,37 @@ function extractLinkedIssue(li) {
 
 // 이슈 설명 업데이트. adfDoc은 ADF doc 객체 또는 null(설명 비우기)
 export async function updateIssueDescription(issueKey, adfDoc) {
+  console.log('[updateIssueDescription] 전송 ADF:', JSON.stringify(adfDoc, null, 2))
   await jiraFetch(
     `/issue/${encodeURIComponent(issueKey)}`,
     { method: 'PUT', body: { fields: { description: adfDoc } } }
   )
+}
+
+// ADF 트리의 media 노드를 첨부 목록 기준으로 정규화 — 옛 이슈의 UUID id를 numeric
+// 첨부 id로 교체하고, 빈/이상한 attrs를 정리한다. 저장 직전에 호출.
+export function normalizeMediaForSave(adf, attachments) {
+  if (!adf || !Array.isArray(attachments) || attachments.length === 0) return adf
+  const byFilename = {}
+  for (const a of attachments) {
+    if (a?.filename && !byFilename[a.filename]) byFilename[a.filename] = a
+  }
+  function visit(node) {
+    if (!node || typeof node !== 'object') return node
+    let out = node
+    if (node.type === 'media' && node.attrs) {
+      const filename = node.attrs.alt || ''
+      const att = filename ? byFilename[filename] : null
+      if (att && att.id) {
+        out = { ...node, attrs: { ...node.attrs, id: String(att.id) } }
+      }
+    }
+    if (Array.isArray(out.content)) {
+      out = { ...out, content: out.content.map(visit) }
+    }
+    return out
+  }
+  return visit(adf)
 }
 
 export async function updateIssueSummary(issueKey, summary) {
