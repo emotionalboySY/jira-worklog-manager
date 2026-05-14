@@ -4232,6 +4232,26 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   background: var(--bg);
 }
 
+/* ADF mediaSingle — 편집 모드(.tt-media-single)와 같은 블록 흐름으로 보여
+   "기존" / "변경" 같은 라벨 텍스트가 이미지 옆으로 흘러붙지 않도록 한다. */
+.detail-description .adf-media-single {
+  display: block;
+  margin: 8px 0;
+  max-width: 100%;
+}
+.detail-description .adf-media-single img {
+  margin: 0;
+  display: block;
+  max-width: 100%;
+}
+.detail-description .adf-media-single[data-layout="center"] { margin-left: auto; margin-right: auto; }
+.detail-description .adf-media-single[data-layout="align-start"] { margin-right: auto; margin-left: 0; }
+.detail-description .adf-media-single[data-layout="align-end"]   { margin-left: auto; margin-right: 0; }
+.detail-description .adf-media-single[data-layout="wrap-left"]  { float: left; margin: 4px 12px 4px 0; }
+.detail-description .adf-media-single[data-layout="wrap-right"] { float: right; margin: 4px 0 4px 12px; }
+.detail-description .adf-media-single[data-layout="wide"],
+.detail-description .adf-media-single[data-layout="full-width"] { width: 100%; }
+
 .detail-description img.detail-img-loading {
   min-height: 80px;
   min-width: 80px;

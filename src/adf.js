@@ -98,9 +98,17 @@ function renderNode(node, ctx) {
       return `<details class="adf-expand"><summary>${title}</summary>${children()}</details>`
     }
 
-    case 'mediaSingle':
+    case 'mediaSingle': {
+      // 편집 모드(Tiptap)와 같은 블록 레이아웃을 보기 모드에도 적용 — Jira에서 보이는 모양과 일치
+      const layout = attrs?.layout || 'center'
+      const w = Number(attrs?.width)
+      const widthStyle = (Number.isFinite(w) && w > 0 && w <= 100)
+        ? ` style="width:${w}%"` : ''
+      return `<div class="adf-media-single" data-layout="${escapeHtml(layout)}"${widthStyle}>${children()}</div>`
+    }
+
     case 'mediaGroup':
-      return children()
+      return `<div class="adf-media-group">${children()}</div>`
 
     case 'media': {
       const id = attrs?.id || ''
