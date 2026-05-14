@@ -428,8 +428,10 @@ export async function fetchProjects() {
 const SPRINT_FIELD = 'customfield_10020'
 
 // 이슈 상세 정보 조회: ADF 설명 + 메타 + 첨부 목록
-// renderedFields(서버 HTML)는 구식 위키 마크업 잔재를 망치므로 쓰지 않고,
-// 클라이언트에서 ADF를 직접 렌더한다.
+// 본문 렌더는 클라이언트의 ADF 렌더러가 담당. 다만 옛 이슈의 ADF media 노드는
+// attrs.id가 Media Services UUID로 박혀있어 첨부 목록의 numeric id와 매칭이 안 되는
+// 케이스가 있어, 서버 렌더 HTML(renderedFields)을 함께 받아 mediaId → src URL을
+// 폴백 매핑으로 사용한다.
 export async function fetchIssueDetail(issueKey, { signal } = {}) {
   const fields = [
     'summary', 'issuetype', 'status', 'priority',
@@ -439,13 +441,25 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
     SPRINT_FIELD,
   ].join(',')
   const data = await jiraFetch(
-    `/issue/${encodeURIComponent(issueKey)}?fields=${fields}`,
+    `/issue/${encodeURIComponent(issueKey)}?fields=${fields}&expand=renderedFields`,
     { signal }
   )
   if (!data) return null
 
   const f = data.fields || {}
+  const rf = data.renderedFields || {}
   const tt = f.timetracking || {}
+
+  // 렌더된 댓글 HTML을 id로 인덱싱 → ADF 매칭 폴백용
+  const renderedCommentsById = {}
+  for (const rc of (rf.comment?.comments || [])) {
+    if (rc && rc.id != null) renderedCommentsById[String(rc.id)] = rc.body || ''
+  }
+
+  const comments = extractComments(f.comment).map(c => ({
+    ...c,
+    mediaUrlsByMediaId: parseRenderedMediaUrls(renderedCommentsById[c.id] || ''),
+  }))
 
   return {
     key: data.key,
@@ -466,12 +480,39 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
     timeSpentSeconds: tt.timeSpentSeconds ?? null,
     sprints: extractSprints(f[SPRINT_FIELD]),
     descriptionAdf: f.description || null,  // ADF doc or null
+    descriptionMediaUrlsByMediaId: parseRenderedMediaUrls(rf.description || ''),
     attachments: extractAttachments(f.attachment),
-    comments: extractComments(f.comment),
+    comments,
     links: extractIssueLinks(f.issuelinks),
     created: f.created || null,
     updated: f.updated || null,
   }
+}
+
+// 서버가 렌더한 description/댓글 HTML에서 ADF media id(UUID) → src URL 매핑을 추출.
+// ADF media 노드의 attrs.id가 첨부 numeric id와 다른 옛 이슈에서 폴백 경로로 사용.
+function parseRenderedMediaUrls(html) {
+  if (!html || typeof DOMParser === 'undefined') return {}
+  const map = {}
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    doc.querySelectorAll('img').forEach(img => {
+      const src = img.getAttribute('src') || ''
+      if (!src) return
+      const filename = img.getAttribute('data-attachment-name') || img.getAttribute('alt') || ''
+      const candidates = [
+        img.getAttribute('data-media-services-id'),
+        img.getAttribute('data-media-id'),
+        img.getAttribute('data-attachment-id'),
+      ]
+      for (const key of candidates) {
+        if (key && !map[key]) map[key] = { contentUrl: src, filename }
+      }
+    })
+  } catch (e) {
+    console.warn('[jira] 렌더된 미디어 파싱 실패:', e)
+  }
+  return map
 }
 
 // 이슈 링크 배열 정규화. 각 항목은 {direction: 'inward'|'outward', label, issue: {...}}

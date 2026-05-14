@@ -1336,6 +1336,11 @@ export function renderIssueDetailModal() {
     // 보기 모드: ADF → HTML
     const attachmentsById = {}
     for (const a of (d.attachments || [])) attachmentsById[a.id] = a
+    // 옛 이슈는 ADF media attrs.id가 Media Services UUID라 numeric 첨부 id와 매칭 안 됨.
+    // 서버 렌더 HTML에서 추출한 mediaId → src URL 매핑을 폴백으로 머지.
+    for (const [key, entry] of Object.entries(d.descriptionMediaUrlsByMediaId || {})) {
+      if (!attachmentsById[key]) attachmentsById[key] = entry
+    }
     const rendered = d.descriptionAdf ? renderAdf(d.descriptionAdf, { attachmentsById }) : ''
 
     const descHtml = rendered
@@ -1647,7 +1652,14 @@ function renderCommentItem(c, m, myAccountId, attachmentsById) {
         </div>
       </div>
     `
-    : `<div class="detail-comment-body">${c.bodyAdf ? renderAdf(c.bodyAdf, { attachmentsById }) : ''}</div>`
+    : (() => {
+        // 댓글 본문도 옛 ADF media UUID 폴백 매핑을 머지 (description과 동일 사유)
+        const merged = { ...attachmentsById }
+        for (const [k, v] of Object.entries(c.mediaUrlsByMediaId || {})) {
+          if (!merged[k]) merged[k] = v
+        }
+        return `<div class="detail-comment-body">${c.bodyAdf ? renderAdf(c.bodyAdf, { attachmentsById: merged }) : ''}</div>`
+      })()
 
   const deleteConfirm = isDeleting
     ? `
