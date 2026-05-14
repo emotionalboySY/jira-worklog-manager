@@ -51,8 +51,8 @@ export function closeIssueDetailModal() {
   }
   destroyEditor()
   destroyCommentEditors()
-  if (m?.blobUrls) {
-    for (const url of m.blobUrls) {
+  if (m?.blobUrlCache) {
+    for (const url of m.blobUrlCache.values()) {
       try { URL.revokeObjectURL(url) } catch {}
     }
   }
@@ -306,7 +306,10 @@ export function ensureIssueDetailEditor() {
 // 이슈 상세 모달 열기 + 상세 데이터 비동기 로드
 export async function openIssueDetailModal(issueKey) {
   state.issueDetailModal = {
-    key: issueKey, loading: true, data: null, error: null, blobUrls: [],
+    key: issueKey, loading: true, data: null, error: null,
+    // 이미지 로더 캐시 — 재렌더로 img가 교체돼도 동일 URL은 즉시 src 세팅
+    blobUrlCache: new Map(),       // sourceUrl → blobUrl
+    blobUrlInFlight: new Map(),    // sourceUrl → Promise<blobUrl|null>
     linkTypes: null, addLink: null, linkRemoving: new Set(),
   }
   render({ sections: ['modals'] })
@@ -493,16 +496,40 @@ function refreshAddLinkSuggestions() {
   el.innerHTML = renderAddLinkSuggestionsHtml(state.issueDetailModal?.addLink || {})
 }
 
-// 본문 설명의 <img>와 첨부 썸네일을 인증 프록시로 받아 Blob URL로 교체
-export async function loadIssueDetailImages() {
+// 한 source URL에 대해 캐시된 blob URL을 보장 (캐시 적중 → 즉시 반환, in-flight면 공유)
+function ensureBlobUrl(m, sourceUrl) {
+  if (!m || !sourceUrl) return Promise.resolve(null)
+  const cached = m.blobUrlCache.get(sourceUrl)
+  if (cached) return Promise.resolve(cached)
+  const inFlight = m.blobUrlInFlight.get(sourceUrl)
+  if (inFlight) return inFlight
+  const p = fetchAttachmentBlobUrl(sourceUrl).then(blobUrl => {
+    if (blobUrl) m.blobUrlCache.set(sourceUrl, blobUrl)
+    m.blobUrlInFlight.delete(sourceUrl)
+    return blobUrl
+  }).catch(err => {
+    m.blobUrlInFlight.delete(sourceUrl)
+    console.warn('이미지 fetch 실패:', err)
+    return null
+  })
+  m.blobUrlInFlight.set(sourceUrl, p)
+  return p
+}
+
+// 본문 설명/댓글의 <img>와 첨부 썸네일을 인증 프록시로 받아 Blob URL로 교체.
+// bindDetailModalEvents에서 매 재렌더마다 호출 → 재렌더로 교체된 img도 캐시 적중하면
+// 즉시 src 세팅, 첫 진입이면 fetch 한 번만 발사 후 결과 공유.
+export function loadIssueDetailImages() {
   const m = state.issueDetailModal
-  if (!m) return
+  if (!m || !m.blobUrlCache) return
   const modal = document.getElementById('issue-detail-overlay')
   if (!modal) return
+  const modalKey = m.key
 
-  // 1) ADF media 노드: data-adf-media-url 속성에 담긴 Jira 첨부 URL을 Blob URL로 교체
-  const mediaImgs = modal.querySelectorAll('.detail-description img[data-adf-media-url]')
-  const tasks = []
+  // ADF media 노드 (description + 댓글 본문)
+  const mediaImgs = modal.querySelectorAll(
+    '.detail-description img[data-adf-media-url], .detail-comment-body img[data-adf-media-url]'
+  )
   mediaImgs.forEach(img => {
     const url = img.getAttribute('data-adf-media-url')
     img.removeAttribute('data-adf-media-url')
@@ -511,44 +538,46 @@ export async function loadIssueDetailImages() {
       img.alt = '(이미지 원본을 찾지 못함)'
       return
     }
+    const cached = m.blobUrlCache.get(url)
+    if (cached) {
+      img.src = cached
+      return
+    }
     img.classList.add('detail-img-loading')
-    tasks.push(
-      fetchAttachmentBlobUrl(url).then(blobUrl => {
-        if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
-        if (blobUrl) {
-          img.src = blobUrl
-          state.issueDetailModal.blobUrls.push(blobUrl)
-        } else {
-          img.classList.add('detail-img-error')
-          img.alt = '(이미지 로드 실패)'
-        }
-        img.classList.remove('detail-img-loading')
-      })
-    )
+    ensureBlobUrl(m, url).then(blobUrl => {
+      if (!state.issueDetailModal || state.issueDetailModal.key !== modalKey) return
+      if (blobUrl) {
+        img.src = blobUrl
+      } else {
+        img.classList.add('detail-img-error')
+        img.alt = '(이미지 로드 실패)'
+      }
+      img.classList.remove('detail-img-loading')
+    })
   })
 
-  // 2) 첨부 썸네일
+  // 첨부 썸네일
   const thumbs = modal.querySelectorAll('.detail-attachment-thumb[data-thumb-url]')
   thumbs.forEach(thumb => {
     const url = thumb.getAttribute('data-thumb-url')
     if (!url) return
     thumb.removeAttribute('data-thumb-url')
+    const cached = m.blobUrlCache.get(url)
+    if (cached) {
+      thumb.style.backgroundImage = `url("${cached}")`
+      return
+    }
     thumb.classList.add('detail-img-loading')
-    tasks.push(
-      fetchAttachmentBlobUrl(url).then(blobUrl => {
-        if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
-        if (blobUrl) {
-          thumb.style.backgroundImage = `url("${blobUrl}")`
-          state.issueDetailModal.blobUrls.push(blobUrl)
-        } else {
-          thumb.classList.add('detail-img-error')
-        }
-        thumb.classList.remove('detail-img-loading')
-      })
-    )
+    ensureBlobUrl(m, url).then(blobUrl => {
+      if (!state.issueDetailModal || state.issueDetailModal.key !== modalKey) return
+      if (blobUrl) {
+        thumb.style.backgroundImage = `url("${blobUrl}")`
+      } else {
+        thumb.classList.add('detail-img-error')
+      }
+      thumb.classList.remove('detail-img-loading')
+    })
   })
-
-  await Promise.all(tasks)
 }
 
 // closeIssueDetailModal의 ESC 흐름에서 댓글 작성기/편집기 취소도 같이 처리되도록 재export
@@ -620,6 +649,9 @@ export function bindDetailModalEvents() {
 
   // 본문 편집 tiptap 마운트 (중복 마운트 방지)
   ensureIssueDetailEditor()
+
+  // 재렌더로 교체된 본문/댓글 img들에 캐시된 blob URL을 즉시 적용 (없으면 fetch)
+  loadIssueDetailImages()
 
   // 연결 추가: 카테고리 select
   const linkAddType = document.getElementById('detail-link-add-type')

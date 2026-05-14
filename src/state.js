@@ -130,7 +130,7 @@ export const state = {
   showManualLog: null,     // 수동 작업 기록 모달 state: null | { issueKey, summary }
   showSettings: false,     // 설정 모달 표시 여부
   settingsDraft: null,     // 설정 모달에서 편집 중인 임시 값 (저장 전)
-  // 이슈 상세 모달: null | { key, loading, data, error, blobUrls, editing, editBuffer, editInitial, saving, saveError, lossyFeatures }
+  // 이슈 상세 모달: null | { key, loading, data, error, blobUrlCache, blobUrlInFlight, editing, editBuffer, editInitial, saving, saveError, lossyFeatures }
   // editing=true면 설명 편집 모드, editBuffer에 markdown 문자열
   issueDetailModal: null,
 

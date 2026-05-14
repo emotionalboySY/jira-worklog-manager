@@ -5,7 +5,6 @@ import {
   addIssueComment,
   updateIssueComment,
   deleteIssueComment,
-  fetchAttachmentBlobUrl,
   uploadIssueAttachment,
 } from '../jira.js'
 import { isEmptyAdf, hasUploadPlaceholders } from '../adfProsemirror.js'
@@ -157,9 +156,7 @@ export function ensureCommentEditors() {
     destroyInstanceOnMount(m._editMount)
     m._editMount = null
   }
-
-  // 댓글 본문 안의 이미지(미디어 노드)도 본문과 동일하게 인증 프록시로 교체
-  loadCommentImages()
+  // 댓글 본문 이미지는 detail.js의 loadIssueDetailImages가 bindDetailModalEvents에서 통합 처리
 }
 
 // 댓글 에디터의 이미지 paste/drop 후크. 업로드 결과를 모달 상태의 첨부 목록에도 즉시 머지.
@@ -180,37 +177,6 @@ function makeCommentImagePaste(issueKey) {
     }
     return result
   }
-}
-
-// detail-comments 영역 안의 ADF media 이미지/썸네일을 인증된 Blob URL로 교체
-async function loadCommentImages() {
-  const m = state.issueDetailModal
-  if (!m) return
-  const root = document.querySelector('.detail-comments')
-  if (!root) return
-  const imgs = root.querySelectorAll('.detail-comment-body img[data-adf-media-url]')
-  if (imgs.length === 0) return
-  imgs.forEach(img => {
-    const url = img.getAttribute('data-adf-media-url')
-    img.removeAttribute('data-adf-media-url')
-    if (!url) {
-      img.classList.add('detail-img-error')
-      img.alt = '(이미지 원본을 찾지 못함)'
-      return
-    }
-    img.classList.add('detail-img-loading')
-    fetchAttachmentBlobUrl(url).then(blobUrl => {
-      if (!state.issueDetailModal || state.issueDetailModal.key !== m.key) return
-      if (blobUrl) {
-        img.src = blobUrl
-        state.issueDetailModal.blobUrls.push(blobUrl)
-      } else {
-        img.classList.add('detail-img-error')
-        img.alt = '(이미지 로드 실패)'
-      }
-      img.classList.remove('detail-img-loading')
-    })
-  })
 }
 
 export function openCommentCompose() {
