@@ -246,9 +246,13 @@ class MediaSingleView {
     const media = this._getMediaAttrs()
     if (!media) return
     const id = media.id
+    const altFilename = media.alt || ''
     const mountEl = this.editor.options.element
-    const att = id ? mountEl?.__tt_attachments_by_id?.[id] : null
-    this.img.alt = media.alt || att?.filename || ''
+    // 1) attrs.id 매칭 → 2) attrs.alt(파일명) 폴백 (옛 이슈의 UUID id 대응)
+    const att =
+      (id ? mountEl?.__tt_attachments_by_id?.[id] : null) ||
+      (altFilename ? mountEl?.__tt_attachments_by_filename?.[altFilename] : null)
+    this.img.alt = altFilename || att?.filename || ''
 
     // 1) paste 직후엔 로컬 파일의 임시 blob URL이 있을 수 있음 — 즉시 표시
     const tempUrl = id ? mountEl?.__tt_temp_blob_urls?.[id] : null
@@ -520,15 +524,21 @@ function loadImageDims(url) {
 }
 
 // ---------- 외부에서 사용하는 헬퍼 ----------
-// 마운트에 첨부 메타를 미리 주입 (편집 진입 시 호출)
+// 마운트에 첨부 메타를 미리 주입 (편집 진입 시 호출).
+// 옛 이슈는 ADF media.attrs.id가 Media Services UUID라 첨부 numeric id와 매칭이
+// 안 됨 → 파일명 인덱스도 함께 만들어 NodeView가 폴백 매칭하도록 한다.
 export function setMountAttachments(mountEl, attachments) {
   if (!mountEl) return
   const map = {}
+  const byName = {}
   for (const a of attachments || []) {
     if (!a?.id) continue
-    map[String(a.id)] = { contentUrl: a.contentUrl || '', filename: a.filename || '' }
+    const entry = { contentUrl: a.contentUrl || '', filename: a.filename || '' }
+    map[String(a.id)] = entry
+    if (a.filename && !byName[a.filename]) byName[a.filename] = entry
   }
   mountEl.__tt_attachments_by_id = map
+  mountEl.__tt_attachments_by_filename = byName
 }
 
 // 에디터 파괴 시 같이 호출해 blob URL 일괄 해제
