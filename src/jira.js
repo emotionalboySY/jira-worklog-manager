@@ -516,34 +516,24 @@ function extractLinkedIssue(li) {
 
 // 이슈 설명 업데이트. adfDoc은 ADF doc 객체 또는 null(설명 비우기)
 export async function updateIssueDescription(issueKey, adfDoc) {
-  console.log('[updateIssueDescription] 전송 ADF:', JSON.stringify(adfDoc, null, 2))
   await jiraFetch(
     `/issue/${encodeURIComponent(issueKey)}`,
     { method: 'PUT', body: { fields: { description: adfDoc } } }
   )
 }
 
-// ADF 트리를 저장 직전에 정규화 — 옛 이슈에서 발생하는 두 가지 INVALID_INPUT 케이스를 처리한다:
-//   1) media.attrs.id가 Media Services UUID → 첨부 filename으로 매칭해 numeric id로 교체
-//   2) mediaSingle.attrs.width가 픽셀값(>100) → ADF 스펙상 0~100 백분율이어야 하므로 제거
-export function normalizeMediaForSave(adf, attachments) {
+// ADF 트리를 저장 직전에 정규화 — 옛 이슈에서 v3 API 검증에 걸리는 케이스를 처리한다.
+// 현재까지 확인된 문제:
+//   - mediaSingle.attrs.width가 픽셀값(>100) → ADF 스펙상 0~100 백분율이어야 함
+//     → width를 제거하고 layout도 center(width 미요구)로 정규화
+// 주의: media.attrs.id (Media Services UUID)는 그대로 유지해야 한다. 첨부의 numeric
+//       id로 바꾸면 ATTACHMENT_VALIDATION_ERROR가 발생한다.
+export function normalizeMediaForSave(adf, _attachments) {
   if (!adf) return adf
-  const byFilename = {}
-  for (const a of (attachments || [])) {
-    if (a?.filename && !byFilename[a.filename]) byFilename[a.filename] = a
-  }
   function visit(node) {
     if (!node || typeof node !== 'object') return node
     let out = node
-    if (node.type === 'media' && node.attrs) {
-      const filename = node.attrs.alt || ''
-      const att = filename ? byFilename[filename] : null
-      if (att && att.id) {
-        out = { ...node, attrs: { ...node.attrs, id: String(att.id) } }
-      }
-    } else if (node.type === 'mediaSingle' && node.attrs) {
-      // ADF 스펙: mediaSingle.width는 0~100 백분율. wrap-*/align-* 레이아웃은 width가 필수.
-      // 픽셀값이거나 100 초과면 width를 제거하고 layout도 center로 정규화 (center는 width 미요구)
+    if (node.type === 'mediaSingle' && node.attrs) {
       const w = Number(node.attrs.width)
       if (!Number.isFinite(w) || w <= 0 || w > 100) {
         const { width: _drop, ...rest } = node.attrs
