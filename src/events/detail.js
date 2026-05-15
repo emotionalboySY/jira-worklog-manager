@@ -85,6 +85,7 @@ export function cancelIssueDetailEdit() {
   m.editAdf = null
   m.saveError = null
   m.lossyFeatures = null
+  m.initialEditorAdf = undefined
   render({ sections: ['modals'] })
 }
 
@@ -141,6 +142,7 @@ export async function saveIssueDetailEdit() {
     state.issueDetailModal.saving = false
     state.issueDetailModal.saveError = null
     state.issueDetailModal.lossyFeatures = null
+    state.issueDetailModal.initialEditorAdf = undefined
     render({ sections: ['modals'] })
     loadIssueDetailImages()
     showToast('이슈 설명이 저장되었습니다.', '✓')
@@ -260,13 +262,15 @@ export async function saveSummaryEdit() {
   }
 }
 
-// 에디터의 현재 ADF와 m.data.descriptionAdf를 비교해 변경 여부 판단
+// 에디터의 현재 ADF와 마운트 직후 캡처한 초기 ADF를 비교해 변경 여부 판단.
+// 원본 m.data.descriptionAdf와 직접 비교하면 ADF↔ProseMirror 라운드트립으로
+// 기본 attrs/마크가 정규화되어 항상 dirty로 보일 수 있어, 라운드트립 후 값을 기준으로 잡는다.
 export function isEditorDirty() {
   const m = state.issueDetailModal
   if (!m) return false
   const current = getCurrentAdf()
-  const original = m.data?.descriptionAdf || null
-  return JSON.stringify(current) !== JSON.stringify(original)
+  if (m.initialEditorAdf === undefined) return false
+  return JSON.stringify(current) !== JSON.stringify(m.initialEditorAdf)
 }
 
 // 매 bindEvents 호출 후 실행: 편집 모드면 tiptap을 마운트
@@ -308,6 +312,10 @@ export function ensureIssueDetailEditor() {
   })
   if (m.saving) setEditable(false)
   mount.dataset.tiptapMounted = '1'
+  // 라운드트립으로 정규화된 ADF를 dirty 비교의 기준으로 기록 (이미 있으면 유지)
+  if (m.initialEditorAdf === undefined) {
+    m.initialEditorAdf = getCurrentAdf()
+  }
 }
 
 // 이슈 상세 모달 열기 + 상세 데이터 비동기 로드
@@ -590,6 +598,33 @@ export function loadIssueDetailImages() {
 // closeIssueDetailModal의 ESC 흐름에서 댓글 작성기/편집기 취소도 같이 처리되도록 재export
 export { cancelCommentCompose, cancelEditComment }
 
+// mousedown 위치를 기록해 두고 click 시점에 이동거리/선택 상태를 검사.
+// 드래그(>4px) 또는 텍스트 선택이 발생한 경우 콜백을 호출하지 않아 텍스트 드래그 선택을 보존한다.
+function bindClickWithoutDrag(el, handler) {
+  let start = null
+  on(el, 'mousedown', (e) => {
+    if (e.button !== 0) { start = null; return }
+    start = { x: e.clientX, y: e.clientY }
+  })
+  on(el, 'click', (e) => {
+    const s = start
+    start = null
+    // 드래그 이동량 검사
+    if (s) {
+      const dx = Math.abs(e.clientX - s.x)
+      const dy = Math.abs(e.clientY - s.y)
+      if (dx > 4 || dy > 4) return
+    }
+    // 텍스트 선택이 el 내부에서 발생했으면 편집 진입 차단
+    const sel = window.getSelection?.()
+    if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0)
+      if (el.contains(range.commonAncestorContainer)) return
+    }
+    handler(e)
+  })
+}
+
 // 상세 모달의 버튼/클릭 바인딩 (modals 섹션 재렌더 시마다 호출)
 export function bindDetailModalEvents() {
   // 닫기 버튼들
@@ -615,19 +650,19 @@ export function bindDetailModalEvents() {
     })
   })
 
-  // 설명 영역 클릭 → 편집 모드 진입
+  // 설명 영역 클릭 → 편집 모드 진입 (단, 드래그로 텍스트 선택 중이면 진입 차단)
   const detailDescEl = document.getElementById('issue-detail-description')
   if (detailDescEl) {
-    on(detailDescEl, 'click', (e) => {
+    bindClickWithoutDrag(detailDescEl, (e) => {
       // 설명 내부 링크/이미지 클릭은 기본 동작 유지
       if (e.target.closest('a, img')) return
       enterIssueDetailEditMode()
     })
   }
 
-  // 요약 영역 클릭 → 인라인 편집 모드 진입
+  // 요약 영역 클릭 → 인라인 편집 모드 진입 (드래그 선택 시 진입 차단)
   const detailSummaryEl = document.getElementById('issue-detail-summary')
-  if (detailSummaryEl) on(detailSummaryEl, 'click', enterSummaryEdit)
+  if (detailSummaryEl) bindClickWithoutDrag(detailSummaryEl, enterSummaryEdit)
 
   // 요약 편집: Enter=저장 / Esc=취소
   const summaryInput = document.getElementById('issue-detail-summary-input')
