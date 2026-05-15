@@ -4686,6 +4686,162 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   border-top: 1px solid var(--border);
 }
 
+/* 댓글/활동 기록 탭뷰: 자체 상단 구분선을 그리므로 안쪽 .detail-comments는 구분선 제거 */
+.detail-activity {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.detail-activity .detail-comments {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.detail-activity-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.detail-activity-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.detail-activity-tab:hover {
+  color: var(--text-bright);
+}
+
+.detail-activity-tab.is-active {
+  color: var(--text-bright);
+  border-bottom-color: var(--accent, #3b82f6);
+}
+
+/* 활동 기록 본문 */
+.detail-history {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.detail-history-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-history-error {
+  color: var(--danger, #ef4444);
+}
+
+.detail-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.detail-history-entry {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.detail-history-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg);
+  object-fit: cover;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.detail-history-avatar.broken,
+.detail-history-avatar-empty {
+  background: var(--border);
+}
+
+.detail-history-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-history-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.detail-history-author {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.detail-history-time {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.detail-history-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-history-item {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.detail-history-item b {
+  color: var(--text-bright);
+  font-weight: 600;
+}
+
+.detail-history-item i {
+  font-style: normal;
+  color: var(--text-bright);
+  background: var(--border);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.detail-history-arrow {
+  color: var(--text-dim);
+  margin: 0 2px;
+}
+
+.detail-history-empty-value {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.detail-history-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
 .detail-comments-header {
   margin-bottom: 12px;
 }

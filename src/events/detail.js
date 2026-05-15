@@ -15,6 +15,7 @@ import {
   deleteIssueLink,
   searchIssuesByKey,
   normalizeMediaForSave,
+  fetchIssueChangelog,
 } from '../jira.js'
 import { getProjectKeysOrFallback, formatJiraError } from '../utils.js'
 import { renderAddLinkSuggestionsHtml } from '../views/modals.js'
@@ -326,6 +327,9 @@ export async function openIssueDetailModal(issueKey) {
     blobUrlCache: new Map(),       // sourceUrl → blobUrl
     blobUrlInFlight: new Map(),    // sourceUrl → Promise<blobUrl|null>
     linkTypes: null, addLink: null, linkRemoving: new Set(),
+    // 댓글/기록 탭 — 'comments' | 'history'. 기록 탭 진입 시 lazy-load.
+    activeTab: 'comments',
+    history: { entries: [], total: 0, startAt: 0, isLast: true, loading: false, loaded: false, error: null },
   }
   render({ sections: ['modals'] })
 
@@ -625,6 +629,55 @@ function bindClickWithoutDrag(el, handler) {
   })
 }
 
+// 활동 기록 한 페이지 로드. 'append'면 기존 entries 뒤에 이어붙임(더보기).
+async function loadIssueHistory({ append = false } = {}) {
+  const m = state.issueDetailModal
+  if (!m || !m.key) return
+  if (!m.history) m.history = { entries: [], total: 0, startAt: 0, isLast: true, loading: false, loaded: false, error: null }
+  if (m.history.loading) return
+  const issueKey = m.key
+  const startAt = append ? (m.history.entries.length) : 0
+  m.history.loading = true
+  m.history.error = null
+  // 첫 로드는 스피너만, 더보기는 버튼 disabled 표시를 위해 재렌더
+  render({ sections: ['modals'] })
+  try {
+    const res = await fetchIssueChangelog(issueKey, { startAt, maxResults: 50 })
+    const cur = state.issueDetailModal
+    if (!cur || cur.key !== issueKey) return
+    const next = append ? [...(cur.history.entries || []), ...res.entries] : res.entries
+    cur.history = {
+      entries: next,
+      total: res.total,
+      startAt: res.startAt,
+      isLast: res.isLast,
+      loading: false,
+      loaded: true,
+      error: null,
+    }
+    render({ sections: ['modals'] })
+  } catch (err) {
+    const cur = state.issueDetailModal
+    if (!cur || cur.key !== issueKey) return
+    cur.history.loading = false
+    cur.history.error = err?.message || '알 수 없는 오류'
+    render({ sections: ['modals'] })
+  }
+}
+
+// 댓글/기록 탭 전환. history 탭 처음 진입 시 lazy-load.
+function switchActivityTab(tab) {
+  const m = state.issueDetailModal
+  if (!m) return
+  const next = tab === 'history' ? 'history' : 'comments'
+  if (m.activeTab === next) return
+  m.activeTab = next
+  render({ sections: ['modals'] })
+  if (next === 'history' && !m.history?.loaded && !m.history?.loading) {
+    loadIssueHistory({ append: false })
+  }
+}
+
 // 상세 모달의 버튼/클릭 바인딩 (modals 섹션 재렌더 시마다 호출)
 export function bindDetailModalEvents() {
   // 닫기 버튼들
@@ -705,6 +758,19 @@ export function bindDetailModalEvents() {
       m.addLink.value = linkAddType.value
     })
   }
+
+  // 댓글/활동 기록 탭 전환
+  document.querySelectorAll('#issue-detail-overlay .detail-activity-tab').forEach(btn => {
+    on(btn, 'click', () => {
+      const tab = btn.dataset.activityTab
+      if (!tab) return
+      switchActivityTab(tab)
+    })
+  })
+
+  // 활동 기록 '이전 기록 더보기'
+  const historyMoreBtn = document.getElementById('detail-history-load-more')
+  if (historyMoreBtn) on(historyMoreBtn, 'click', () => loadIssueHistory({ append: true }))
 
   // 연결 추가: 검색 input
   const linkAddSearch = document.getElementById('detail-link-add-search')

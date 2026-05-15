@@ -1570,14 +1570,49 @@ export function renderAddLinkSuggestionsHtml(add) {
   return itemsHtml + footer
 }
 
-// ========== 댓글 영역 ==========
+// ========== 댓글 / 활동 기록 탭 영역 ==========
 // 본문과 동일한 tiptap 에디터로 작성/수정 → 멘션·이미지·표 등 풍부한 마크업 보존.
 // 본인 작성 댓글에만 수정/삭제 버튼 노출 (myself accountId 비교).
+// 활동 기록은 lazy-load — 탭을 처음 클릭한 시점에 fetchIssueChangelog 호출.
 function renderDetailComments(m, issueKey) {
   // 상세 본문이 아직 로딩 중이면 비워둠 (descriptionSection이 로딩 표시 중)
   if (m.loading && !m.data?.comments) return ''
   if (m.error) return ''
 
+  const activeTab = m.activeTab === 'history' ? 'history' : 'comments'
+  const commentsCount = (m.data?.comments || []).length
+  const historyLoaded = !!m.history?.loaded
+  const historyCountLabel = historyLoaded ? ` ${m.history.total}` : ''
+
+  const tabsHtml = `
+    <div class="detail-activity-tabs" role="tablist">
+      <button class="detail-activity-tab${activeTab === 'comments' ? ' is-active' : ''}"
+        data-activity-tab="comments" role="tab" aria-selected="${activeTab === 'comments'}">
+        댓글 ${commentsCount}
+      </button>
+      <button class="detail-activity-tab${activeTab === 'history' ? ' is-active' : ''}"
+        data-activity-tab="history" role="tab" aria-selected="${activeTab === 'history'}">
+        활동 기록${historyCountLabel}
+      </button>
+    </div>
+  `
+
+  const bodyHtml = activeTab === 'history'
+    ? renderDetailHistoryBody(m)
+    : renderDetailCommentsBody(m, issueKey)
+
+  return `
+    <div class="detail-activity">
+      ${tabsHtml}
+      <div class="detail-activity-body">
+        ${bodyHtml}
+      </div>
+    </div>
+  `
+}
+
+// 댓글 탭 본문 — 기존 detail-comments 블록을 분리.
+function renderDetailCommentsBody(m, _issueKey) {
   const comments = m.data?.comments || []
   const myAccountId = getCachedMyself()?.accountId || ''
   // 댓글 본문 안의 미디어/첨부 노드는 이슈 attachments에서 해석
@@ -1597,11 +1632,143 @@ function renderDetailComments(m, issueKey) {
 
   return `
     <div class="detail-comments">
-      <div class="detail-section-label detail-comments-header">댓글 ${comments.length}</div>
       <div class="detail-comments-list">
         ${itemsHtml}
       </div>
       ${renderCommentCompose(m)}
+    </div>
+  `
+}
+
+// 활동 기록 탭 본문 — changelog 항목들을 사람이 읽기 좋게 변환.
+function renderDetailHistoryBody(m) {
+  const h = m.history || {}
+  if (h.loading && !h.loaded) {
+    return `<div class="detail-history-empty"><span class="btn-spinner"></span> 활동 기록을 불러오는 중…</div>`
+  }
+  if (h.error) {
+    return `<div class="detail-history-empty detail-history-error">활동 기록을 불러오지 못했습니다: ${escapeHtml(h.error)}</div>`
+  }
+  if (!h.loaded) {
+    return `<div class="detail-history-empty">활동 기록을 불러옵니다…</div>`
+  }
+  const entries = Array.isArray(h.entries) ? h.entries : []
+  if (entries.length === 0) {
+    return `<div class="detail-history-empty">변경 이력이 없습니다.</div>`
+  }
+  // 최신 순으로 노출
+  const sorted = [...entries].sort((a, b) => {
+    const ta = a.created ? new Date(a.created).getTime() : 0
+    const tb = b.created ? new Date(b.created).getTime() : 0
+    return tb - ta
+  })
+  const itemsHtml = sorted.map(renderHistoryEntry).join('')
+  const loadMore = !h.isLast
+    ? `
+      <div class="detail-history-more">
+        <button class="btn btn-sm" id="detail-history-load-more" ${h.loading ? 'disabled' : ''}>
+          ${h.loading ? '<span class="btn-spinner"></span> 불러오는 중…' : '이전 기록 더보기'}
+        </button>
+      </div>
+    `
+    : ''
+  return `
+    <div class="detail-history">
+      <div class="detail-history-list">
+        ${itemsHtml}
+      </div>
+      ${loadMore}
+    </div>
+  `
+}
+
+// 단일 changelog 엔트리 — 한 사람이 한 시점에 한 번에 변경한 묶음.
+function renderHistoryEntry(entry) {
+  const avatar = entry.author?.avatarUrl
+    ? `<img class="detail-history-avatar" src="${escapeHtml(entry.author.avatarUrl)}" alt="${escapeHtml(entry.author.displayName)}" onerror="this.classList.add('broken')" />`
+    : `<span class="detail-history-avatar detail-history-avatar-empty"></span>`
+  const author = escapeHtml(entry.author?.displayName || '알 수 없는 사용자')
+  const time = escapeHtml(formatCommentTime(entry.created))
+  const itemsHtml = (entry.items || []).map(renderHistoryItem).filter(Boolean).join('')
+  return `
+    <div class="detail-history-entry">
+      ${avatar}
+      <div class="detail-history-main">
+        <div class="detail-history-head">
+          <span class="detail-history-author">${author}</span>
+          <span class="detail-history-time">${time}</span>
+        </div>
+        <div class="detail-history-items">
+          ${itemsHtml}
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// 필드명(영문/한글 혼재) → 한글 라벨 매핑.
+const HISTORY_FIELD_LABELS = {
+  status: '상태',
+  assignee: '담당자',
+  description: '설명',
+  summary: '요약',
+  priority: '우선순위',
+  duedate: '기한',
+  resolution: '해결',
+  labels: '라벨',
+  Attachment: '첨부파일',
+  Link: '연결',
+  Sprint: '스프린트',
+  Workflow: '워크플로',
+  issuetype: '유형',
+  'Issue Type': '유형',
+  Component: '구성 요소',
+  Epic: '에픽',
+  'Epic Link': '에픽',
+  parent: '상위 항목',
+  Parent: '상위 항목',
+  timeestimate: '추정치',
+  'Time Estimate': '추정치',
+  timespent: '진행 시간',
+  'Time Spent': '진행 시간',
+  WorklogId: '워크로그',
+  reporter: '보고자',
+  Rank: '순위',
+  Fix: '수정 버전',
+  'Fix Version': '수정 버전',
+}
+
+// 본문 비교를 보여주지 않는 필드 — 값이 너무 길거나 의미가 없음
+const HISTORY_BODY_HIDDEN_FIELDS = new Set([
+  'description', 'summary', 'Rank', 'Workflow', 'WorklogId',
+])
+
+function renderHistoryItem(it) {
+  if (!it || !it.field) return ''
+  const label = HISTORY_FIELD_LABELS[it.field] || it.field
+  const from = it.fromString
+  const to = it.toString
+
+  // 첨부 추가/삭제: from=null & to=파일명 → 추가, from=파일명 & to=null → 삭제
+  if (it.field === 'Attachment') {
+    if (!from && to) return `<div class="detail-history-item"><b>첨부파일</b> <i>${escapeHtml(to)}</i> 을(를) 추가했습니다.</div>`
+    if (from && !to) return `<div class="detail-history-item"><b>첨부파일</b> <i>${escapeHtml(from)}</i> 을(를) 삭제했습니다.</div>`
+  }
+  // 연결: 동일 패턴
+  if (it.field === 'Link') {
+    if (!from && to) return `<div class="detail-history-item"><b>연결</b>을 추가했습니다: ${escapeHtml(to)}</div>`
+    if (from && !to) return `<div class="detail-history-item"><b>연결</b>을 해제했습니다: ${escapeHtml(from)}</div>`
+  }
+  // 본문이 너무 긴 필드는 변경 사실만
+  if (HISTORY_BODY_HIDDEN_FIELDS.has(it.field)) {
+    return `<div class="detail-history-item"><b>${escapeHtml(label)}</b>을(를) 변경했습니다.</div>`
+  }
+
+  const fromHtml = from ? `<i>${escapeHtml(from)}</i>` : '<span class="detail-history-empty-value">(없음)</span>'
+  const toHtml = to ? `<i>${escapeHtml(to)}</i>` : '<span class="detail-history-empty-value">(없음)</span>'
+  return `
+    <div class="detail-history-item">
+      <b>${escapeHtml(label)}</b>: ${fromHtml} <span class="detail-history-arrow">→</span> ${toHtml}
     </div>
   `
 }

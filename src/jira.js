@@ -475,6 +475,48 @@ export async function fetchIssueDetail(issueKey, { signal } = {}) {
   }
 }
 
+// 이슈 변경 이력(changelog) 조회 — 페이지드.
+// values: [{ id, author, created, items: [{ field, fieldtype, from, fromString, to, toString }] }]
+export async function fetchIssueChangelog(issueKey, { startAt = 0, maxResults = 50, signal } = {}) {
+  const data = await jiraFetch(
+    `/issue/${encodeURIComponent(issueKey)}/changelog?startAt=${startAt}&maxResults=${maxResults}`,
+    { signal }
+  )
+  if (!data) return { entries: [], total: 0, startAt: 0, isLast: true }
+  const values = Array.isArray(data.values) ? data.values : []
+  return {
+    entries: values.map(extractChangelogEntry).filter(Boolean),
+    total: typeof data.total === 'number' ? data.total : values.length,
+    startAt: typeof data.startAt === 'number' ? data.startAt : 0,
+    isLast: data.isLast === true || ((data.startAt || 0) + values.length >= (data.total || 0)),
+  }
+}
+
+function extractChangelogEntry(v) {
+  if (!v) return null
+  const a = v.author || {}
+  const urls = a.avatarUrls || {}
+  const items = Array.isArray(v.items) ? v.items : []
+  return {
+    id: String(v.id || ''),
+    author: {
+      accountId: a.accountId || '',
+      displayName: a.displayName || '',
+      avatarUrl: urls['32x32'] || urls['48x48'] || urls['24x24'] || urls['16x16'] || '',
+    },
+    created: v.created || '',
+    items: items.map(it => ({
+      field: it.field || '',
+      fieldtype: it.fieldtype || '',
+      fieldId: it.fieldId || '',
+      from: it.from ?? null,
+      fromString: it.fromString ?? null,
+      to: it.to ?? null,
+      toString: it.toString ?? null,
+    })),
+  }
+}
+
 // 이슈 링크 배열 정규화. 각 항목은 {direction: 'inward'|'outward', label, issue: {...}}
 // label은 사용자에게 보일 관계 문자열(예: '차단함', '관련됨'). Jira가 한국어 라벨을 내려줌.
 function extractIssueLinks(value) {
