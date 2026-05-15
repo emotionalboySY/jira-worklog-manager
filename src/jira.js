@@ -859,6 +859,11 @@ export async function uploadIssueAttachment(issueKey, file) {
   }
 }
 
+// 이슈 첨부 삭제. id는 attachment.id (문자열 numeric)
+export async function deleteIssueAttachment(attachmentId) {
+  await jiraFetch(`/attachment/${encodeURIComponent(attachmentId)}`, { method: 'DELETE' })
+}
+
 // 첨부/이미지 바이너리를 인증 프록시로 받아 Blob URL 생성
 // 호출 측이 URL.revokeObjectURL로 해제해야 함
 export async function fetchAttachmentBlobUrl(url) {

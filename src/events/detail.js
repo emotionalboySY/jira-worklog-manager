@@ -7,6 +7,7 @@ import {
   updateIssueDescription,
   updateIssueSummary,
   uploadIssueAttachment,
+  deleteIssueAttachment,
   fetchMyself,
   fetchIssueLinkTypes,
   fetchIssuesByKeys,
@@ -710,4 +711,103 @@ export const detailLinkActions = {
     if (!key) return
     await addIssueLinkTo(key)
   },
+  'remove-attachment': async (e, el) => {
+    e.preventDefault()
+    e.stopImmediatePropagation()
+    const id = el.dataset.attachmentId
+    const filename = el.dataset.filename || ''
+    if (!id) return
+    await removeIssueAttachment(id, filename)
+  },
+  'add-attachment': (e, el) => {
+    e.preventDefault()
+    e.stopImmediatePropagation()
+    triggerAttachmentUpload()
+  },
+}
+
+// 첨부 삭제: 확인 → API → 모달 상태에서 제거 → 재렌더
+async function removeIssueAttachment(attachmentId, filename) {
+  const m = state.issueDetailModal
+  if (!m) return
+  if (!m.attachmentRemoving) m.attachmentRemoving = new Set()
+  if (m.attachmentRemoving.has(attachmentId)) return
+  const label = filename ? `'${filename}'` : '이 첨부파일'
+  if (!window.confirm(`${label}을(를) 삭제하시겠습니까? 되돌릴 수 없습니다.`)) return
+  m.attachmentRemoving.add(attachmentId)
+  render({ sections: ['modals'] })
+  try {
+    await deleteIssueAttachment(attachmentId)
+    const cur = state.issueDetailModal
+    if (cur && cur.key === m.key && Array.isArray(cur.data?.attachments)) {
+      cur.data.attachments = cur.data.attachments.filter(a => String(a.id) !== String(attachmentId))
+    }
+    showToast('첨부파일을 삭제했습니다.', '✓')
+  } catch (err) {
+    console.error('첨부 삭제 실패:', err)
+    showToast(`첨부 삭제 실패: ${formatJiraError(err)}`, '⚠')
+  } finally {
+    if (state.issueDetailModal?.attachmentRemoving) {
+      state.issueDetailModal.attachmentRemoving.delete(attachmentId)
+    }
+    render({ sections: ['modals'] })
+  }
+}
+
+// 첨부 추가: 숨겨진 file input을 열어 선택된 파일을 업로드 후 모달 상태에 반영
+function triggerAttachmentUpload() {
+  const m = state.issueDetailModal
+  if (!m || !m.key) return
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.multiple = true
+  input.style.display = 'none'
+  document.body.appendChild(input)
+  input.addEventListener('change', async () => {
+    const files = Array.from(input.files || [])
+    document.body.removeChild(input)
+    if (files.length === 0) return
+    await uploadAttachmentsToDetail(files)
+  })
+  input.click()
+}
+
+async function uploadAttachmentsToDetail(files) {
+  const m = state.issueDetailModal
+  if (!m || !m.key) return
+  const issueKey = m.key
+  m.attachmentUploading = (m.attachmentUploading || 0) + files.length
+  render({ sections: ['modals'] })
+  let okCount = 0
+  let failCount = 0
+  for (const file of files) {
+    try {
+      const result = await uploadIssueAttachment(issueKey, file)
+      const cur = state.issueDetailModal
+      if (cur && cur.key === issueKey) {
+        if (!cur.data) cur.data = {}
+        if (!Array.isArray(cur.data.attachments)) cur.data.attachments = []
+        cur.data.attachments.push({
+          id: result.id,
+          filename: result.filename,
+          mimeType: result.mimeType,
+          size: result.size,
+          contentUrl: result.contentUrl,
+          thumbnailUrl: result.thumbnailUrl,
+        })
+      }
+      okCount++
+    } catch (err) {
+      console.error('첨부 업로드 실패:', err, file?.name)
+      failCount++
+    } finally {
+      if (state.issueDetailModal) {
+        state.issueDetailModal.attachmentUploading = Math.max(0, (state.issueDetailModal.attachmentUploading || 0) - 1)
+      }
+      render({ sections: ['modals'] })
+    }
+  }
+  loadIssueDetailImages()
+  if (okCount > 0) showToast(`첨부 ${okCount}개를 추가했습니다.`, '✓')
+  if (failCount > 0) showToast(`${failCount}개 업로드 실패`, '⚠')
 }

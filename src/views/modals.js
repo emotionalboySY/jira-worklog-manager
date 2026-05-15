@@ -1306,14 +1306,29 @@ export function renderIssueDetailModal() {
       return `<div class="detail-error">상세 정보를 불러오지 못했습니다: ${escapeHtml(m.error)}</div>`
     }
 
+    const uploadingHtml = (m.attachmentUploading > 0)
+      ? `<span class="detail-attachment-uploading"><span class="btn-spinner"></span> 업로드 중… (${m.attachmentUploading})</span>`
+      : ''
     const attachmentsHtml = (d.attachments && d.attachments.length > 0)
       ? `
-        <div class="detail-section-label">첨부파일 (${d.attachments.length})</div>
+        <div class="detail-section-label">
+          <span>첨부파일 (${d.attachments.length})</span>
+          ${uploadingHtml}
+          <button type="button" class="detail-attachment-add-btn" data-action="add-attachment" title="첨부 추가">＋ 추가</button>
+        </div>
         <div class="detail-attachments">
-          ${d.attachments.map(a => renderAttachmentTile(a)).join('')}
+          ${d.attachments.map(a => renderAttachmentTile(a, { removing: m.attachmentRemoving?.has?.(String(a.id)) })).join('')}
         </div>
       `
-      : ''
+      : (m.attachmentUploading > 0 || !m.loading)
+        ? `
+          <div class="detail-section-label">
+            <span>첨부파일</span>
+            ${uploadingHtml}
+            <button type="button" class="detail-attachment-add-btn" data-action="add-attachment" title="첨부 추가">＋ 추가</button>
+          </div>
+        `
+        : ''
 
     // 편집 모드: 저장 중에도 에디터를 그대로 두고 setEditable(false)로만 잠근다
     if (m.editing) {
@@ -1769,24 +1784,35 @@ export function renderTiptapToolbar(toolbarId = 'issue-detail-edit-toolbar', mou
   `
 }
 
-function renderAttachmentTile(a) {
+function renderAttachmentTile(a, opts = {}) {
   const fn = escapeHtml(a.filename || '')
   const isImage = (a.mimeType || '').startsWith('image/')
   const sizeKb = a.size ? `${Math.max(1, Math.round(a.size / 1024))}KB` : ''
   const dataUrl = escapeHtml(a.contentUrl || '')
+  const id = escapeHtml(String(a.id || ''))
+  const isRemoving = !!opts.removing
+  const removeBtnHtml = isRemoving
+    ? `<button type="button" class="detail-attachment-remove is-loading" disabled aria-label="삭제 중"><span class="btn-spinner"></span></button>`
+    : `<button type="button" class="detail-attachment-remove" data-action="remove-attachment" data-attachment-id="${id}" data-filename="${fn}" aria-label="첨부 삭제" title="첨부 삭제">✕</button>`
   if (isImage) {
     return `
-      <a class="detail-attachment detail-attachment-image" data-attachment-url="${dataUrl}" href="#" title="${fn}">
-        <span class="detail-attachment-thumb" data-thumb-url="${escapeHtml(a.thumbnailUrl || a.contentUrl || '')}"></span>
-        <span class="detail-attachment-name">${fn}</span>
-      </a>
+      <div class="detail-attachment-wrap">
+        <a class="detail-attachment detail-attachment-image" data-attachment-url="${dataUrl}" href="#" title="${fn}">
+          <span class="detail-attachment-thumb" data-thumb-url="${escapeHtml(a.thumbnailUrl || a.contentUrl || '')}"></span>
+          <span class="detail-attachment-name">${fn}</span>
+        </a>
+        ${removeBtnHtml}
+      </div>
     `
   }
   return `
-    <a class="detail-attachment detail-attachment-file" data-attachment-url="${dataUrl}" href="#" title="${fn}">
-      <span class="detail-attachment-icon">📄</span>
-      <span class="detail-attachment-name">${fn}</span>
-      ${sizeKb ? `<span class="detail-attachment-size">${sizeKb}</span>` : ''}
-    </a>
+    <div class="detail-attachment-wrap">
+      <a class="detail-attachment detail-attachment-file" data-attachment-url="${dataUrl}" href="#" title="${fn}">
+        <span class="detail-attachment-icon">📄</span>
+        <span class="detail-attachment-name">${fn}</span>
+        ${sizeKb ? `<span class="detail-attachment-size">${sizeKb}</span>` : ''}
+      </a>
+      ${removeBtnHtml}
+    </div>
   `
 }
