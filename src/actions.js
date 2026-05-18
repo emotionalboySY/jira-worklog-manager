@@ -8,6 +8,7 @@ import {
   saveWorklogCache,
   getCachedMonth,
   mergeLogs,
+  syncIssueSummariesFromList,
 } from './storage.js'
 import { getSavedUser } from './auth.js'
 import {
@@ -56,6 +57,7 @@ export async function loadIssues() {
     state.realProjects = freshProjects
     state.issuesLoaded = true
     saveIssuesCache(freshIssues, freshProjects)
+    syncIssueSummariesFromList(freshIssues)
 
     if (cached) {
       if (hasChanged) {
@@ -184,6 +186,7 @@ export async function refreshIssues() {
     state.realProjects = freshProjects
     state.issuesLoaded = true
     saveIssuesCache(freshIssues, freshProjects)
+    syncIssueSummariesFromList(freshIssues)
     if (oldKeys !== newKeys) {
       showToast('이슈 목록이 업데이트되었습니다.', '✓')
     } else {
@@ -219,6 +222,7 @@ export async function autoReloadIssuesAndWorklogs() {
     state.realProjects = freshProjects
     state.issuesLoaded = true
     saveIssuesCache(freshIssues, freshProjects)
+    syncIssueSummariesFromList(freshIssues)
   })().catch(e => { console.error('이슈 자동 새로고침 실패:', e); return Promise.reject(e) })
 
   const worklogsTask = (async () => {

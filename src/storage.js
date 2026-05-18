@@ -257,6 +257,43 @@ export function isFavorite(issueKey) {
   return _favoriteKeySet.has(issueKey)
 }
 
+// 이슈 목록(freshIssues)을 기준으로 세션·즐겨찾기의 summary를 일괄 동기화.
+// 일감 리스트 새로고침 직후 호출해, 다른 곳에서(웹 Jira 등) 변경된 제목을
+// 현재 작업/즐겨찾기 카드에 반영한다. 매칭되지 않는 키는 손대지 않는다.
+// 반환: 실제 변경이 있었는지 여부 (호출자가 재렌더 트리거 판단용으로 활용 가능)
+export function syncIssueSummariesFromList(freshIssues) {
+  if (!Array.isArray(freshIssues) || freshIssues.length === 0) return false
+  const summaryByKey = new Map()
+  for (const issue of freshIssues) {
+    if (issue && issue.key) summaryByKey.set(issue.key, issue.summary || '')
+  }
+  // 세션
+  const sessions = loadSessions()
+  let sessionsChanged = false
+  for (const s of sessions) {
+    if (!summaryByKey.has(s.issueKey)) continue
+    const fresh = summaryByKey.get(s.issueKey)
+    if (s.summary !== fresh) {
+      s.summary = fresh
+      sessionsChanged = true
+    }
+  }
+  if (sessionsChanged) saveSessions(sessions)
+  // 즐겨찾기
+  const favs = loadFavorites()
+  let favsChanged = false
+  for (const f of favs) {
+    if (!summaryByKey.has(f.issueKey)) continue
+    const fresh = summaryByKey.get(f.issueKey)
+    if (f.summary !== fresh) {
+      f.summary = fresh
+      favsChanged = true
+    }
+  }
+  if (favsChanged) saveFavorites(favs)
+  return sessionsChanged || favsChanged
+}
+
 // 특정 이슈 키의 요약 텍스트를 세션·즐겨찾기 저장소에 모두 반영
 export function updateIssueSummaryEverywhere(issueKey, newSummary) {
   if (!issueKey) return
