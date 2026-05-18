@@ -166,7 +166,13 @@ export async function jiraFetch(path, options = {}) {
   if (res.status === 204) return null
   const ctype = res.headers.get('content-type') || ''
   if (!ctype.includes('application/json')) return null
-  return res.json()
+  // 일부 엔드포인트(예: POST /issueLink)는 201과 함께 빈 본문을 돌려준다.
+  // content-type만 보고 res.json()을 부르면 "Unexpected end of JSON input"이 터지므로 방어적으로 처리.
+  try {
+    return await res.json()
+  } catch {
+    return null
+  }
 }
 
 // 접근 가능한 리소스에서 Cloud ID 가져오기
