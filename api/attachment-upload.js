@@ -46,10 +46,54 @@ export default async function handler(req, res) {
     })
 
     const text = await apiRes.text()
+
+    // 업로드 성공 시 각 첨부의 Media Services UUID를 추가로 조회해 응답에 주입한다.
+    // ADF media.attrs.id에는 numeric attachment id가 아니라 이 UUID가 들어가야 하며,
+    // 그렇지 않으면 description PUT 시 ATTACHMENT_VALIDATION_ERROR가 발생한다.
+    // UUID는 /rest/api/3/attachment/content/{id}의 302 Location에서 추출한다.
+    if (apiRes.ok) {
+      try {
+        const arr = JSON.parse(text)
+        if (Array.isArray(arr)) {
+          await Promise.all(arr.map(async (a) => {
+            if (!a || a.id == null) return
+            try {
+              const mid = await resolveMediaId(cloudId, String(a.id), authHeader)
+              if (mid) a.mediaId = mid
+            } catch (e) {
+              // 실패해도 업로드 자체는 성공이므로 mediaId 없이 진행
+              console.warn('[attachment-upload] mediaId 조회 실패:', a.id, e?.message || e)
+            }
+          }))
+          res.setHeader('Content-Type', 'application/json')
+          return res.status(apiRes.status).send(JSON.stringify(arr))
+        }
+      } catch {
+        // JSON 파싱 실패면 원문 그대로 전달
+      }
+    }
+
     const ctype = apiRes.headers.get('content-type')
     if (ctype) res.setHeader('Content-Type', ctype)
     return res.status(apiRes.status).send(text)
   } catch (err) {
     return res.status(500).json(safeError(err, 'attachment-upload'))
   }
+}
+
+// /rest/api/3/attachment/content/{id}는 api.media.atlassian.com으로 302 리다이렉트되며
+// Location의 경로(/file/<UUID>/binary)에서 Media Services 파일 UUID를 추출할 수 있다.
+async function resolveMediaId(cloudId, attachmentId, authHeader) {
+  const url = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/attachment/content/${encodeURIComponent(attachmentId)}`
+  const res = await fetch(url, {
+    method: 'GET',
+    redirect: 'manual',
+    headers: { 'Authorization': authHeader, 'Accept': 'application/json' },
+  })
+  // Node fetch는 manual 리다이렉트 시 상태코드를 그대로 노출 (보통 302/303/307)
+  const location = res.headers.get('location')
+  if (!location) return null
+  // 예: https://api.media.atlassian.com/file/<UUID>/binary?token=...
+  const m = location.match(/\/file\/([0-9a-f-]{8,})/i)
+  return m ? m[1] : null
 }

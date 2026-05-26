@@ -864,7 +864,9 @@ function extractComments(value) {
   return list.map(extractComment).filter(Boolean)
 }
 
-// 이슈에 첨부 파일 업로드. 반환: { id, filename, mimeType, size, contentUrl, thumbnailUrl }
+// 이슈에 첨부 파일 업로드. 반환: { id, mediaId, filename, mimeType, size, contentUrl, thumbnailUrl }
+// id는 Jira numeric attachment id, mediaId는 ADF media.attrs.id로 사용할 Media Services UUID.
+// (서버 프록시가 업로드 직후 /attachment/content/{id} 302 Location에서 UUID를 추출해 주입)
 // Jira는 응답을 배열로 주는데 한 번에 한 파일만 업로드하므로 첫 항목만 사용.
 export async function uploadIssueAttachment(issueKey, file) {
   const accessToken = localStorage.getItem('jira_access_token')
@@ -893,6 +895,7 @@ export async function uploadIssueAttachment(issueKey, file) {
   if (!a || !a.id) throw new Error('첨부 응답이 비어있음')
   return {
     id: String(a.id),
+    mediaId: a.mediaId ? String(a.mediaId) : '',
     filename: a.filename || filename,
     mimeType: a.mimeType || file.type || '',
     size: a.size || file.size || 0,

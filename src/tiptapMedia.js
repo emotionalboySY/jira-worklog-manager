@@ -412,13 +412,16 @@ async function finalizeUpload(editor, uploadId, file, tempUrl, onImagePaste, onE
     if (tempUrl) { try { URL.revokeObjectURL(tempUrl) } catch {} }
     return
   }
-  if (!uploaded || !uploaded.id) {
+  if (!uploaded || (!uploaded.id && !uploaded.mediaId)) {
     removePlaceholder(editor, uploadId)
     if (tempUrl) { try { URL.revokeObjectURL(tempUrl) } catch {} }
     return
   }
 
-  const id = String(uploaded.id)
+  // ADF media.attrs.id에는 Media Services UUID가 들어가야 한다 (numeric Jira id를 쓰면
+  // 저장 시 ATTACHMENT_VALIDATION_ERROR). mediaId가 없으면 어쩔 수 없이 numeric로 폴백.
+  const id = String(uploaded.mediaId || uploaded.id)
+  const numericId = uploaded.id ? String(uploaded.id) : ''
 
   // 마운트가 그 사이 destroy 되었다면 정리만 하고 종료
   const mountEl = editor.options.element
@@ -428,15 +431,19 @@ async function finalizeUpload(editor, uploadId, file, tempUrl, onImagePaste, onE
   }
 
   // 첨부 메타 + 임시 URL 기록 → NodeView가 즉시 표시 가능
+  // mediaId 키와 numeric id 키 둘 다 등록 (NodeView 조회 / 첨부 관리 모두 대응)
   if (!mountEl.__tt_attachments_by_id) mountEl.__tt_attachments_by_id = {}
-  mountEl.__tt_attachments_by_id[id] = {
+  const entry = {
     contentUrl: uploaded.contentUrl || '',
     filename: uploaded.filename || '',
   }
+  mountEl.__tt_attachments_by_id[id] = entry
+  if (numericId && numericId !== id) mountEl.__tt_attachments_by_id[numericId] = entry
   if (tempUrl) {
     // 이미 owned_blob_urls에는 들어가 있음(paste 시작 시 등록). 여기선 id 매핑만 추가.
     if (!mountEl.__tt_temp_blob_urls) mountEl.__tt_temp_blob_urls = {}
     mountEl.__tt_temp_blob_urls[id] = tempUrl
+    if (numericId && numericId !== id) mountEl.__tt_temp_blob_urls[numericId] = tempUrl
   }
 
   const dims = await loadImageDims(tempUrl || uploaded.contentUrl).catch(() => ({ w: null, h: null }))
@@ -532,9 +539,11 @@ export function setMountAttachments(mountEl, attachments) {
   const map = {}
   const byName = {}
   for (const a of attachments || []) {
-    if (!a?.id) continue
+    if (!a?.id && !a?.mediaId) continue
     const entry = { contentUrl: a.contentUrl || '', filename: a.filename || '' }
-    map[String(a.id)] = entry
+    if (a.id) map[String(a.id)] = entry
+    // ADF media.attrs.id에는 보통 Media Services UUID가 들어가므로 mediaId 키로도 인덱싱
+    if (a.mediaId) map[String(a.mediaId)] = entry
     if (a.filename && !byName[a.filename]) byName[a.filename] = entry
   }
   mountEl.__tt_attachments_by_id = map

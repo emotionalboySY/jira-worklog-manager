@@ -731,6 +731,7 @@ async function submitCreateIssue() {
     if (!createdKey) throw new Error('생성된 이슈 키를 찾을 수 없습니다.')
 
     // 이미지 첨부 업로드 + 설명 업데이트 — 일부 실패도 토스트로 부분 보고
+    // ADF media.attrs.id에는 Media Services UUID(mediaId)가 들어가야 한다
     const attachErrors = []
     if (hasPending) {
       const idMap = {}
@@ -739,7 +740,8 @@ async function submitCreateIssue() {
         if (!entry?.file) continue
         try {
           const uploaded = await uploadIssueAttachment(createdKey, entry.file)
-          if (uploaded?.id) idMap[pendingId] = String(uploaded.id)
+          const realId = uploaded?.mediaId || uploaded?.id
+          if (realId) idMap[pendingId] = String(realId)
         } catch (e) {
           console.error('첨부 업로드 실패:', e)
           attachErrors.push(`${entry.filename}: ${formatJiraError(e)}`)

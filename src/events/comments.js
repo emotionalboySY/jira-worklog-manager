@@ -169,6 +169,7 @@ function makeCommentImagePaste(issueKey) {
       if (!Array.isArray(cur.data.attachments)) cur.data.attachments = []
       cur.data.attachments.push({
         id: result.id,
+        mediaId: result.mediaId || '',
         filename: result.filename,
         mimeType: result.mimeType,
         size: result.size,
