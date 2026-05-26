@@ -133,12 +133,15 @@ function buildExtensions() {
 // onImagePaste(file) → Promise<{ id, contentUrl, filename, ... }>
 //   클립보드/드롭 이미지를 받아 첨부 업로드 후 결과 반환. 미지정 시 paste 무시.
 // attachments: 편집 시작 시점의 첨부 목록 (id ↔ contentUrl 매핑)
+// pendingPreviews: [{ id, file, filename }] — Jira에 아직 업로드되지 않은 임시 첨부.
+//   재마운트 시에도 paste된 이미지가 보이도록 id별 blob URL을 재생성한다.
 // onUploadError(err): 업로드 실패 시 토스트 등 표시
 export function createEditorInstance(mountEl, adfContent, {
   onUpdate,
   autofocus = true,
   onImagePaste,
   attachments,
+  pendingPreviews,
   onUploadError,
 } = {}) {
   if (!mountEl) return null
@@ -149,6 +152,24 @@ export function createEditorInstance(mountEl, adfContent, {
   if (typeof onImagePaste === 'function') mountEl.__tt_on_image_paste = onImagePaste
   if (typeof onUploadError === 'function') mountEl.__tt_on_upload_error = onUploadError
   if (attachments) setMountAttachments(mountEl, attachments)
+
+  // 아직 업로드되지 않은 paste 이미지 — id별로 blob URL을 만들어 NodeView가
+  // 즉시 미리보기를 띄울 수 있게 attachments/temp 맵에 함께 등록
+  if (Array.isArray(pendingPreviews) && pendingPreviews.length > 0) {
+    if (!mountEl.__tt_attachments_by_id) mountEl.__tt_attachments_by_id = {}
+    if (!mountEl.__tt_temp_blob_urls) mountEl.__tt_temp_blob_urls = {}
+    if (!mountEl.__tt_owned_blob_urls) mountEl.__tt_owned_blob_urls = []
+    for (const p of pendingPreviews) {
+      if (!p?.id || !p?.file) continue
+      mountEl.__tt_attachments_by_id[p.id] = { contentUrl: '', filename: p.filename || '' }
+      let url = null
+      try { url = URL.createObjectURL(p.file) } catch {}
+      if (url) {
+        mountEl.__tt_temp_blob_urls[p.id] = url
+        mountEl.__tt_owned_blob_urls.push(url)
+      }
+    }
+  }
 
   const editor = new Editor({
     element: mountEl,

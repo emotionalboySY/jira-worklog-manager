@@ -11,6 +11,8 @@ import {
   fetchAssignableUsersForProject,
   searchIssuesByKey,
   getCachedMyself,
+  uploadIssueAttachment,
+  updateIssueDescription,
 } from '../jira.js'
 import { isEmptyAdf } from '../adfProsemirror.js'
 import {
@@ -194,12 +196,23 @@ export function ensureCreateIssueEditor() {
   const newMount = document.getElementById('create-issue-desc-editor')
   if (newMount && newMount !== m._descMount) {
     if (m._descMount) destroyInstanceOnMount(m._descMount)
+    // 재마운트 시 paste 이미지가 사라지지 않도록 _pendingImages를 다시 mount에 주입
+    const pendingPreviews = Object.entries(m._pendingImages || {}).map(([id, e]) => ({
+      id, file: e?.file, filename: e?.filename || '',
+    })).filter(p => p.file)
     const editor = createEditorInstance(newMount, m.descriptionAdf, {
       autofocus: false,
       onUpdate: (adf) => {
         const cur = state.showCreateIssue
         if (cur) cur.descriptionAdf = adf
       },
+      // 새 일감은 아직 issue key가 없어 즉시 업로드 불가 → pending id로 자리만 잡고
+      // submit 시 createIssue → uploadAttachment → updateIssueDescription 순으로 처리
+      onImagePaste: async (file) => registerPendingImage(file),
+      onUploadError: (err) => {
+        showToast(`이미지 처리 실패: ${err?.message || '알 수 없는 오류'}`, '⚠')
+      },
+      pendingPreviews,
     })
     newMount.dataset.tiptapMounted = '1'
     if (m.submitting) editor.setEditable(false)
@@ -208,6 +221,71 @@ export function ensureCreateIssueEditor() {
     destroyInstanceOnMount(m._descMount)
     m._descMount = null
   }
+}
+
+// paste된 파일을 임시 id로 보관. 실제 업로드는 submit 시 createdKey 확보 후 일괄 처리.
+// 반환된 id가 mediaSingle > media.attrs.id로 들어가고, 빈 contentUrl 덕에
+// NodeView는 임시 blob URL만으로 즉시 미리보기를 보여준다.
+function registerPendingImage(file) {
+  const m = state.showCreateIssue
+  if (!m) return null
+  const ext = (file.type || 'image/png').split('/')[1] || 'png'
+  const filename = file.name || `pasted-${Date.now()}.${ext}`
+  const rand = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+  const pendingId = `pending_${rand}`
+  if (!m._pendingImages) m._pendingImages = {}
+  m._pendingImages[pendingId] = { file, filename }
+  return { id: pendingId, contentUrl: '', filename }
+}
+
+// ADF 트리에서 pending media의 id 목록 수집 (등장 순서)
+function collectPendingMediaIds(adf) {
+  const ids = []
+  function walk(node) {
+    if (!node || typeof node !== 'object') return
+    if (node.type === 'media' && typeof node.attrs?.id === 'string' && node.attrs.id.startsWith('pending_')) {
+      ids.push(node.attrs.id)
+    }
+    if (Array.isArray(node.content)) for (const c of node.content) walk(c)
+  }
+  walk(adf)
+  return ids
+}
+
+// pending media를 포함한 mediaSingle을 통째로 제거 (create 페이로드 정화용)
+function stripPendingMediaFromAdf(adf) {
+  if (!adf) return adf
+  function clean(node) {
+    if (!node || typeof node !== 'object') return node
+    if (node.type === 'mediaSingle') {
+      const child = Array.isArray(node.content) ? node.content[0] : null
+      if (child?.type === 'media' && typeof child.attrs?.id === 'string' && child.attrs.id.startsWith('pending_')) {
+        return null
+      }
+    }
+    if (!Array.isArray(node.content)) return node
+    return { ...node, content: node.content.map(clean).filter(Boolean) }
+  }
+  return clean(adf)
+}
+
+// pending id → 실제 첨부 id로 치환
+function replacePendingMediaIds(adf, idMap) {
+  if (!adf) return adf
+  function visit(node) {
+    if (!node || typeof node !== 'object') return node
+    let out = node
+    if (node.type === 'media' && idMap[node.attrs?.id]) {
+      out = { ...node, attrs: { ...node.attrs, id: idMap[node.attrs.id] } }
+    }
+    if (Array.isArray(out.content)) {
+      out = { ...out, content: out.content.map(visit) }
+    }
+    return out
+  }
+  return visit(adf)
 }
 
 export function bindCreateIssueEvents() {
@@ -614,14 +692,19 @@ async function submitCreateIssue() {
     return
   }
 
-  // payload 구성
+  // payload 구성 — pending 이미지가 있으면 create 시점엔 빼고 보냈다가 사후 update
+  const descFull = m.descriptionAdf || null
+  const pendingIds = collectPendingMediaIds(descFull)
+  const hasPending = pendingIds.length > 0
+  const descForCreate = hasPending ? stripPendingMediaFromAdf(descFull) : descFull
+
   const fields = {
     project: { key: m.projectKey },
     issuetype: { id: String(m.issueTypeId) },
     summary: m.summary.trim(),
   }
-  if (m.descriptionAdf && !isEmptyAdf(m.descriptionAdf)) {
-    fields.description = m.descriptionAdf
+  if (descForCreate && !isEmptyAdf(descForCreate)) {
+    fields.description = descForCreate
   }
   if (m.assigneeAccountId === '__UNASSIGNED__') {
     fields.assignee = null
@@ -647,6 +730,34 @@ async function submitCreateIssue() {
     createdKey = created?.key || null
     if (!createdKey) throw new Error('생성된 이슈 키를 찾을 수 없습니다.')
 
+    // 이미지 첨부 업로드 + 설명 업데이트 — 일부 실패도 토스트로 부분 보고
+    const attachErrors = []
+    if (hasPending) {
+      const idMap = {}
+      for (const pendingId of pendingIds) {
+        const entry = m._pendingImages?.[pendingId]
+        if (!entry?.file) continue
+        try {
+          const uploaded = await uploadIssueAttachment(createdKey, entry.file)
+          if (uploaded?.id) idMap[pendingId] = String(uploaded.id)
+        } catch (e) {
+          console.error('첨부 업로드 실패:', e)
+          attachErrors.push(`${entry.filename}: ${formatJiraError(e)}`)
+        }
+      }
+      // 업로드된 항목만 id 치환, 실패한 mediaSingle은 제거
+      let descFinal = replacePendingMediaIds(descFull, idMap)
+      descFinal = stripPendingMediaFromAdf(descFinal)
+      if (descFinal && !isEmptyAdf(descFinal)) {
+        try {
+          await updateIssueDescription(createdKey, descFinal)
+        } catch (e) {
+          console.error('설명 업데이트 실패:', e)
+          attachErrors.push(`설명 업데이트: ${formatJiraError(e)}`)
+        }
+      }
+    }
+
     // 이슈 링크 추가 — 각 행의 모든 targetKeys에 대해 호출
     // 한 링크가 실패해도 다른 링크는 계속 시도하고 토스트로 부분 실패 보고
     const linkErrors = []
@@ -671,8 +782,11 @@ async function submitCreateIssue() {
     state.showCreateIssue = null
     render({ sections: ['modals'] })
 
-    if (linkErrors.length > 0) {
-      showToast(`${createdKey} 생성됨. 일부 링크 실패: ${linkErrors.length}건`, '⚠')
+    const partialMsgs = []
+    if (attachErrors.length > 0) partialMsgs.push(`이미지 ${attachErrors.length}건 실패`)
+    if (linkErrors.length > 0) partialMsgs.push(`링크 ${linkErrors.length}건 실패`)
+    if (partialMsgs.length > 0) {
+      showToast(`${createdKey} 생성됨. ${partialMsgs.join(', ')}`, '⚠')
     } else {
       showToast(`${createdKey} 일감을 생성했습니다.`, '✓')
     }
