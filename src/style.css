@@ -4274,8 +4274,26 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   font-size: 11px;
 }
 
-.detail-description a {
+/* 본문/댓글의 하이퍼링크 — 브라우저 기본(쨍한 파랑/방문 보라) 대신 앱 톤에 맞춘 컬러.
+   강조색을 살짝 누른 톤 + 은은한 underline으로 처리. :visited도 같은 색을 유지해
+   한 번 방문한 링크가 자주색으로 튀지 않게 한다. */
+.detail-description a,
+.detail-comment-body a {
+  color: var(--accent-hover);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent-hover) 40%, transparent);
+  text-underline-offset: 2px;
+}
+
+.detail-description a:visited,
+.detail-comment-body a:visited {
+  color: var(--accent-hover);
+}
+
+.detail-description a:hover,
+.detail-comment-body a:hover {
   color: var(--accent);
+  text-decoration-color: var(--accent);
 }
 
 .detail-description table {

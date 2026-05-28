@@ -140,9 +140,14 @@ export function render(options = {}) {
 
     // 설정 모달 스크롤 위치 보존
     let settingsScroll = null
+    // 이슈 상세 모달의 본문(.detail-body) 스크롤 위치 보존 — 댓글 작성/연결 추가 등
+    // 모달 내부 액션이 'modals' 섹션을 통째로 재렌더하므로 캡처/복원 없이는 스크롤이 0으로 튄다.
+    let issueDetailBodyScroll = null
     if (name === 'modals') {
       const modal = container.querySelector('.modal-settings')
       if (modal) settingsScroll = modal.scrollTop
+      const detailBody = container.querySelector('#issue-detail-overlay .detail-body')
+      if (detailBody) issueDetailBodyScroll = detailBody.scrollTop
     }
 
     // 재렌더 전 오픈 상태 캡처 (애니메이션 재생 방지용)
@@ -162,6 +167,10 @@ export function render(options = {}) {
     if (settingsScroll !== null) {
       const modal = container.querySelector('.modal-settings')
       if (modal) modal.scrollTop = settingsScroll
+    }
+    if (issueDetailBodyScroll !== null) {
+      const detailBody = container.querySelector('#issue-detail-overlay .detail-body')
+      if (detailBody) detailBody.scrollTop = issueDetailBodyScroll
     }
 
     // 재렌더 전후 동일하게 떠 있는 모달/패널은 애니메이션 끔
