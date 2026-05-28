@@ -4207,33 +4207,46 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   margin: 18px 0;
 }
 
+/* 본문/댓글 공통 코드 스타일.
+   기존엔 배경이 --bg라 모달 카드(--bg-card)와 명도 차이가 거의 없어 눈에 띄지 않았음.
+   --bg-input(다크: #14151d, 라이트: #f4f5f7) + border로 대비를 살림.
+   폰트 크기는 본문 13px과 거의 차이 없게 0.95em로 맞춤(모노 폰트 시각 크기 보정). */
 .detail-description code,
 .detail-description tt,
-.detail-description .code-quote {
+.detail-description .code-quote,
+.detail-comment-body code,
+.detail-comment-body tt,
+.detail-comment-body .code-quote {
   display: inline;
-  background: var(--bg);
-  padding: 1px 5px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  padding: 0 5px;
   border-radius: 3px;
-  font-size: 12px;
+  font-size: 0.95em;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   white-space: normal;
   color: var(--text-bright);
 }
 
-.detail-description pre {
-  background: var(--bg);
+.detail-description pre,
+.detail-comment-body pre {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
   padding: 10px 12px;
   border-radius: var(--radius);
   overflow-x: auto;
-  font-size: 12px;
+  font-size: 0.95em;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.detail-description pre code {
+.detail-description pre code,
+.detail-comment-body pre code {
   display: block;
   padding: 0;
   background: transparent;
+  border: none;
+  font-size: inherit;
   white-space: pre-wrap;
 }
 
