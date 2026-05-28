@@ -2452,6 +2452,13 @@ span.flatpickr-weekday {
   animation: modal-overlay-in 0.15s ease-out;
 }
 
+/* 상세 모달 위에 떠야 하는 보조 모달 — 상태 전이 시 추가 필드 입력 등.
+   기본 .modal-overlay와 z-index가 같으면 render 순서상 issue-detail이 뒤에 그려져
+   가려지므로 한 단계 위로 올림. */
+#transition-fields-overlay {
+  z-index: 110;
+}
+
 .modal {
   background: var(--bg-card);
   border: 1px solid var(--border);
