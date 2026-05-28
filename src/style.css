@@ -4945,6 +4945,11 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   color: var(--text-bright);
   line-height: 1.5;
   word-break: break-word;
+  /* 전역 body의 user-select:none 때문에 댓글 텍스트도 드래그 선택이 불가능했음.
+     설명/요약 영역과 마찬가지로 댓글 본문은 드래그 선택을 허용. */
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
 }
 
 .detail-comment-body p {
