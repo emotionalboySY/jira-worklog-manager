@@ -12,5 +12,12 @@ export default defineConfig({
     target: 'esnext',
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      // 위젯 본체(index.html) + 종료 다이얼로그(finish.html) 멀티 페이지
+      input: {
+        main: 'index.html',
+        finish: 'finish.html',
+      },
+    },
   },
 })

@@ -2,6 +2,8 @@
 // 로그인(데스크톱 OAuth) → 오늘 합계 + 진행 중 세션 표시(경과시계 1초 틱) → 폴링 동기 + 중단/재개.
 // 새 일감 시작/전환은 웹앱에서, 종료(코멘트 입력)는 다음 단계에서 추가.
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { listen } from '@tauri-apps/api/event'
 import { isLoggedIn, login } from './auth.js'
 import { getSessions, postSessionAction, getTodayLoggedMinutes } from './api.js'
 
@@ -15,6 +17,7 @@ const state = {
   sessions: [],
   rev: 0,
   busy: false,          // 컨트롤 동작 중
+  notice: null,         // 일시 안내 메시지
 }
 
 let pollTimer = null
@@ -141,6 +144,7 @@ function renderBody() {
   return `
     <div class="today"><span class="today-label">오늘</span><span class="today-val">${todayLabel}</span></div>
     ${sessionHtml}
+    ${state.notice ? `<div class="notice">${escapeHtml(state.notice)}</div>` : ''}
   `
 }
 
@@ -177,8 +181,8 @@ async function doLogin() {
 async function doAction(action, key) {
   if (state.busy) return
   if (action === 'finish') {
-    // 종료(코멘트 입력 다이얼로그)는 다음 단계(3c)에서 구현 예정
-    console.log('finish - 3c에서 구현')
+    if (key === NO_ISSUE_KEY) { showNotice('일감 미지정 세션은 웹앱에서 종료해주세요.'); return }
+    openFinishDialog(key)
     return
   }
   state.busy = true; render()
@@ -194,6 +198,34 @@ async function doAction(action, key) {
     state.busy = false
     render()
   }
+}
+
+// 종료 다이얼로그(별도 작은 창) 열기. 이미 떠 있으면 포커스만.
+async function openFinishDialog(key) {
+  try {
+    const existing = await WebviewWindow.getByLabel('finish')
+    if (existing) { await existing.setFocus(); return }
+  } catch {}
+  const w = new WebviewWindow('finish', {
+    url: `finish.html?key=${encodeURIComponent(key)}`,
+    title: '작업 종료',
+    width: 380,
+    height: 250,
+    resizable: false,
+    center: true,
+    alwaysOnTop: true,
+    decorations: true,
+    skipTaskbar: true,
+  })
+  w.once('tauri://error', (e) => console.error('finish 창 생성 오류:', e))
+}
+
+let noticeTimer = null
+function showNotice(msg) {
+  state.notice = msg
+  render()
+  clearTimeout(noticeTimer)
+  noticeTimer = setTimeout(() => { state.notice = null; render() }, 3500)
 }
 
 // ===== 데이터 로드 / 폴링 / 틱 =====
@@ -277,5 +309,8 @@ async function boot() {
     state.phase = 'error'; state.error = e.message || '불러오기 실패'; render()
   }
 }
+
+// 종료 다이얼로그가 세션을 제거하면 본체를 즉시 갱신
+listen('sessions-changed', () => { loadAll().catch(() => {}) })
 
 boot()

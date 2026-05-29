@@ -103,3 +103,81 @@ function ymd(d) {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
+
+// ===== 종료(워크로그 생성) — src/utils.js의 워크로그 로직을 미러 =====
+const LUNCH_START = 11 * 60 + 30 // 11:30
+const LUNCH_END = 12 * 60 + 30   // 12:30
+
+function jiraTzOffset() {
+  const off = new Date().getTimezoneOffset()
+  const sign = off <= 0 ? '+' : '-'
+  const abs = Math.abs(off)
+  return `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}${String(abs % 60).padStart(2, '0')}`
+}
+function jiraStarted(dateStr, hhmm) {
+  const [h = '00', m = '00'] = hhmm.split(':')
+  return `${dateStr}T${h.padStart(2, '0')}:${m.padStart(2, '0')}:00.000${jiraTzOffset()}`
+}
+// 점심(11:30~12:30) 제외하고 worklog 구간을 분할 → [{ started, seconds }]
+function worklogPieces(dateStr, startMin, endMin) {
+  const ranges = []
+  if (endMin <= LUNCH_START || startMin >= LUNCH_END) ranges.push([startMin, endMin])
+  else {
+    if (startMin < LUNCH_START) ranges.push([startMin, LUNCH_START])
+    if (endMin > LUNCH_END) ranges.push([LUNCH_END, endMin])
+  }
+  const toHHMM = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+  return ranges.filter(([s, e]) => e > s).map(([s, e]) => ({ started: jiraStarted(dateStr, toHHMM(s)), seconds: (e - s) * 60 }))
+}
+function textToAdf(text) {
+  return { type: 'doc', version: 1, content: text ? [{ type: 'paragraph', content: [{ type: 'text', text }] }] : [] }
+}
+
+// 세션의 각 구간을 점심 제외해 worklog 조각으로 환산(미리보기/제출 공용).
+// 활성(열린) 구간은 현재 시각까지로 계산.
+export function sessionWorklogs(session) {
+  const out = []
+  for (const seg of session.segments || []) {
+    const start = new Date(seg.start)
+    const end = seg.end ? new Date(seg.end) : new Date()
+    if (end <= start) continue
+    const dateStr = ymd(start)
+    const startMin = start.getHours() * 60 + start.getMinutes()
+    const endMin = end.getHours() * 60 + end.getMinutes()
+    out.push(...worklogPieces(dateStr, startMin, endMin))
+  }
+  return out
+}
+
+async function createWorklog(token, cloudId, issueKey, { started, seconds, comment }) {
+  const body = { started, timeSpentSeconds: seconds }
+  if (comment) body.comment = textToAdf(comment)
+  const res = await fetch(
+    `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/issue/${encodeURIComponent(issueKey)}/worklog`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+  if (!res.ok) {
+    const t = await res.text().catch(() => '')
+    throw new Error(`worklog ${res.status}: ${t.slice(0, 200)}`)
+  }
+}
+
+// 세션 종료: 구간별 worklog 생성(점심 제외). 성공 건수 반환. (세션 제거는 호출부가 remove로 처리)
+export async function finishSession(session, comment) {
+  const token = await ensureAccessToken()
+  if (!token) throw new Error('not-authed')
+  const cloudId = await getCloudId(token)
+  if (!cloudId) throw new Error('cloudId를 확인할 수 없습니다.')
+  const pieces = sessionWorklogs(session)
+  if (!pieces.length) throw new Error('기록할 시간이 없습니다(점심 제외 후 0분).')
+  let count = 0
+  for (const p of pieces) {
+    await createWorklog(token, cloudId, session.issueKey, { started: p.started, seconds: p.seconds, comment })
+    count++
+  }
+  return count
+}
