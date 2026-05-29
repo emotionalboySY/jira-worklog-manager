@@ -14,16 +14,22 @@ import {
   DEFAULT_SUMMARY_WEEK_START,
 } from './state.js'
 import { calcLunchOverlap } from './utils.js'
+import {
+  applyStart,
+  applyPause,
+  applyResume,
+  applyRemove,
+  applyDeleteSegment,
+  applySwap,
+} from '../lib/sessionLogic.js'
 
 // ========== 세션 관리 (segments 기반) ==========
 // 세션 구조: { issueKey, summary, status, segments: [{ start, end }] }
 // segments: 실제 작업한 구간 목록. end=null이면 현재 진행 중
-
-// 1분 미만의 짧은 활동은 별도 구간으로 기록하지 않고 합치거나 버림.
-// - 재개: 직전 구간을 이어서 (새 구간 push 하지 않음)
-// - 다른 일감 시작: 현재 active 구간이 1분 미만이면 마지막 구간을 제거
-//   (유일 구간이면 세션 전체 삭제 = 일감 변경과 동일)
-const SEGMENT_MERGE_THRESHOLD_MS = 60 * 1000
+//
+// 변이 규칙(시작/중단/재개/삭제/교체 + 1분 미만 구간 병합)은 모두
+// ../lib/sessionLogic.js 의 순수 함수에 위임한다. 이 파일은 localStorage 입출력 +
+// UI용 Date 복원 경계만 담당한다(서버리스/위젯과 동일 로직 공유).
 
 export function loadSessions() {
   try {
@@ -43,123 +49,56 @@ export function saveSessions(sessions) {
   localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
 }
 
-// 현재 active 세션의 마지막 segment를 닫음.
-// 단, 마지막 구간이 시작된 지 1분 미만이면 그 구간을 기록 없이 버린다.
-// (짧은 오클릭/빠른 전환을 "일감 변경"처럼 처리 — 유일 구간이면 세션 전체 삭제)
-export function pauseActiveSession(sessions) {
-  const activeIdx = sessions.findIndex(s => s.status === 'active')
-  if (activeIdx < 0) return
-  const active = sessions[activeIdx]
-  const lastSeg = active.segments[active.segments.length - 1]
-  if (!lastSeg) return
-  const segAge = Date.now() - lastSeg.start.getTime()
-  if (segAge < SEGMENT_MERGE_THRESHOLD_MS) {
-    // 1분 미만의 구간 → 없던 일로
-    if (active.segments.length === 1) {
-      sessions.splice(activeIdx, 1)
-    } else {
-      active.segments.pop()
-      active.status = 'paused'
-    }
-    return
-  }
-  active.status = 'paused'
-  if (!lastSeg.end) lastSeg.end = new Date()
+// 변이 로직에 넘길 "원본"(ISO 문자열 그대로, Date 변환 X) 세션 배열을 읽는다.
+// loadSessions는 UI 소비용으로 Date를 복원하지만, sessionLogic은 ISO 문자열을 받는다.
+function loadRawSessions() {
+  try {
+    const raw = localStorage.getItem(SESSIONS_KEY)
+    if (!raw) return []
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr : []
+  } catch { return [] }
 }
 
-// 재개 시 직전 구간이 1분 미만 전에 닫혔으면 새 구간을 만들지 않고 그 구간을 다시 연다.
-function reopenOrPushSegment(session) {
-  const lastSeg = session.segments[session.segments.length - 1]
-  const now = new Date()
-  if (lastSeg && lastSeg.end && (now.getTime() - lastSeg.end.getTime()) < SEGMENT_MERGE_THRESHOLD_MS) {
-    lastSeg.end = null
-    return
-  }
-  session.segments.push({ start: now, end: null })
-}
+// 아래 변이 함수들은 모두 ../lib/sessionLogic.js 의 순수 함수에 위임한다.
+//   loadRawSessions(ISO) → applyX(...) → saveSessions(결과)
+// saveSessions는 JSON.stringify만 하므로 ISO 문자열 세션도 그대로 안전하게 저장된다.
 
 export function addSession(issueKey, summary) {
-  const sessions = loadSessions()
-  const existing = sessions.find(s => s.issueKey === issueKey)
-  if (existing) {
-    // 이미 세션이 있으면 재개
-    if (existing.status === 'paused') {
-      pauseActiveSession(sessions)
-      existing.status = 'active'
-      reopenOrPushSegment(existing)
-    }
-    saveSessions(sessions)
-    return true
-  }
-  // 기존 active 세션 자동 중단 (1분 미만이면 덮어쓰기)
-  pauseActiveSession(sessions)
-  sessions.push({
-    issueKey,
-    summary,
-    status: 'active',
-    segments: [{ start: new Date(), end: null }],
-  })
+  const { sessions } = applyStart(loadRawSessions(), { issueKey, summary }, Date.now())
   saveSessions(sessions)
   return true
 }
 
 export function pauseSession(issueKey) {
-  const sessions = loadSessions()
-  const s = sessions.find(s => s.issueKey === issueKey)
-  if (!s || s.status !== 'active') return
-  s.status = 'paused'
-  const lastSeg = s.segments[s.segments.length - 1]
-  if (lastSeg && !lastSeg.end) lastSeg.end = new Date()
+  const { sessions } = applyPause(loadRawSessions(), { issueKey }, Date.now())
   saveSessions(sessions)
 }
 
 export function resumeSession(issueKey) {
-  const sessions = loadSessions()
-  const s = sessions.find(s => s.issueKey === issueKey)
-  if (!s || s.status !== 'paused') return
-  // 기존 active 세션 자동 중단 (1분 미만이면 덮어쓰기)
-  pauseActiveSession(sessions)
-  s.status = 'active'
-  reopenOrPushSegment(s)
+  const { sessions } = applyResume(loadRawSessions(), { issueKey }, Date.now())
   saveSessions(sessions)
 }
 
 export function removeSession(issueKey) {
-  const sessions = loadSessions().filter(s => s.issueKey !== issueKey)
+  const { sessions } = applyRemove(loadRawSessions(), { issueKey })
   saveSessions(sessions)
 }
 
 // 세션의 특정 구간을 삭제. 마지막 남은 1구간은 삭제 불가(세션 전체 삭제는 '취소'로).
 // active 세션에서 열린 구간(end=null)을 삭제한 경우 paused로 전환.
 export function deleteSessionSegment(issueKey, segIdx) {
-  const sessions = loadSessions()
-  const s = sessions.find(x => x.issueKey === issueKey)
-  if (!s) return { ok: false, error: '세션을 찾을 수 없습니다.' }
-  if (s.segments.length <= 1) return { ok: false, error: '마지막 구간은 삭제할 수 없습니다.' }
-  if (segIdx < 0 || segIdx >= s.segments.length) return { ok: false, error: '잘못된 구간입니다.' }
-  s.segments.splice(segIdx, 1)
-  if (s.status === 'active' && !s.segments.some(seg => !seg.end)) {
-    s.status = 'paused'
-  }
-  saveSessions(sessions)
-  return { ok: true }
+  const r = applyDeleteSegment(loadRawSessions(), { issueKey, segIdx })
+  if (r.ok) saveSessions(r.sessions)
+  return { ok: r.ok, error: r.error }
 }
 
 // 세션의 이슈 키/요약을 교체. segments/status는 유지.
 // 대상 키의 세션이 이미 존재하면 실패 (병합은 복잡도 커서 지원 안 함).
 export function swapSessionIssue(oldKey, newKey, newSummary) {
-  if (!oldKey || !newKey) return { ok: false, error: '잘못된 요청입니다.' }
-  if (oldKey === newKey) return { ok: true, unchanged: true }
-  const sessions = loadSessions()
-  const target = sessions.find(s => s.issueKey === oldKey)
-  if (!target) return { ok: false, error: '세션을 찾을 수 없습니다.' }
-  if (sessions.some(s => s.issueKey === newKey)) {
-    return { ok: false, error: '이미 해당 이슈로 진행 중/중단된 세션이 있어요.' }
-  }
-  target.issueKey = newKey
-  target.summary = newSummary || ''
-  saveSessions(sessions)
-  return { ok: true }
+  const r = applySwap(loadRawSessions(), { oldKey, newKey, newSummary })
+  if (r.ok && !r.unchanged) saveSessions(r.sessions)
+  return { ok: r.ok, unchanged: r.unchanged, error: r.error }
 }
 
 // 세션의 첫 시작 시각
