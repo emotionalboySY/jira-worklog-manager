@@ -1,0 +1,81 @@
+/* DK 워크로그 위젯 스타일 — 프레임리스/투명 창에 떠 있는 작은 카드 */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  font-family: 'Segoe UI', Inter, system-ui, sans-serif;
+  /* 위젯 컨테이너 불투명도 — 추후 슬라이더로 --widget-opacity 변경 */
+  --widget-opacity: 0.96;
+  --bg: 23, 25, 33;          /* rgb 채널 (alpha는 --widget-opacity로) */
+  --fg: #e8eaf0;
+  --fg-dim: #9aa0ad;
+  --accent: #4f8cff;
+}
+
+/* 투명 창: body 배경은 투명, 카드만 보이게 */
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  color: var(--fg);
+  user-select: none;
+  cursor: default;
+}
+
+#app, .widget {
+  width: 100%;
+  height: 100%;
+}
+
+.widget {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: rgba(var(--bg), var(--widget-opacity));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 6px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  -webkit-user-select: none;
+}
+
+.widget-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-dim);
+  letter-spacing: 0.02em;
+}
+
+.widget-win-buttons { display: flex; gap: 2px; }
+
+.win-btn {
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.win-btn:hover { background: rgba(255, 255, 255, 0.1); color: var(--fg); }
+
+.widget-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px 12px;
+  min-height: 0;
+}
+
+.placeholder { font-size: 13px; color: var(--fg-dim); text-align: center; }
