@@ -21,7 +21,9 @@ import {
   applyRemove,
   applyDeleteSegment,
   applySwap,
+  applyAdjustStart,
 } from '../lib/sessionLogic.js'
+import { queueSessionSync } from './sessionSync.js'
 
 // ========== 세션 관리 (segments 기반) ==========
 // 세션 구조: { issueKey, summary, status, segments: [{ start, end }] }
@@ -60,36 +62,48 @@ function loadRawSessions() {
   } catch { return [] }
 }
 
-// 아래 변이 함수들은 모두 ../lib/sessionLogic.js 의 순수 함수에 위임한다.
-//   loadRawSessions(ISO) → applyX(...) → saveSessions(결과)
+// 아래 변이 함수들은 ../lib/sessionLogic.js 순수 함수로 로컬 캐시를 "낙관적으로" 선반영한 뒤
+// (호출부의 render가 즉시 반영되도록), sessionSync.queueSessionSync로 백엔드에 비동기 동기한다.
+//   loadRawSessions(ISO) → applyX(낙관적) → saveSessions(캐시) → queueSessionSync(action)
+// nowMs를 payload로 함께 보내 서버가 같은 시각으로 변이를 적용(낙관적 결과와 일치)하게 한다.
 // saveSessions는 JSON.stringify만 하므로 ISO 문자열 세션도 그대로 안전하게 저장된다.
 
 export function addSession(issueKey, summary) {
-  const { sessions } = applyStart(loadRawSessions(), { issueKey, summary }, Date.now())
+  const nowMs = Date.now()
+  const { sessions } = applyStart(loadRawSessions(), { issueKey, summary }, nowMs)
   saveSessions(sessions)
+  queueSessionSync('start', { issueKey, summary, nowMs })
   return true
 }
 
 export function pauseSession(issueKey) {
-  const { sessions } = applyPause(loadRawSessions(), { issueKey }, Date.now())
+  const nowMs = Date.now()
+  const { sessions } = applyPause(loadRawSessions(), { issueKey }, nowMs)
   saveSessions(sessions)
+  queueSessionSync('pause', { issueKey, nowMs })
 }
 
 export function resumeSession(issueKey) {
-  const { sessions } = applyResume(loadRawSessions(), { issueKey }, Date.now())
+  const nowMs = Date.now()
+  const { sessions } = applyResume(loadRawSessions(), { issueKey }, nowMs)
   saveSessions(sessions)
+  queueSessionSync('resume', { issueKey, nowMs })
 }
 
 export function removeSession(issueKey) {
   const { sessions } = applyRemove(loadRawSessions(), { issueKey })
   saveSessions(sessions)
+  queueSessionSync('remove', { issueKey })
 }
 
 // 세션의 특정 구간을 삭제. 마지막 남은 1구간은 삭제 불가(세션 전체 삭제는 '취소'로).
 // active 세션에서 열린 구간(end=null)을 삭제한 경우 paused로 전환.
 export function deleteSessionSegment(issueKey, segIdx) {
   const r = applyDeleteSegment(loadRawSessions(), { issueKey, segIdx })
-  if (r.ok) saveSessions(r.sessions)
+  if (r.ok) {
+    saveSessions(r.sessions)
+    queueSessionSync('deleteSegment', { issueKey, segIdx })
+  }
   return { ok: r.ok, error: r.error }
 }
 
@@ -97,8 +111,21 @@ export function deleteSessionSegment(issueKey, segIdx) {
 // 대상 키의 세션이 이미 존재하면 실패 (병합은 복잡도 커서 지원 안 함).
 export function swapSessionIssue(oldKey, newKey, newSummary) {
   const r = applySwap(loadRawSessions(), { oldKey, newKey, newSummary })
-  if (r.ok && !r.unchanged) saveSessions(r.sessions)
+  if (r.ok && !r.unchanged) {
+    saveSessions(r.sessions)
+    queueSessionSync('swap', { oldKey, newKey, newSummary })
+  }
   return { ok: r.ok, unchanged: r.unchanged, error: r.error }
+}
+
+// 세션 첫 구간의 시작 시각 조정(직전 작업 로그 종료 시간으로). 낙관적 선반영 + 백엔드 동기.
+export function adjustSessionStart(issueKey, newStartMs) {
+  const r = applyAdjustStart(loadRawSessions(), { issueKey, newStartMs })
+  if (r.ok) {
+    saveSessions(r.sessions)
+    queueSessionSync('adjustStart', { issueKey, newStartMs })
+  }
+  return r
 }
 
 // 세션의 첫 시작 시각

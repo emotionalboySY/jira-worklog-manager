@@ -9,13 +9,15 @@ import { loadIssues } from './actions.js'
 import { setupAutoReload } from './autoReload.js'
 import { resetInMemoryUserData } from './state.js'
 import { installDelegatedHandlers, bindEvents, startTimerUpdate } from './events.js'
+import { initSessionSync, stopSessionPolling, setSessionRenderHook } from './sessionSync.js'
 
 // 토큰 갱신 실패로 자동 로그아웃이 일어나면 즉시 로그인 화면으로 전환 + 사용자 안내
 let authClearedHandled = false
 window.addEventListener('jira-auth-cleared', () => {
   if (authClearedHandled) return
   authClearedHandled = true
-  // 직전 사용자의 in-memory 데이터(이슈/워크로그/캐시 Map들) 정리
+  // 세션 백엔드 폴링 중단 + 직전 사용자의 in-memory 데이터(이슈/워크로그/캐시 Map들) 정리
+  try { stopSessionPolling() } catch {}
   try { resetInMemoryUserData() } catch {}
   try { showToast('세션이 만료되었습니다. 다시 로그인해주세요.', '⚠') } catch {}
   try { window.alert('세션이 만료되었습니다. 다시 로그인해주세요.') } catch {}
@@ -32,6 +34,7 @@ async function init() {
     // render 종료 시점마다 호출될 hook 등록 (render.js는 events.js를 import하지 않음 — 모듈 순환 해소)
     registerPostRender(bindEvents)
     registerPostRender(startTimerUpdate)
+    setSessionRenderHook(render)
 
     applyTheme()
     applyPreferences(loadPreferences())
@@ -55,6 +58,7 @@ async function init() {
     if (isLoggedIn()) {
       loadIssues()
       setupAutoReload()
+      initSessionSync()
     }
   } catch (e) {
     console.error('초기화 실패:', e)

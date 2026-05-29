@@ -81,10 +81,13 @@ export default async function handler(req, res) {
       const { action, payload } = req.body || {}
       if (!action) return res.status(400).json({ error: 'action required' })
 
+      // 시각 의존 변이(start/pause/resume)는 클라가 보낸 nowMs로 적용해
+      // 낙관적 결과와 권위 결과의 타임스탬프를 일치시킨다(서버/클라 시계 차 방지).
+      const nowMs = (payload && typeof payload.nowMs === 'number') ? payload.nowMs : Date.now()
       const maxAttempts = action === 'replaceAll' ? 1 : 4
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         const current = await readState(redis, key)
-        const result = applyAction(action, current.sessions, payload || {}, Date.now())
+        const result = applyAction(action, current.sessions, payload || {}, nowMs)
         if (result.ok === false) {
           return res.status(400).json({ error: result.error || 'invalid action', sessions: current.sessions, rev: current.rev })
         }

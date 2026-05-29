@@ -15,7 +15,7 @@ import {
 import { getEditorOnMount, runCommandOnEditor } from './tiptap.js'
 import {
   loadSessions,
-  saveSessions,
+  adjustSessionStart,
   addSession,
   pauseSession,
   resumeSession,
@@ -687,8 +687,7 @@ export function installDelegatedHandlers() {
       showToast('직전 종료 시간이 현재 시작 시간보다 늦어 조정할 수 없습니다.', 'ℹ')
       return
     }
-    firstSeg.start = newStart
-    saveSessions(sessions)
+    adjustSessionStart(key, newStart.getTime())
     showToast(`시작 시간을 ${latestEnd}(으)로 조정했습니다.`, '✓')
     render()
   })
