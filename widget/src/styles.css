@@ -78,4 +78,47 @@ html, body {
   min-height: 0;
 }
 
-.placeholder { font-size: 13px; color: var(--fg-dim); text-align: center; }
+.placeholder { font-size: 13px; color: var(--fg-dim); text-align: center; line-height: 1.5; }
+.dim { color: var(--fg-dim); font-size: 11px; }
+
+/* 로그인 / 에러 박스 */
+.login-box { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.login-msg { font-size: 13px; color: var(--fg-dim); }
+.err { font-size: 12px; color: #ff8a8a; text-align: center; line-height: 1.4; word-break: break-word; }
+
+/* 오늘 합계 */
+.today {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding-bottom: 8px; margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.today-label { font-size: 11px; color: var(--fg-dim); }
+.today-val { font-size: 16px; font-weight: 700; color: var(--fg); }
+
+/* 세션 */
+.session { display: flex; flex-direction: column; gap: 6px; }
+.session-issue { display: flex; align-items: center; gap: 6px; font-size: 12px; min-width: 0; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-dim); flex: none; }
+.dot.live { background: #34d399; box-shadow: 0 0 6px #34d399; }
+.issue-key { font-weight: 700; color: var(--accent); flex: none; }
+.issue-summary { color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.clock { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.clock.paused-clock { font-size: 13px; font-weight: 600; color: var(--fg-dim); }
+.ctrls { display: flex; gap: 4px; flex: none; }
+
+/* 버튼 */
+.btn-sm, .btn-primary {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--fg);
+  border-radius: 7px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-sm:hover, .btn-primary:hover { background: rgba(255, 255, 255, 0.12); }
+.btn-sm:disabled { opacity: 0.5; cursor: default; }
+.btn-finish { border-color: rgba(79, 140, 255, 0.5); color: #9cc0ff; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; padding: 6px 16px; font-weight: 600; }
+.btn-primary:hover { filter: brightness(1.08); }

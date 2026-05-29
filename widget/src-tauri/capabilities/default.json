@@ -5,7 +5,18 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:event:default",
     "opener:default",
+    "opener:allow-open-url",
+    "store:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://api.atlassian.com/*" },
+        { "url": "https://auth.atlassian.com/*" },
+        { "url": "https://dk-jira-worklog-manager.vercel.app/*" }
+      ]
+    },
     "core:window:allow-start-dragging",
     "core:window:allow-set-always-on-top",
     "core:window:allow-hide",
