@@ -23,9 +23,13 @@ function tokenKey(accessToken) {
   return 'tok:' + createHash('sha256').update(accessToken).digest('hex').slice(0, 32)
 }
 
-// Atlassian access token → account_id 해석.
+// Atlassian access token → accountId 해석.
 // 매 폴링마다 Atlassian을 때리지 않도록 token→accountId를 Redis에 5분 캐시.
 // 실패(만료/무효 토큰 등) 시 null 반환 → 호출부가 401 처리.
+//
+// 주의: api.atlassian.com/me 는 read:me scope를 요구하는데 이 앱은 그 scope가 없다.
+// 대신 앱이 이미 쓰는 방식(accessible-resources로 cloudId → Jira /myself)을 사용한다.
+// 이쪽은 보유 중인 read:jira-user scope만 필요해 확실히 동작한다.
 export async function resolveAccountId(accessToken) {
   if (!accessToken) return null
   const redis = getRedis()
@@ -34,14 +38,35 @@ export async function resolveAccountId(accessToken) {
   const cached = await redis.get(cacheKey)
   if (cached && typeof cached === 'string') return cached
 
-  // api.atlassian.com/me 는 cloudId 없이 토큰 소유자 프로필을 돌려줌
-  const res = await fetch('https://api.atlassian.com/me', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  if (!res.ok) return null
-  const data = await res.json().catch(() => null)
-  const accountId = data?.account_id
-  if (!accountId) return null
+  // 1) 토큰으로 접근 가능한 사이트(cloudId) 조회 — 특수 scope 불필요
+  let cloudId
+  try {
+    const r = await fetch('https://api.atlassian.com/oauth/token/accessible-resources', {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+    })
+    if (!r.ok) { console.error('[identity] accessible-resources 실패:', r.status); return null }
+    const list = await r.json().catch(() => null)
+    cloudId = Array.isArray(list) && list[0]?.id
+  } catch (e) {
+    console.error('[identity] accessible-resources 예외:', e?.message)
+    return null
+  }
+  if (!cloudId) { console.error('[identity] cloudId 없음'); return null }
+
+  // 2) Jira /myself 로 accountId 조회 (read:jira-user scope — 앱 보유)
+  let accountId
+  try {
+    const r = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/myself`, {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+    })
+    if (!r.ok) { console.error('[identity] myself 실패:', r.status); return null }
+    const data = await r.json().catch(() => null)
+    accountId = data?.accountId
+  } catch (e) {
+    console.error('[identity] myself 예외:', e?.message)
+    return null
+  }
+  if (!accountId) { console.error('[identity] accountId 없음'); return null }
 
   await redis.set(cacheKey, accountId, { ex: 300 })
   return accountId
