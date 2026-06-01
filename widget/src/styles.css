@@ -129,6 +129,18 @@ html, body {
   background: rgba(255, 210, 125, 0.1); border-radius: 6px; padding: 5px 8px; text-align: center;
 }
 
+/* 투명도 슬라이더 패널(헤더 아래 플로팅) */
+.opacity-panel {
+  position: absolute; top: 36px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; z-index: 20;
+  background: rgba(30, 33, 43, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px; padding: 6px 10px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+.opacity-panel .op-label { font-size: 11px; color: var(--fg-dim); white-space: nowrap; }
+.opacity-panel input[type="range"] { width: 110px; accent-color: var(--accent); cursor: pointer; }
+
 /* ===== 종료 다이얼로그(별도 창, 불투명) ===== */
 .dialog-body { background: #1a1c24 !important; }
 .dlg {

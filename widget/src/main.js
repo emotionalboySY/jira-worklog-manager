@@ -6,9 +6,11 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { listen } from '@tauri-apps/api/event'
 import { isLoggedIn, login } from './auth.js'
 import { getSessions, postSessionAction, getTodayLoggedMinutes } from './api.js'
+import { load } from '@tauri-apps/plugin-store'
 
 const appWindow = getCurrentWindow()
 let alwaysOnTop = true
+let opacity = 0.96   // 위젯 불투명도(styles.css --widget-opacity 기본값과 일치)
 
 const state = {
   phase: 'loading',     // 'loading' | 'login' | 'ready' | 'error'
@@ -67,6 +69,7 @@ function render() {
       <div class="widget-header" data-tauri-drag-region>
         <span class="widget-title" data-tauri-drag-region>DK 워크로그</span>
         <div class="widget-win-buttons">
+          <button class="win-btn" id="btn-opacity" title="투명도">◐</button>
           <button class="win-btn" id="btn-pin" title="항상 위 고정">${alwaysOnTop ? '📌' : '📍'}</button>
           <button class="win-btn" id="btn-hide" title="숨기기">▁</button>
           <button class="win-btn" id="btn-close" title="닫기">✕</button>
@@ -150,6 +153,7 @@ function renderBody() {
 
 // ===== 이벤트 =====
 function bindCommon() {
+  document.getElementById('btn-opacity')?.addEventListener('click', toggleOpacityPanel)
   document.getElementById('btn-pin')?.addEventListener('click', async () => {
     alwaysOnTop = !alwaysOnTop
     try { await appWindow.setAlwaysOnTop(alwaysOnTop) } catch (e) { console.error(e) }
@@ -157,6 +161,41 @@ function bindCommon() {
   })
   document.getElementById('btn-hide')?.addEventListener('click', () => appWindow.hide().catch(console.error))
   document.getElementById('btn-close')?.addEventListener('click', () => appWindow.close().catch(console.error))
+}
+
+// ===== 투명도(--widget-opacity) — 슬라이더로 조절, settings.json에 영속 =====
+let _settings = null
+async function settingsStore() {
+  if (!_settings) _settings = await load('settings.json', { autoSave: true })
+  return _settings
+}
+function applyOpacity(v) {
+  document.documentElement.style.setProperty('--widget-opacity', String(v))
+}
+async function loadOpacity() {
+  try {
+    const v = await (await settingsStore()).get('opacity')
+    if (typeof v === 'number') { opacity = v; applyOpacity(v) }
+  } catch (e) { console.error(e) }
+}
+async function saveOpacity(v) {
+  try { const s = await settingsStore(); await s.set('opacity', v); await s.save() } catch (e) { console.error(e) }
+}
+
+// 슬라이더 패널은 render() 밖의 독립 DOM — 폴링 재렌더가 드래그를 끊지 않도록 한다.
+let opacityPanel = null
+function toggleOpacityPanel() {
+  if (opacityPanel) { opacityPanel.remove(); opacityPanel = null; return }
+  const panel = document.createElement('div')
+  panel.className = 'opacity-panel'
+  panel.innerHTML = `
+    <span class="op-label">투명도</span>
+    <input type="range" id="op-range" min="0.3" max="1" step="0.01" value="${opacity}">`
+  document.body.appendChild(panel)
+  const range = panel.querySelector('#op-range')
+  range.addEventListener('input', () => { opacity = parseFloat(range.value); applyOpacity(opacity) })
+  range.addEventListener('change', () => saveOpacity(opacity))
+  opacityPanel = panel
 }
 
 function bindBody() {
@@ -297,6 +336,7 @@ function handleLogout() {
 // ===== 부트 =====
 async function boot() {
   state.phase = 'loading'; render()
+  loadOpacity()   // 저장된 투명도 복원(비동기, 적용은 준비되는 대로)
   try {
     if (await isLoggedIn()) {
       await loadAll()
