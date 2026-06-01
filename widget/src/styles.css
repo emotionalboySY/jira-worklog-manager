@@ -160,14 +160,16 @@ html, body {
 .swap-status.st-done { background: rgba(52, 211, 153, 0.18); color: #6ee7b7; }
 
 /* ===== 업데이트 확인(설정 패널 행 + 모달) ===== */
-.set-update { justify-content: space-between; }
 .set-update-btn {
+  width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.06);
-  color: var(--fg); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer;
+  color: var(--fg); border-radius: 6px; padding: 5px 10px; font-size: 11px; cursor: pointer;
+  transition: background-color 0.4s ease, border-color 0.4s ease, color 0.4s ease;
 }
 .set-update-btn:hover { background: rgba(255, 255, 255, 0.12); }
 .set-update-btn:disabled { opacity: 0.5; cursor: default; }
-.set-update-status { font-size: 10px; }
+.set-update-btn.is-latest { background: #34d399; border-color: #34d399; color: #06281c; font-weight: 600; opacity: 1; }
+.set-update-btn.is-error { background: rgba(255, 138, 138, 0.18); border-color: #ff8a8a; color: #ff8a8a; opacity: 1; }
 
 .update-overlay {
   position: fixed; inset: 0; z-index: 50;

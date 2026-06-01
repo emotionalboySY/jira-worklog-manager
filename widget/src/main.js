@@ -219,7 +219,6 @@ function toggleSettingsPanel() {
     </label>
     <div class="set-row set-update">
       <button class="set-update-btn" id="btn-check-update">업데이트 확인</button>
-      <span class="set-update-status dim" id="update-status"></span>
     </div>`
   document.body.appendChild(panel)
   // 투명도 슬라이더
@@ -236,28 +235,41 @@ function toggleSettingsPanel() {
   })
   // 업데이트 확인
   const upBtn = panel.querySelector('#btn-check-update')
-  const upStatus = panel.querySelector('#update-status')
-  upBtn.addEventListener('click', () => checkForUpdate(upBtn, upStatus))
+  upBtn.addEventListener('click', () => checkForUpdate(upBtn))
   settingsPanel = panel
 }
 
 // ===== 자동 업데이트 =====
-async function checkForUpdate(btn, statusEl) {
+async function checkForUpdate(btn) {
   btn.disabled = true
-  statusEl.textContent = '확인 중…'
+  btn.classList.remove('is-latest', 'is-error')
+  btn.textContent = '업데이트 확인 중…'
   try {
     const update = await checkUpdate()
     if (update) {
-      statusEl.textContent = ''
+      // 업데이트 있음 → 버튼 원복 후 설치 모달
+      btn.textContent = '업데이트 확인'
+      btn.disabled = false
       showUpdateModal(update)
     } else {
-      statusEl.textContent = '최신 버전입니다'
+      // 최신 → 초록 버튼 + 메시지, 3초 후 원래대로 fade 회귀
+      btn.textContent = '최신 버전입니다!'
+      btn.classList.add('is-latest')
+      setTimeout(() => {
+        btn.classList.remove('is-latest')
+        btn.textContent = '업데이트 확인'
+        btn.disabled = false
+      }, 3000)
     }
   } catch (e) {
     console.error('업데이트 확인 실패:', e)
-    statusEl.textContent = '확인 실패'
-  } finally {
-    btn.disabled = false
+    btn.textContent = '확인 실패'
+    btn.classList.add('is-error')
+    setTimeout(() => {
+      btn.classList.remove('is-error')
+      btn.textContent = '업데이트 확인'
+      btn.disabled = false
+    }, 3000)
   }
 }
 
