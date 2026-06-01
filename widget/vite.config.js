@@ -17,6 +17,7 @@ export default defineConfig({
       input: {
         main: 'index.html',
         finish: 'finish.html',
+        swap: 'swap.html',
       },
     },
   },

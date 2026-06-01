@@ -197,6 +197,27 @@ export async function getLatestWorklogEnd(date) {
   return latest
 }
 
+// 내 진행 중 이슈 목록(일감 교체용). statusCategory != Done, 최근 갱신순, 최대 100건.
+export async function fetchMyIssues() {
+  const token = await ensureAccessToken()
+  if (!token) throw new Error('not-authed')
+  const cloudId = await getCloudId(token)
+  if (!cloudId) throw new Error('cloudId를 확인할 수 없습니다.')
+  const jql = `(assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser()) AND statusCategory != "Done" ORDER BY updated DESC`
+  const url = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=summary,issuetype,status&maxResults=100`
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } })
+  if (!res.ok) throw new Error(`이슈 조회 실패 ${res.status}`)
+  const data = await res.json().catch(() => null)
+  return (data?.issues || []).map(i => ({
+    key: i.key,
+    summary: i.fields?.summary || '',
+    type: i.fields?.issuetype?.name || '',
+    typeIconUrl: i.fields?.issuetype?.iconUrl || '',
+    status: i.fields?.status?.name || '',
+    statusCategory: i.fields?.status?.statusCategory?.key || '',
+  }))
+}
+
 // 세션 종료: 구간별 worklog 생성(점심 제외). 성공 건수 반환. (세션 제거는 호출부가 remove로 처리)
 export async function finishSession(session, comment) {
   const token = await ensureAccessToken()

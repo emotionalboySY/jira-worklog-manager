@@ -134,7 +134,7 @@ function renderBody() {
             <button class="btn-sm btn-finish" data-act="finish" data-key="${escapeHtml(act.issueKey)}" ${state.busy ? 'disabled' : ''}>종료</button>
           </div>
         </div>
-        ${isNoIssue ? '' : `<div class="session-actions"><button class="btn-link" data-act="adjustStart" data-key="${escapeHtml(act.issueKey)}" ${state.busy ? 'disabled' : ''}>직전 종료 시간으로</button></div>`}
+        ${isNoIssue ? '' : `<div class="session-actions"><button class="btn-link" data-act="swap" data-key="${escapeHtml(act.issueKey)}" ${state.busy ? 'disabled' : ''}>일감 교체</button><button class="btn-link" data-act="adjustStart" data-key="${escapeHtml(act.issueKey)}" ${state.busy ? 'disabled' : ''}>직전 종료 시간으로</button></div>`}
       </div>`
   } else if (paused.length) {
     const p = paused[0]
@@ -157,7 +157,7 @@ function renderBody() {
             <button class="btn-sm btn-finish" data-act="finish" data-key="${escapeHtml(p.issueKey)}" ${state.busy ? 'disabled' : ''}>종료</button>
           </div>
         </div>
-        ${isNoIssue ? '' : `<div class="session-actions"><button class="btn-link" data-act="adjustStart" data-key="${escapeHtml(p.issueKey)}" ${state.busy ? 'disabled' : ''}>직전 종료 시간으로</button></div>`}
+        ${isNoIssue ? '' : `<div class="session-actions"><button class="btn-link" data-act="swap" data-key="${escapeHtml(p.issueKey)}" ${state.busy ? 'disabled' : ''}>일감 교체</button><button class="btn-link" data-act="adjustStart" data-key="${escapeHtml(p.issueKey)}" ${state.busy ? 'disabled' : ''}>직전 종료 시간으로</button></div>`}
       </div>`
   } else {
     sessionHtml = `<div class="placeholder">진행 중인 작업이 없습니다.<br/><span class="dim">웹앱에서 작업을 시작하세요.</span></div>`
@@ -258,6 +258,11 @@ async function doAction(action, key) {
     return
   }
   if (action === 'adjustStart') { handleAdjustStart(key); return }
+  if (action === 'swap') {
+    if (key === NO_ISSUE_KEY) { showNotice('일감 미지정 세션은 웹앱에서 변경해주세요.'); return }
+    openSwapDialog(key)
+    return
+  }
   state.busy = true; render()
   try {
     const { status, data } = await postSessionAction(action, { issueKey: key, nowMs: Date.now() })
@@ -318,6 +323,28 @@ async function openFinishDialog(key) {
     skipTaskbar: true,
   })
   w.once('tauri://error', (e) => console.error('finish 창 생성 오류:', e))
+}
+
+// 일감 교체 다이얼로그(별도 작은 창) 열기. 이미 떠 있으면 포커스만.
+async function openSwapDialog(key) {
+  try {
+    const existing = await WebviewWindow.getByLabel('swap')
+    if (existing) { await existing.setFocus(); return }
+  } catch {}
+  const w = new WebviewWindow('swap', {
+    url: `swap.html?key=${encodeURIComponent(key)}`,
+    title: '일감 교체',
+    width: 440,
+    height: 480,
+    minWidth: 380,
+    minHeight: 360,
+    resizable: true,
+    center: true,
+    alwaysOnTop: true,
+    decorations: true,
+    skipTaskbar: true,
+  })
+  w.once('tauri://error', (e) => console.error('swap 창 생성 오류:', e))
 }
 
 let noticeTimer = null

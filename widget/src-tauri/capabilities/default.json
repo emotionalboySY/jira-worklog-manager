@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "위젯 창 권한 (본체 + 종료 다이얼로그)",
-  "windows": ["main", "finish"],
+  "windows": ["main", "finish", "swap"],
   "permissions": [
     "core:default",
     "core:event:default",
