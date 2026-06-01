@@ -58,6 +58,16 @@ pub fn run() {
             None,
         ))
         .invoke_handler(tauri::generate_handler![start_oauth_listener])
+        // 메인 창의 닫기(✕/Alt+F4)는 종료가 아니라 트레이로 숨김 — 상주 위젯.
+        // 완전 종료는 트레이 메뉴 '종료'에서만.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             let show_i = MenuItem::with_id(app, "show", "위젯 보이기", true, None::<&str>)?;
             let hide_i = MenuItem::with_id(app, "hide", "숨기기", true, None::<&str>)?;
