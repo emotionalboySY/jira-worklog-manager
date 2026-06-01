@@ -6,7 +6,6 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { listen } from '@tauri-apps/api/event'
 import { isLoggedIn, login } from './auth.js'
 import { getSessions, postSessionAction, getTodayLoggedMinutes } from './api.js'
-import { initWindowBehaviors } from './window.js'
 
 const appWindow = getCurrentWindow()
 let alwaysOnTop = true
@@ -314,7 +313,6 @@ async function boot() {
 // 종료 다이얼로그가 세션을 제거하면 본체를 즉시 갱신
 listen('sessions-changed', () => { loadAll().catch(() => {}) })
 
-// 창 동작(마그넷 스냅 + 비율 고정 리사이즈) — 인증과 무관하게 적용
-initWindowBehaviors().catch(console.error)
+// 마그넷 스냅 + 비율 고정 리사이즈는 Rust(Windows 창 메시지 후킹)에서 실시간 처리
 
 boot()

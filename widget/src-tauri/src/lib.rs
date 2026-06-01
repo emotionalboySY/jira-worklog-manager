@@ -74,8 +74,102 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // 실시간 마그넷 스냅 + 비율 고정 리사이즈(Windows 창 메시지 후킹)
+            #[cfg(target_os = "windows")]
+            if let Some(win) = app.get_webview_window("main") {
+                if let Ok(hwnd) = win.hwnd() {
+                    win_behavior::install(hwnd.0 as isize);
+                }
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+// ===== Windows 창 메시지 후킹 =====
+// 드래그/리사이즈는 OS가 입력을 처리하는 도중에 일어난다. 사후 이벤트(Resized/Moved)에서
+// setSize/setPosition으로 되돌리면 OS 입력과 충돌해 떨린다. 그래서 입력 처리 파이프라인
+// 안에서 RECT/좌표를 미리 보정한다 → OS가 보정된 값으로만 그리므로 실시간이고 떨림이 없다.
+#[cfg(target_os = "windows")]
+mod win_behavior {
+    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SET_WINDOW_POS_FLAGS, SWP_NOMOVE, WINDOWPOS, WMSZ_BOTTOM, WMSZ_TOP, WMSZ_TOPLEFT,
+        WMSZ_TOPRIGHT, WM_SIZING, WM_WINDOWPOSCHANGING,
+    };
+
+    const SNAP: i32 = 24; // 가장자리 흡착 임계값(물리 px)
+    const RATIO_W: i32 = 300; // 기준 가로
+    const RATIO_H: i32 = 150; // 기준 세로 (2:1, tauri.conf.json 기본 창 비율)
+
+    unsafe extern "system" fn subclass_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+        _id: usize,
+        _data: usize,
+    ) -> LRESULT {
+        match msg {
+            // 리사이즈 중 RECT를 2:1 비율로 강제 → 사용자는 비율 고정으로만 크기 조정 가능
+            WM_SIZING => {
+                let rect = &mut *(lparam.0 as *mut RECT);
+                let edge = wparam.0 as u32;
+                let w = rect.right - rect.left;
+                let h = rect.bottom - rect.top;
+                if edge == WMSZ_TOP || edge == WMSZ_BOTTOM {
+                    // 위/아래 변만 끌 때: 높이 기준으로 너비를 오른쪽으로 조정
+                    rect.right = rect.left + h * RATIO_W / RATIO_H;
+                } else {
+                    // 좌/우 변 또는 모서리: 너비 기준으로 높이 조정
+                    let new_h = w * RATIO_H / RATIO_W;
+                    if edge == WMSZ_TOPLEFT || edge == WMSZ_TOPRIGHT {
+                        rect.top = rect.bottom - new_h; // 위쪽 모서리는 top을 이동
+                    } else {
+                        rect.bottom = rect.top + new_h; // 그 외엔 bottom을 이동
+                    }
+                }
+                LRESULT(1) // TRUE: 우리가 RECT를 확정
+            }
+            // 이동 중 좌표를 모니터 작업영역 가장자리에 흡착(실시간 마그넷)
+            WM_WINDOWPOSCHANGING => {
+                let wp = &mut *(lparam.0 as *mut WINDOWPOS);
+                if wp.flags & SWP_NOMOVE == SET_WINDOW_POS_FLAGS(0) {
+                    let mut mi = MONITORINFO {
+                        cbSize: core::mem::size_of::<MONITORINFO>() as u32,
+                        ..Default::default()
+                    };
+                    let hmon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                    if GetMonitorInfoW(hmon, &mut mi).as_bool() {
+                        let work = mi.rcWork;
+                        if (wp.x - work.left).abs() <= SNAP {
+                            wp.x = work.left;
+                        } else if ((wp.x + wp.cx) - work.right).abs() <= SNAP {
+                            wp.x = work.right - wp.cx;
+                        }
+                        if (wp.y - work.top).abs() <= SNAP {
+                            wp.y = work.top;
+                        } else if ((wp.y + wp.cy) - work.bottom).abs() <= SNAP {
+                            wp.y = work.bottom - wp.cy;
+                        }
+                    }
+                }
+                DefSubclassProc(hwnd, msg, wparam, lparam)
+            }
+            _ => DefSubclassProc(hwnd, msg, wparam, lparam),
+        }
+    }
+
+    // main 창 HWND에 서브클래스 설치(앱 수명 동안 유지).
+    pub fn install(hwnd_raw: isize) {
+        unsafe {
+            let _ = SetWindowSubclass(HWND(hwnd_raw as *mut _), Some(subclass_proc), 1, 0);
+        }
+    }
 }
