@@ -7,6 +7,7 @@ import { listen } from '@tauri-apps/api/event'
 import { isLoggedIn, login } from './auth.js'
 import { getSessions, postSessionAction, getTodayLoggedMinutes } from './api.js'
 import { load } from '@tauri-apps/plugin-store'
+import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart'
 
 const appWindow = getCurrentWindow()
 let alwaysOnTop = true
@@ -57,6 +58,12 @@ function pausedSessions() {
 }
 const NO_ISSUE_KEY = '__NO_ISSUE__'
 
+// 헤더 버튼 flat 아이콘(line, currentColor 단색)
+const ICONS = {
+  gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  pin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="16" x2="12" y2="22"/><path d="M5 16h14l-1.6-3.2a2 2 0 0 1-.2-.9V5a1 1 0 0 0-1-1H8.8a1 1 0 0 0-1 1v6.9a2 2 0 0 1-.2.9z"/></svg>`,
+}
+
 // ===== 렌더 =====
 function escapeHtml(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -69,8 +76,8 @@ function render() {
       <div class="widget-header" data-tauri-drag-region>
         <span class="widget-title" data-tauri-drag-region>DK 워크로그</span>
         <div class="widget-win-buttons">
-          <button class="win-btn" id="btn-opacity" title="투명도">◐</button>
-          <button class="win-btn" id="btn-pin" title="항상 위 고정">${alwaysOnTop ? '📌' : '📍'}</button>
+          <button class="win-btn" id="btn-settings" title="설정">${ICONS.gear}</button>
+          <button class="win-btn ${alwaysOnTop ? 'active' : ''}" id="btn-pin" title="항상 위 고정">${ICONS.pin}</button>
           <button class="win-btn" id="btn-hide" title="숨기기">▁</button>
           <button class="win-btn" id="btn-close" title="닫기">✕</button>
         </div>
@@ -153,7 +160,7 @@ function renderBody() {
 
 // ===== 이벤트 =====
 function bindCommon() {
-  document.getElementById('btn-opacity')?.addEventListener('click', toggleOpacityPanel)
+  document.getElementById('btn-settings')?.addEventListener('click', toggleSettingsPanel)
   document.getElementById('btn-pin')?.addEventListener('click', async () => {
     alwaysOnTop = !alwaysOnTop
     try { await appWindow.setAlwaysOnTop(alwaysOnTop) } catch (e) { console.error(e) }
@@ -182,20 +189,35 @@ async function saveOpacity(v) {
   try { const s = await settingsStore(); await s.set('opacity', v); await s.save() } catch (e) { console.error(e) }
 }
 
-// 슬라이더 패널은 render() 밖의 독립 DOM — 폴링 재렌더가 드래그를 끊지 않도록 한다.
-let opacityPanel = null
-function toggleOpacityPanel() {
-  if (opacityPanel) { opacityPanel.remove(); opacityPanel = null; return }
+// 설정 패널(투명도 + 자동시작)은 render() 밖의 독립 DOM — 폴링 재렌더가 드래그를 끊지 않도록 한다.
+let settingsPanel = null
+function toggleSettingsPanel() {
+  if (settingsPanel) { settingsPanel.remove(); settingsPanel = null; return }
   const panel = document.createElement('div')
-  panel.className = 'opacity-panel'
+  panel.className = 'settings-panel'
   panel.innerHTML = `
-    <span class="op-label">투명도</span>
-    <input type="range" id="op-range" min="0.3" max="1" step="0.01" value="${opacity}">`
+    <div class="set-row">
+      <span class="set-label">투명도</span>
+      <input type="range" id="op-range" min="0.3" max="1" step="0.01" value="${opacity}">
+    </div>
+    <label class="set-row set-toggle">
+      <input type="checkbox" id="autostart-chk">
+      <span class="set-label">시작 시 자동 실행</span>
+    </label>`
   document.body.appendChild(panel)
+  // 투명도 슬라이더
   const range = panel.querySelector('#op-range')
   range.addEventListener('input', () => { opacity = parseFloat(range.value); applyOpacity(opacity) })
   range.addEventListener('change', () => saveOpacity(opacity))
-  opacityPanel = panel
+  // 자동시작 토글 — 현재 등록 상태 조회 후 반영, 변경 시 enable/disable
+  const chk = panel.querySelector('#autostart-chk')
+  isAutostartEnabled().then(on => { chk.checked = on }).catch(e => console.error(e))
+  chk.addEventListener('change', async () => {
+    const want = chk.checked
+    try { want ? await enableAutostart() : await disableAutostart() }
+    catch (e) { console.error(e); chk.checked = !want }   // 실패 시 체크 상태 되돌림
+  })
+  settingsPanel = panel
 }
 
 function bindBody() {

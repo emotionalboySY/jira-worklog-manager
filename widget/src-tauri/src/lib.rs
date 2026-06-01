@@ -52,6 +52,11 @@ pub fn run() {
                 .skip_initial_state("finish")
                 .build(),
         )
+        // Windows 로그인 시 자동 실행(레지스트리 Run 키). 토글은 JS API로 on/off.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .invoke_handler(tauri::generate_handler![start_oauth_listener])
         .setup(|app| {
             let show_i = MenuItem::with_id(app, "show", "위젯 보이기", true, None::<&str>)?;

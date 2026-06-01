@@ -10,6 +10,9 @@
     "opener:default",
     "opener:allow-open-url",
     "store:default",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled",
     {
       "identifier": "http:default",
       "allow": [
