@@ -662,7 +662,8 @@ export function installDelegatedHandlers() {
     btn.disabled = true
     btn.textContent = '불러오는 중...'
     try {
-      await ensureMonthWorklogsLoaded(startDate.getFullYear(), startDate.getMonth())
+      // force: 위젯 등에서 방금 추가한 worklog까지 반영하도록 캐시 무시 재조회
+      await ensureMonthWorklogsLoaded(startDate.getFullYear(), startDate.getMonth(), { force: true })
     } catch (err) {
       console.error('작업 로그 로드 실패:', err)
       showToast('작업 로그를 불러오지 못했습니다.', '⚠')

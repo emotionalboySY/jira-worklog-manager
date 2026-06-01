@@ -143,15 +143,19 @@ export async function loadWorklogs(year, month) {
 // 1) 메모리에 이미 있으면 그대로 사용
 // 2) localStorage 캐시에 있으면 즉시 병합 후 반환 (네트워크 호출 X)
 // 3) 그 외에만 API 호출
-export async function ensureMonthWorklogsLoaded(year, month) {
+// force=true면 1)·2) 캐시를 무시하고 항상 Jira에서 재조회한다(위젯 등 외부에서
+// 추가된 최신 worklog를 반영해야 하는 경우 — 예: '직전 종료 시간으로').
+export async function ensureMonthWorklogsLoaded(year, month, { force = false } = {}) {
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
-  if (state.worklogsLoadedMonths.has(monthKey)) return
+  if (!force && state.worklogsLoadedMonths.has(monthKey)) return
 
-  const cached = getCachedMonth(monthKey)
-  if (cached) {
-    mergeLogs(cached)
-    state.worklogsLoadedMonths.add(monthKey)
-    return
+  if (!force) {
+    const cached = getCachedMonth(monthKey)
+    if (cached) {
+      mergeLogs(cached)
+      state.worklogsLoadedMonths.add(monthKey)
+      return
+    }
   }
 
   const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`

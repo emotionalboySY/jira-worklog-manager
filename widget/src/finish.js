@@ -92,4 +92,12 @@ async function boot() {
   }
 }
 
+// Ctrl+Enter(또는 Cmd+Enter)로 제출 — 폼이 떠 있고 처리 중이 아닐 때만
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && session && !busy) {
+    e.preventDefault()
+    submit()
+  }
+})
+
 boot()
