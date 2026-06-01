@@ -46,6 +46,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        // 창 위치/크기 자동 저장·복원(main만, 종료 다이얼로그는 중앙 유지 위해 제외)
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .skip_initial_state("finish")
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![start_oauth_listener])
         .setup(|app| {
             let show_i = MenuItem::with_id(app, "show", "위젯 보이기", true, None::<&str>)?;
