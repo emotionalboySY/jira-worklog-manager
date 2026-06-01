@@ -5,7 +5,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { listen } from '@tauri-apps/api/event'
 import { isLoggedIn, login } from './auth.js'
-import { getSessions, postSessionAction, getTodayLoggedMinutes } from './api.js'
+import { getSessions, postSessionAction, getLatestWorklogEnd } from './api.js'
 import { load } from '@tauri-apps/plugin-store'
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart'
 
@@ -16,7 +16,6 @@ let opacity = 0.96   // 위젯 불투명도(styles.css --widget-opacity 기본�
 const state = {
   phase: 'loading',     // 'loading' | 'login' | 'ready' | 'error'
   error: null,
-  todayMinutes: 0,
   sessions: [],
   rev: 0,
   busy: false,          // 컨트롤 동작 중
@@ -25,7 +24,6 @@ const state = {
 
 let pollTimer = null
 let tickTimer = null
-let todayTimer = null
 
 // ===== 시간 헬퍼 (백엔드가 권위, 여기선 표시용 계산만) =====
 function elapsedMs(session, nowMs) {
@@ -49,6 +47,11 @@ function fmtClock(ms) {
   const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0')
   const ss = String(s % 60).padStart(2, '0')
   return `${hh}:${mm}:${ss}`
+}
+// 시각(ms 또는 ISO) → "HH:MM"
+function fmtTime(t) {
+  const d = new Date(t)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 function activeSession() {
   return state.sessions.find(s => s.status === 'active') || null
@@ -109,11 +112,11 @@ function renderBody() {
   // ready
   const act = activeSession()
   const paused = pausedSessions()
-  const todayLabel = fmtMinutes(state.todayMinutes + (act ? Math.floor(elapsedMs(act, Date.now()) / 60000) : 0))
 
   let sessionHtml
   if (act) {
     const isNoIssue = act.issueKey === NO_ISSUE_KEY
+    const startMs = Date.parse(act.segments[0].start)
     sessionHtml = `
       <div class="session active">
         <div class="session-issue">
@@ -122,16 +125,21 @@ function renderBody() {
           <span class="issue-summary">${escapeHtml(act.summary)}</span>
         </div>
         <div class="session-row">
-          <span class="clock" id="clock" data-key="${escapeHtml(act.issueKey)}">${fmtClock(elapsedMs(act, Date.now()))}</span>
+          <div class="time-col">
+            <span class="start-time">시작 ${fmtTime(startMs)}</span>
+            <span class="clock" id="clock" data-key="${escapeHtml(act.issueKey)}">${fmtClock(elapsedMs(act, Date.now()))}</span>
+          </div>
           <div class="ctrls">
             <button class="btn-sm" data-act="pause" data-key="${escapeHtml(act.issueKey)}" ${state.busy ? 'disabled' : ''}>중단</button>
             <button class="btn-sm btn-finish" data-act="finish" data-key="${escapeHtml(act.issueKey)}" ${state.busy ? 'disabled' : ''}>종료</button>
           </div>
         </div>
+        ${isNoIssue ? '' : `<div class="session-actions"><button class="btn-link" data-act="adjustStart" data-key="${escapeHtml(act.issueKey)}" ${state.busy ? 'disabled' : ''}>직전 종료 시간으로</button></div>`}
       </div>`
   } else if (paused.length) {
     const p = paused[0]
     const isNoIssue = p.issueKey === NO_ISSUE_KEY
+    const startMs = Date.parse(p.segments[0].start)
     sessionHtml = `
       <div class="session paused">
         <div class="session-issue">
@@ -140,19 +148,22 @@ function renderBody() {
           <span class="issue-summary">${escapeHtml(p.summary)}</span>
         </div>
         <div class="session-row">
-          <span class="clock paused-clock">${fmtClock(elapsedMs(p, Date.now()))} · 중단됨</span>
+          <div class="time-col">
+            <span class="start-time">시작 ${fmtTime(startMs)}</span>
+            <span class="clock paused-clock">${fmtClock(elapsedMs(p, Date.now()))} · 중단됨</span>
+          </div>
           <div class="ctrls">
             <button class="btn-sm" data-act="resume" data-key="${escapeHtml(p.issueKey)}" ${state.busy ? 'disabled' : ''}>재개</button>
             <button class="btn-sm btn-finish" data-act="finish" data-key="${escapeHtml(p.issueKey)}" ${state.busy ? 'disabled' : ''}>종료</button>
           </div>
         </div>
+        ${isNoIssue ? '' : `<div class="session-actions"><button class="btn-link" data-act="adjustStart" data-key="${escapeHtml(p.issueKey)}" ${state.busy ? 'disabled' : ''}>직전 종료 시간으로</button></div>`}
       </div>`
   } else {
     sessionHtml = `<div class="placeholder">진행 중인 작업이 없습니다.<br/><span class="dim">웹앱에서 작업을 시작하세요.</span></div>`
   }
 
   return `
-    <div class="today"><span class="today-label">오늘</span><span class="today-val">${todayLabel}</span></div>
     ${sessionHtml}
     ${state.notice ? `<div class="notice">${escapeHtml(state.notice)}</div>` : ''}
   `
@@ -246,6 +257,7 @@ async function doAction(action, key) {
     openFinishDialog(key)
     return
   }
+  if (action === 'adjustStart') { handleAdjustStart(key); return }
   state.busy = true; render()
   try {
     const { status, data } = await postSessionAction(action, { issueKey: key, nowMs: Date.now() })
@@ -259,6 +271,33 @@ async function doAction(action, key) {
     state.busy = false
     render()
   }
+}
+
+// '직전 종료 시간으로' — 그 날 마지막 worklog 종료 시각으로 세션 시작 시각을 조정
+async function handleAdjustStart(key) {
+  if (state.busy || key === NO_ISSUE_KEY) return
+  const s = state.sessions.find(x => x.issueKey === key)
+  if (!s || !s.segments.length) return
+  state.busy = true; render()
+  let msg = ''
+  try {
+    const startDate = new Date(s.segments[0].start)
+    const latestEnd = await getLatestWorklogEnd(startDate)
+    if (!latestEnd) msg = '해당 날짜에 기록된 작업 로그가 없습니다.'
+    else if (latestEnd.getTime() >= startDate.getTime()) msg = '직전 종료 시간이 현재 시작보다 늦어 조정할 수 없습니다.'
+    else {
+      const { status, data } = await postSessionAction('adjustStart', { issueKey: key, newStartMs: latestEnd.getTime() })
+      if ((status === 200 || status === 409) && data) { state.sessions = data.sessions || []; state.rev = data.rev || state.rev }
+      msg = `시작 시간을 ${fmtTime(latestEnd)}(으)로 조정했습니다.`
+    }
+  } catch (e) {
+    console.error('직전 종료 시간 조정 실패:', e)
+    msg = '조정에 실패했습니다.'
+  } finally {
+    state.busy = false
+    render()
+  }
+  if (msg) showNotice(msg)
 }
 
 // 종료 다이얼로그(별도 작은 창) 열기. 이미 떠 있으면 포커스만.
@@ -291,14 +330,9 @@ function showNotice(msg) {
 
 // ===== 데이터 로드 / 폴링 / 틱 =====
 async function loadAll() {
-  const [sess, today] = await Promise.allSettled([getSessions(), getTodayLoggedMinutes()])
-  if (sess.status === 'fulfilled') {
-    state.sessions = sess.value.sessions || []
-    state.rev = sess.value.rev || 0
-  } else {
-    throw sess.reason
-  }
-  if (today.status === 'fulfilled') state.todayMinutes = today.value
+  const data = await getSessions()
+  state.sessions = data.sessions || []
+  state.rev = data.rev || 0
   state.phase = 'ready'
   state.error = null
   render()
@@ -324,14 +358,9 @@ function startPolling() {
     pollTimer = setTimeout(tick, pollDelay())
   }
   pollTimer = setTimeout(tick, pollDelay())
-  // 오늘 합계는 1분마다 갱신(종료 시점 외엔 거의 안 변함)
-  todayTimer = setInterval(async () => {
-    try { state.todayMinutes = await getTodayLoggedMinutes() } catch {}
-  }, 60000)
 }
 function stopPolling() {
   if (pollTimer) { clearTimeout(pollTimer); pollTimer = null }
-  if (todayTimer) { clearInterval(todayTimer); todayTimer = null }
 }
 
 // 활성 세션의 경과시계만 1초마다 갱신(네트워크 없음)

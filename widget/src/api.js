@@ -166,6 +166,37 @@ async function createWorklog(token, cloudId, issueKey, { started, seconds, comme
   }
 }
 
+// 특정 날짜(로컬) 내 worklog 중 가장 늦은 종료 시각(Date) 반환. 없으면 null.
+// '직전 종료 시간으로' 기능용 — 세션 시작일 기준 마지막 worklog 종료 시각.
+export async function getLatestWorklogEnd(date) {
+  const token = await ensureAccessToken()
+  if (!token) return null
+  const cloudId = await getCloudId(token)
+  if (!cloudId) return null
+  const myAccountId = await getMyAccountId(token, cloudId)
+  if (!myAccountId) return null
+  const dateStr = ymd(date)
+  const jql = `worklogAuthor = currentUser() AND worklogDate = "${dateStr}"`
+  const url = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=worklog&maxResults=100`
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } })
+  if (!res.ok) return null
+  const data = await res.json().catch(() => null)
+  const issues = data?.issues || []
+  const dayStart = new Date(dateStr + 'T00:00:00')
+  const dayEnd = new Date(dateStr + 'T23:59:59.999')
+  let latest = null
+  for (const issue of issues) {
+    for (const w of issue.fields?.worklog?.worklogs || []) {
+      if (w.author?.accountId !== myAccountId) continue
+      const s = new Date(w.started)
+      if (s < dayStart || s > dayEnd) continue
+      const e = new Date(s.getTime() + (w.timeSpentSeconds || 0) * 1000)
+      if (!latest || e > latest) latest = e
+    }
+  }
+  return latest
+}
+
 // 세션 종료: 구간별 worklog 생성(점심 제외). 성공 건수 반환. (세션 제거는 호출부가 remove로 처리)
 export async function finishSession(session, comment) {
   const token = await ensureAccessToken()
