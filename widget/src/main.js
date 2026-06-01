@@ -8,6 +8,8 @@ import { isLoggedIn, login } from './auth.js'
 import { getSessions, postSessionAction, getLatestWorklogEnd } from './api.js'
 import { load } from '@tauri-apps/plugin-store'
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart'
+import { check as checkUpdate } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/plugin-process'
 
 const appWindow = getCurrentWindow()
 let alwaysOnTop = true
@@ -214,7 +216,11 @@ function toggleSettingsPanel() {
     <label class="set-row set-toggle">
       <input type="checkbox" id="autostart-chk">
       <span class="set-label">시작 시 자동 실행</span>
-    </label>`
+    </label>
+    <div class="set-row set-update">
+      <button class="set-update-btn" id="btn-check-update">업데이트 확인</button>
+      <span class="set-update-status dim" id="update-status"></span>
+    </div>`
   document.body.appendChild(panel)
   // 투명도 슬라이더
   const range = panel.querySelector('#op-range')
@@ -228,7 +234,69 @@ function toggleSettingsPanel() {
     try { want ? await enableAutostart() : await disableAutostart() }
     catch (e) { console.error(e); chk.checked = !want }   // 실패 시 체크 상태 되돌림
   })
+  // 업데이트 확인
+  const upBtn = panel.querySelector('#btn-check-update')
+  const upStatus = panel.querySelector('#update-status')
+  upBtn.addEventListener('click', () => checkForUpdate(upBtn, upStatus))
   settingsPanel = panel
+}
+
+// ===== 자동 업데이트 =====
+async function checkForUpdate(btn, statusEl) {
+  btn.disabled = true
+  statusEl.textContent = '확인 중…'
+  try {
+    const update = await checkUpdate()
+    if (update) {
+      statusEl.textContent = ''
+      showUpdateModal(update)
+    } else {
+      statusEl.textContent = '최신 버전입니다'
+    }
+  } catch (e) {
+    console.error('업데이트 확인 실패:', e)
+    statusEl.textContent = '확인 실패'
+  } finally {
+    btn.disabled = false
+  }
+}
+
+// 업데이트 설치 확인 모달(위젯 본체 위 오버레이)
+function showUpdateModal(update) {
+  if (settingsPanel) { settingsPanel.remove(); settingsPanel = null }
+  const overlay = document.createElement('div')
+  overlay.className = 'update-overlay'
+  overlay.innerHTML = `
+    <div class="update-modal">
+      <div class="update-title">업데이트가 있습니다</div>
+      <div class="update-ver">v${escapeHtml(update.version)}${update.currentVersion ? ` <span class="dim">(현재 v${escapeHtml(update.currentVersion)})</span>` : ''}</div>
+      <div class="update-progress dim" id="update-progress"></div>
+      <div class="update-actions">
+        <button class="btn-sm" id="update-later">나중에</button>
+        <button class="btn-sm btn-primary" id="update-now">설치</button>
+      </div>
+    </div>`
+  document.body.appendChild(overlay)
+  overlay.querySelector('#update-later').onclick = () => overlay.remove()
+  overlay.querySelector('#update-now').onclick = async () => {
+    const now = overlay.querySelector('#update-now')
+    const later = overlay.querySelector('#update-later')
+    const prog = overlay.querySelector('#update-progress')
+    now.disabled = true; later.disabled = true; now.textContent = '설치 중…'
+    try {
+      let downloaded = 0, total = 0
+      await update.downloadAndInstall((e) => {
+        if (e.event === 'Started') { total = (e.data && e.data.contentLength) || 0; prog.textContent = '다운로드 중…' }
+        else if (e.event === 'Progress') { downloaded += (e.data && e.data.chunkLength) || 0; prog.textContent = total ? `다운로드 ${Math.round(downloaded / total * 100)}%` : '다운로드 중…' }
+        else if (e.event === 'Finished') { prog.textContent = '설치 후 재시작합니다…' }
+      })
+      await relaunch()
+    } catch (err) {
+      console.error('업데이트 설치 실패:', err)
+      prog.textContent = '설치 실패'
+      now.disabled = false; later.disabled = false; now.textContent = '설치'
+    }
+  }
 }
 
 function bindBody() {
