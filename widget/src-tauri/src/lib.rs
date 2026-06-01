@@ -1,4 +1,4 @@
-// DK 워크로그 위젯 — Rust 엔트리.
+// Jira 업무 기록 위젯 — Rust 엔트리.
 // - 시스템 트레이(보이기/숨기기/종료)
 // - 로컬 루프백 OAuth 콜백 서버(데스크톱 3LO 로그인)
 // - http / store 플러그인(외부 API 호출 CORS 우회 + 토큰 영속)
@@ -76,7 +76,7 @@ pub fn run() {
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("DK 워크로그 위젯")
+                .tooltip("Jira 업무 기록 위젯")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {

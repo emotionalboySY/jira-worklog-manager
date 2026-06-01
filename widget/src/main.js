@@ -1,4 +1,4 @@
-// DK 워크로그 위젯 — 엔트리.
+// Jira 업무 기록 위젯 — 엔트리.
 // 로그인(데스크톱 OAuth) → 오늘 합계 + 진행 중 세션 표시(경과시계 1초 틱) → 폴링 동기 + 중단/재개.
 // 새 일감 시작/전환은 웹앱에서, 종료(코멘트 입력)는 다음 단계에서 추가.
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -74,7 +74,7 @@ function render() {
   app.innerHTML = `
     <div class="widget">
       <div class="widget-header" data-tauri-drag-region>
-        <span class="widget-title" data-tauri-drag-region>DK 워크로그</span>
+        <span class="widget-title" data-tauri-drag-region>Jira 업무 기록</span>
         <div class="widget-win-buttons">
           <button class="win-btn" id="btn-settings" title="설정">${ICONS.gear}</button>
           <button class="win-btn ${alwaysOnTop ? 'active' : ''}" id="btn-pin" title="항상 위 고정">${ICONS.pin}</button>
