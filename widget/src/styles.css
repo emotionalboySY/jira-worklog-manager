@@ -1,8 +1,11 @@
 /* Jira 업무 기록 위젯 스타일 — 프레임리스/투명 창에 떠 있는 작은 카드 */
+/* Pretendard 폰트 번들 (npm 패키지, Vite가 woff2를 빌드에 포함) */
+@import 'pretendard/dist/web/variable/pretendardvariable.css';
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  font-family: 'Segoe UI', Inter, system-ui, sans-serif;
+  font-family: 'Pretendard Variable', Pretendard, 'Segoe UI', system-ui, sans-serif;
   /* 위젯 컨테이너 불투명도 — 추후 슬라이더로 --widget-opacity 변경 */
   --widget-opacity: 0.96;
   --bg: 23, 25, 33;          /* rgb 채널 (alpha는 --widget-opacity로) */
@@ -235,7 +238,7 @@ html, body {
 .dlg {
   display: flex; flex-direction: column; gap: 8px;
   padding: 14px 16px; color: var(--fg);
-  font-family: 'Segoe UI', Inter, system-ui, sans-serif;
+  font-family: 'Pretendard Variable', Pretendard, 'Segoe UI', system-ui, sans-serif;
 }
 .dlg-title { font-size: 14px; }
 .dlg-title b { color: var(--accent); }
