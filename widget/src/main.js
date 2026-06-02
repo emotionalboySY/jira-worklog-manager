@@ -136,7 +136,7 @@ function renderBody() {
             <button class="btn-sm btn-finish" data-act="finish" data-key="${escapeHtml(act.issueKey)}" ${state.busy ? 'disabled' : ''}>종료</button>
           </div>
         </div>
-        ${isNoIssue ? '' : `<div class="session-actions"><button class="btn-link" data-act="swap" data-key="${escapeHtml(act.issueKey)}" ${state.busy ? 'disabled' : ''}>일감 교체</button><button class="btn-link" data-act="adjustStart" data-key="${escapeHtml(act.issueKey)}" ${state.busy ? 'disabled' : ''}>직전 종료 시간으로</button></div>`}
+        <div class="session-actions"><button class="btn-link" data-act="swap" data-key="${escapeHtml(act.issueKey)}" ${state.busy ? 'disabled' : ''}>${isNoIssue ? '일감 지정' : '일감 교체'}</button><button class="btn-link" data-act="adjustStart" data-key="${escapeHtml(act.issueKey)}" ${state.busy ? 'disabled' : ''}>직전 종료 시간으로</button></div>
       </div>`
   } else if (paused.length) {
     const p = paused[0]
@@ -159,7 +159,7 @@ function renderBody() {
             <button class="btn-sm btn-finish" data-act="finish" data-key="${escapeHtml(p.issueKey)}" ${state.busy ? 'disabled' : ''}>종료</button>
           </div>
         </div>
-        ${isNoIssue ? '' : `<div class="session-actions"><button class="btn-link" data-act="swap" data-key="${escapeHtml(p.issueKey)}" ${state.busy ? 'disabled' : ''}>일감 교체</button><button class="btn-link" data-act="adjustStart" data-key="${escapeHtml(p.issueKey)}" ${state.busy ? 'disabled' : ''}>직전 종료 시간으로</button></div>`}
+        <div class="session-actions"><button class="btn-link" data-act="swap" data-key="${escapeHtml(p.issueKey)}" ${state.busy ? 'disabled' : ''}>${isNoIssue ? '일감 지정' : '일감 교체'}</button><button class="btn-link" data-act="adjustStart" data-key="${escapeHtml(p.issueKey)}" ${state.busy ? 'disabled' : ''}>직전 종료 시간으로</button></div>
       </div>`
   } else {
     sessionHtml = `<div class="placeholder">진행 중인 작업이 없습니다.<br/><span class="dim">웹앱에서 작업을 시작하세요.</span></div>`
@@ -273,6 +273,19 @@ async function checkForUpdate(btn) {
   }
 }
 
+// 시작 시 1회 자동 업데이트 확인 — 있으면 설치 모달, 없거나 실패면 조용히 무시(버튼 UI 없음).
+let autoUpdateChecked = false
+async function autoCheckUpdateOnce() {
+  if (autoUpdateChecked) return   // boot 재호출(재시도 등)에도 1회만
+  autoUpdateChecked = true
+  try {
+    const update = await checkUpdate()
+    if (update) showUpdateModal(update)
+  } catch (e) {
+    console.error('시작 시 자동 업데이트 확인 실패:', e)
+  }
+}
+
 // 업데이트 설치 확인 모달(위젯 본체 위 오버레이)
 function showUpdateModal(update) {
   if (settingsPanel) { settingsPanel.remove(); settingsPanel = null }
@@ -339,8 +352,7 @@ async function doAction(action, key) {
   }
   if (action === 'adjustStart') { handleAdjustStart(key); return }
   if (action === 'swap') {
-    if (key === NO_ISSUE_KEY) { showNotice('일감 미지정 세션은 웹앱에서 변경해주세요.'); return }
-    openSwapDialog(key)
+    openSwapDialog(key)   // 미지정 세션이면 swap.html이 '일감 지정' 모드로 동작
     return
   }
   state.busy = true; render()
@@ -360,7 +372,7 @@ async function doAction(action, key) {
 
 // '직전 종료 시간으로' — 그 날 마지막 worklog 종료 시각으로 세션 시작 시각을 조정
 async function handleAdjustStart(key) {
-  if (state.busy || key === NO_ISSUE_KEY) return
+  if (state.busy) return
   const s = state.sessions.find(x => x.issueKey === key)
   if (!s || !s.segments.length) return
   state.busy = true; render()
@@ -413,7 +425,7 @@ async function openSwapDialog(key) {
   } catch {}
   const w = new WebviewWindow('swap', {
     url: `swap.html?key=${encodeURIComponent(key)}`,
-    title: '일감 교체',
+    title: key === NO_ISSUE_KEY ? '일감 지정' : '일감 교체',
     width: 440,
     height: 480,
     minWidth: 380,
@@ -513,4 +525,5 @@ listen('sessions-changed', () => { loadAll().catch(() => {}) })
 
 // 마그넷 스냅 + 비율 고정 리사이즈는 Rust(Windows 창 메시지 후킹)에서 실시간 처리
 
-boot()
+// 부트 후 시작 시 1회 자동 업데이트 확인(로그인 상태와 무관, 네트워크 비동기)
+boot().then(autoCheckUpdateOnce)

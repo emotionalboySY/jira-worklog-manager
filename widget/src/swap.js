@@ -8,6 +8,7 @@ import { getSessions, postSessionAction, fetchMyIssues } from './api.js'
 const win = getCurrentWindow()
 const oldKey = new URLSearchParams(location.search).get('key')
 const NO_ISSUE_KEY = '__NO_ISSUE__'
+const isAssign = oldKey === NO_ISSUE_KEY   // 미지정 세션에 일감을 '지정'하는 모드(교체 대상 없음)
 
 let issues = []
 let oldSummary = ''
@@ -54,8 +55,8 @@ function renderMessage(msg, isError) {
 function renderList() {
   app().innerHTML = `
     <div class="dlg swap-dlg">
-      <div class="dlg-title">일감 교체</div>
-      <div class="dlg-sub">현재 <b>${esc(oldKey)}</b>${oldSummary ? ' · ' + esc(oldSummary) : ''}</div>
+      <div class="dlg-title">${isAssign ? '일감 지정' : '일감 교체'}</div>
+      <div class="dlg-sub">${isAssign ? '현재 <b>(일감 미지정)</b>' : `현재 <b>${esc(oldKey)}</b>${oldSummary ? ' · ' + esc(oldSummary) : ''}`}</div>
       <input id="swap-search" class="swap-search" placeholder="키 또는 요약 검색" autocomplete="off" />
       <div class="swap-list" id="swap-list">${listHtml(issues)}</div>
       <div id="swap-err" class="err"></div>
@@ -124,7 +125,6 @@ async function submit(newKey, newSummary) {
 
 async function boot() {
   if (!oldKey) { renderMessage('대상 세션이 없습니다.', true); return }
-  if (oldKey === NO_ISSUE_KEY) { renderMessage('일감 미지정 세션은 웹앱에서 변경해주세요.', true); return }
   renderMessage('이슈 목록을 불러오는 중…', false)
   try {
     const [sessData, list] = await Promise.all([getSessions().catch(() => null), fetchMyIssues()])
