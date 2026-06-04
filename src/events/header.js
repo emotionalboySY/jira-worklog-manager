@@ -13,6 +13,7 @@ import {
 import { render, resetIssueListScroll } from '../render.js'
 import { openCreateIssueModal } from './create.js'
 import { stopSessionPolling } from '../sessionSync.js'
+import { clearTransitionCatalog } from '../transitionCatalog.js'
 import { on } from './_dom.js'
 
 // 검색 발화 — Enter 또는 검색 버튼 클릭 시에만 호출. 비어 있으면 검색 모드 종료.
@@ -48,6 +49,7 @@ export function bindHeaderEvents() {
       // 세션 백엔드 폴링 중단 + 직전 사용자의 in-memory 데이터(이슈/워크로그/캐시) 정리
       try { stopSessionPolling() } catch {}
       try { resetInMemoryUserData() } catch {}
+      try { clearTransitionCatalog() } catch {}
       render()
     })
   }

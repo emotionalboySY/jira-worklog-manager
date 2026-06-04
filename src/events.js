@@ -34,6 +34,10 @@ import {
 import { showToast, showContextMenu } from './ui.js'
 import { loadWorklogs, ensureMonthWorklogsLoaded } from './actions.js'
 import { render, resetIssueListScroll } from './render.js'
+import {
+  getCatalogTransitionsForIssue,
+  recordTransitionsForIssue,
+} from './transitionCatalog.js'
 
 import { on } from './events/_dom.js'
 import {
@@ -557,7 +561,12 @@ export function installDelegatedHandlers() {
       return
     }
     const rect = btn.getBoundingClientRect()
-    const cached = getCachedTransitions(key)
+    // 1) 세션 메모리(issueKey) 캐시 → 2) 영속 카탈로그(project|type|status) 순으로 즉시 표시.
+    //    둘 중 하나라도 신선하면 백그라운드 재조회를 생략해 매번 API를 치지 않는다.
+    const memCached = getCachedTransitions(key)
+    const catalogHit = memCached ? null : getCatalogTransitionsForIssue(key)
+    const cached = memCached || catalogHit?.transitions || null
+    const isFresh = !!memCached || !!(catalogHit && catalogHit.fresh)
     state.statusDropdown = {
       issueKey: key,
       currentStatus: btn.dataset.currentStatus || '',
@@ -566,9 +575,12 @@ export function installDelegatedHandlers() {
       loading: !cached,
     }
     render({ sections: ['modals'] })
+    // 신선한 캐시로 이미 표시 중이면 추가 API 호출 없이 종료
+    if (isFresh) return
     try {
       const transitions = await fetchTransitions(key)
       setCachedTransitions(key, transitions)
+      recordTransitionsForIssue(key, transitions)
       if (state.statusDropdown && state.statusDropdown.issueKey === key) {
         state.statusDropdown.transitions = transitions
         state.statusDropdown.loading = false

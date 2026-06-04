@@ -7,10 +7,13 @@ import {
   updateIssueType,
   transitionIssue,
   fetchIssueStatus,
+  fetchTransitions,
   invalidateTransitionsCache,
+  setCachedTransitions,
   getCachedAssignableUsers,
   setCachedAssignableUsers,
 } from '../jira.js'
+import { recordTransitionsForIssue } from '../transitionCatalog.js'
 import { saveIssuesCache, removeFavorite } from '../storage.js'
 import { showToast } from '../ui.js'
 import { formatJiraError } from '../utils.js'
@@ -145,7 +148,23 @@ export async function performTransition(issueKey, transition, fields) {
     showToast(`${issueKey} → ${transition.to?.name || transition.name}`, '✓')
   } catch (e) {
     console.error('상태 전이 실패:', e)
-    showToast(`상태 변경 실패: ${formatJiraError(e)}`, '⚠')
+    // 캐시된 전이가 이미 무효였을 수 있다. 현재 상태에서 전이 가능한 목록을 즉시
+    // 재조회해 캐시(메모리 + 영속 카탈로그)를 갱신하고, 사용자에게 재시도를 안내한다.
+    let refreshed = false
+    try {
+      invalidateTransitionsCache(issueKey)
+      const fresh = await fetchTransitions(issueKey)
+      setCachedTransitions(issueKey, fresh)
+      recordTransitionsForIssue(issueKey, fresh)
+      refreshed = true
+    } catch (re) {
+      console.error('전이 목록 재조회 실패:', re)
+    }
+    if (refreshed) {
+      showToast('상태 변경에 실패해 전이 가능한 상태를 다시 불러왔습니다. 다시 시도해주세요.', '⚠')
+    } else {
+      showToast(`상태 변경 실패: ${formatJiraError(e)}`, '⚠')
+    }
   } finally {
     state.statusTransitioning.delete(issueKey)
     render({ sections: ['content', 'modals'] })

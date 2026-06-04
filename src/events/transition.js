@@ -49,12 +49,12 @@ export function bindTransitionFieldsEvents() {
         alert(`다음 필드를 입력해주세요:\n- ${missing.map(([, f]) => f.name || '-').join('\n- ')}`)
         return
       }
-      ctx.submitting = true
-      render({ sections: ['modals'] })
+      // 완료 버튼을 누르면 모달은 즉시 닫고, 전이는 백그라운드로 진행한다.
+      // (performTransition이 해당 이슈의 상태 버튼만 스피너로 표시 → 모달은 떠 있지 않음)
       const fieldsPayload = buildTransitionFieldsPayload(transition, values)
-      await performTransition(issueKey, transition, fieldsPayload)
       state.transitionFieldsModal = null
       render({ sections: ['modals'] })
+      await performTransition(issueKey, transition, fieldsPayload)
     })
   }
 }

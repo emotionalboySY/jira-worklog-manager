@@ -21,6 +21,7 @@ import {
 import { showToast } from './ui.js'
 import { render, resetIssueListScroll } from './render.js'
 import { getProjectKeysOrFallback } from './utils.js'
+import { prewarmTransitionCatalog } from './transitionCatalog.js'
 
 export async function loadIssues() {
   if (state.issuesLoading) return
@@ -58,6 +59,8 @@ export async function loadIssues() {
     state.issuesLoaded = true
     saveIssuesCache(freshIssues, freshProjects)
     syncIssueSummariesFromList(freshIssues)
+    // 화면에 보이는 (프로젝트|유형|상태) 조합의 전이 목록을 백그라운드로 미리 캐싱
+    prewarmTransitionCatalog(freshIssues).catch(() => {})
 
     if (cached) {
       if (hasChanged) {
@@ -191,6 +194,7 @@ export async function refreshIssues() {
     state.issuesLoaded = true
     saveIssuesCache(freshIssues, freshProjects)
     syncIssueSummariesFromList(freshIssues)
+    prewarmTransitionCatalog(freshIssues).catch(() => {})
     if (oldKeys !== newKeys) {
       showToast('이슈 목록이 업데이트되었습니다.', '✓')
     } else {
@@ -227,6 +231,7 @@ export async function autoReloadIssuesAndWorklogs() {
     state.issuesLoaded = true
     saveIssuesCache(freshIssues, freshProjects)
     syncIssueSummariesFromList(freshIssues)
+    prewarmTransitionCatalog(freshIssues).catch(() => {})
   })().catch(e => { console.error('이슈 자동 새로고침 실패:', e); return Promise.reject(e) })
 
   const worklogsTask = (async () => {

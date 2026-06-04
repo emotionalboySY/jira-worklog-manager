@@ -29,6 +29,11 @@ export function bindSwapModalEvents() {
   // 이슈 키 입력 (자동완성 + blur 검증)
   const swapInput = document.getElementById('swap-issue-key')
   if (swapInput) {
+    // 모달이 처음 뜰 때 입력칸에 자동 포커스 (모달당 1회만)
+    if (state.showSwapIssue && !state.showSwapIssue._focused) {
+      swapInput.focus()
+      state.showSwapIssue._focused = true
+    }
     on(swapInput, 'input', () => {
       state.swapIssueCheck = null
       renderKeyHint(SWAP_KEY_CTX)

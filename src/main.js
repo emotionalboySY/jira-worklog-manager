@@ -10,6 +10,7 @@ import { setupAutoReload } from './autoReload.js'
 import { resetInMemoryUserData } from './state.js'
 import { installDelegatedHandlers, bindEvents, startTimerUpdate } from './events.js'
 import { initSessionSync, stopSessionPolling, setSessionRenderHook } from './sessionSync.js'
+import { clearTransitionCatalog } from './transitionCatalog.js'
 
 // 토큰 갱신 실패로 자동 로그아웃이 일어나면 즉시 로그인 화면으로 전환 + 사용자 안내
 let authClearedHandled = false
@@ -19,6 +20,7 @@ window.addEventListener('jira-auth-cleared', () => {
   // 세션 백엔드 폴링 중단 + 직전 사용자의 in-memory 데이터(이슈/워크로그/캐시 Map들) 정리
   try { stopSessionPolling() } catch {}
   try { resetInMemoryUserData() } catch {}
+  try { clearTransitionCatalog() } catch {}
   try { showToast('세션이 만료되었습니다. 다시 로그인해주세요.', '⚠') } catch {}
   try { window.alert('세션이 만료되었습니다. 다시 로그인해주세요.') } catch {}
   render()
