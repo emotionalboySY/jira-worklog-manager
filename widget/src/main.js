@@ -4,6 +4,8 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { listen } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/core'
+import { CONFIG } from './config.js'
 import { isLoggedIn, login } from './auth.js'
 import { getSessions, postSessionAction, getLatestWorklogEnd } from './api.js'
 import { load } from '@tauri-apps/plugin-store'
@@ -67,6 +69,7 @@ const NO_ISSUE_KEY = '__NO_ISSUE__'
 const ICONS = {
   gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
   pin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="16" x2="12" y2="22"/><path d="M5 16h14l-1.6-3.2a2 2 0 0 1-.2-.9V5a1 1 0 0 0-1-1H8.8a1 1 0 0 0-1 1v6.9a2 2 0 0 1-.2.9z"/></svg>`,
+  globe: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
 }
 
 // ===== 렌더 =====
@@ -81,6 +84,7 @@ function render() {
       <div class="widget-header" data-tauri-drag-region>
         <span class="widget-title" data-tauri-drag-region>Jira 업무 기록</span>
         <div class="widget-win-buttons">
+          <button class="win-btn" id="btn-open-web" title="웹에서 열기 (Chrome)">${ICONS.globe}</button>
           <button class="win-btn" id="btn-settings" title="설정">${ICONS.gear}</button>
           <button class="win-btn ${alwaysOnTop ? 'active' : ''}" id="btn-pin" title="항상 위 고정">${ICONS.pin}</button>
           <button class="win-btn" id="btn-hide" title="숨기기">▁</button>
@@ -173,6 +177,10 @@ function renderBody() {
 
 // ===== 이벤트 =====
 function bindCommon() {
+  document.getElementById('btn-open-web')?.addEventListener('click', async () => {
+    try { await invoke('open_in_chrome', { url: CONFIG.apiBase }) }
+    catch (e) { console.error('웹 열기 실패:', e); showNotice('Chrome으로 열지 못했습니다.') }
+  })
   document.getElementById('btn-settings')?.addEventListener('click', toggleSettingsPanel)
   document.getElementById('btn-pin')?.addEventListener('click', async () => {
     alwaysOnTop = !alwaysOnTop

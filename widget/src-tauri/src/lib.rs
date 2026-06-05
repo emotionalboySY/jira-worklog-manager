@@ -40,6 +40,57 @@ async fn start_oauth_listener(app: tauri::AppHandle) -> Result<u16, String> {
     Ok(port)
 }
 
+// '웹에서 열기' — 웹앱을 기본 브라우저가 아니라 Google Chrome으로 연다.
+// Windows: 표준 설치 경로의 chrome.exe를 우선 시도하고, 못 찾으면 App Paths(레지스트리)에
+// 등록된 'chrome'을 cmd start로 실행한다. Chrome 미설치 등으로 실패하면 에러를 반환해
+// 프론트가 안내 메시지를 띄운다.
+#[tauri::command]
+fn open_in_chrome(url: String) -> Result<(), String> {
+    use std::process::Command;
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        use std::path::PathBuf;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+        // 표준 설치 경로 후보(64/32비트 시스템 설치 + 사용자 단위 설치)
+        for base in [
+            std::env::var("PROGRAMFILES").ok(),
+            std::env::var("PROGRAMFILES(X86)").ok(),
+            std::env::var("LOCALAPPDATA").ok(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let mut p = PathBuf::from(base);
+            p.push(r"Google\Chrome\Application\chrome.exe");
+            if p.exists() {
+                return Command::new(&p)
+                    .arg(&url)
+                    .spawn()
+                    .map(|_| ())
+                    .map_err(|e| e.to_string());
+            }
+        }
+        // 경로를 못 찾으면 App Paths에 등록된 'chrome'을 start로 시도(콘솔 창은 숨김)
+        return Command::new("cmd")
+            .args(["/C", "start", "", "chrome", url.as_str()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        return Command::new("google-chrome")
+            .arg(&url)
+            .spawn()
+            .or_else(|_| Command::new("chrome").arg(&url).spawn())
+            .map(|_| ())
+            .map_err(|e| e.to_string());
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -60,7 +111,7 @@ pub fn run() {
         // 자동 업데이트(서명 검증) + 설치 후 재시작.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![start_oauth_listener])
+        .invoke_handler(tauri::generate_handler![start_oauth_listener, open_in_chrome])
         // 메인 창의 닫기(✕/Alt+F4)는 종료가 아니라 트레이로 숨김 — 상주 위젯.
         // 완전 종료는 트레이 메뉴 '종료'에서만.
         .on_window_event(|window, event| {
