@@ -8,7 +8,9 @@
 //
 // import 순환을 피하려고 state.js 의 키 상수만 import하고, render는 훅으로 주입받는다.
 // (storage.js → sessionSync.js → state.js 로만 흐르고 되돌아가지 않음)
+// utils.js는 state.js/lib만 import하므로 순환 없음.
 import { SESSIONS_KEY } from './state.js'
+import { isBusyUI } from './utils.js'
 
 const API = '/api/sessions'
 // 적응형 폴링 간격: 활성 세션이 있으면 짧게(반응성), 유휴면 길게(요청량 절약).
@@ -45,7 +47,13 @@ function applyAuthoritative(data) {
   const changed = JSON.stringify(loadCacheRaw()) !== JSON.stringify(data.sessions)
   saveCacheRaw(data.sessions)
   localRev = data.rev
-  if (changed) _render()
+  if (changed) {
+    // 모달/드롭다운 등 입력 중 UI가 떠 있으면 전체 렌더가 DOM에만 있는 입력값
+    // (종료 모달 시간/코멘트 등)을 날리므로 세션 영역만 갱신한다.
+    // 캐시는 위에서 이미 권위 상태로 교체됐고, 모달 제출부는 제출 시점에 다시 읽는다.
+    if (isBusyUI()) _render({ sections: ['sessions'] })
+    else _render()
+  }
   return changed
 }
 

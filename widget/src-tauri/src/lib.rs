@@ -62,9 +62,13 @@ async fn start_oauth_listener(app: tauri::AppHandle) -> Result<u16, String> {
 // Windows: 표준 설치 경로의 chrome.exe를 우선 시도하고, 못 찾으면 App Paths(레지스트리)에
 // 등록된 'chrome'을 cmd start로 실행한다. Chrome 미설치 등으로 실패하면 에러를 반환해
 // 프론트가 안내 메시지를 띄운다.
+// cmd 경유 실행 특성상 임의 문자열 인자를 막기 위해 https URL만 허용한다.
 #[tauri::command]
 fn open_in_chrome(url: String) -> Result<(), String> {
     use std::process::Command;
+    if !url.starts_with("https://") {
+        return Err("https URL만 열 수 있습니다".into());
+    }
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -112,13 +116,22 @@ fn open_in_chrome(url: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 중복 실행 방지 — 두 번째 실행 시 새 프로세스를 띄우지 않고 기존 창을 보여준다.
+        // (자동 시작 + 수동 실행으로 위젯이 2개 떠 트레이/폴링이 중복되는 것 방지)
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        // 창 위치/크기 자동 저장·복원(main만, 종료 다이얼로그는 중앙 유지 위해 제외)
+        // 창 위치/크기 자동 저장·복원(main만 — 다이얼로그(finish/swap)는 중앙 유지 위해 제외)
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .skip_initial_state("finish")
+                .skip_initial_state("swap")
                 .build(),
         )
         // Windows 로그인 시 자동 실행(레지스트리 Run 키). 토글은 JS API로 on/off.

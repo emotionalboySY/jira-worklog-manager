@@ -9,10 +9,14 @@ export default async function handler(req, res) {
   const authHeader = req.headers.authorization
   if (!authHeader) return res.status(401).json({ error: 'Authorization header required' })
 
+  // 사용자 데이터가 담기는 응답 — 캐시 차단
+  res.setHeader('Cache-Control', 'no-store')
+
   // 요청 경로에서 Jira API URL 추출
   // /api/proxy?url=https://api.atlassian.com/...
+  // (?url=a&url=b 처럼 중복 전달 시 배열이 되므로 string 타입까지 검사)
   const targetUrl = req.query.url
-  if (!targetUrl || !targetUrl.startsWith('https://api.atlassian.com/')) {
+  if (typeof targetUrl !== 'string' || !targetUrl.startsWith('https://api.atlassian.com/')) {
     return res.status(400).json({ error: 'Invalid target URL' })
   }
 

@@ -1,8 +1,10 @@
 // 사용자의 마지막 액션 이후 5분이 지나면 이슈/작업 로그를 자동 재로드.
 // 액션이 발생하면 카운트다운을 리셋하고, 재로드 후엔 다시 5분 사이클을 시작한다.
-import { state } from './state.js'
 import { isLoggedIn } from './auth.js'
 import { autoReloadIssuesAndWorklogs } from './actions.js'
+// busy 판정은 utils.js의 단일 소스 사용 (sessionSync와 공유 — 모달 누락으로 인한
+// "입력 중 전체 렌더로 입력값 증발"을 한 곳에서 방지)
+import { isBusyUI } from './utils.js'
 
 const IDLE_MS = 5 * 60 * 1000          // 5분
 const RETRY_WHILE_BUSY_MS = 30 * 1000  // 모달/로딩 중일 때 재시도 간격
@@ -11,26 +13,6 @@ const ACTIVITY_THROTTLE_MS = 1000      // 활동 이벤트 처리 throttle (mous
 let timer = null
 let lastActivityHandledAt = 0
 let setupDone = false
-
-// 사용자가 입력/편집 중인 상태에서 새로고침이 일어나면 모달 입력 등이 초기화될 수 있으므로
-// busy 상태에서는 잠깐 후 재시도한다.
-function isBusyUI() {
-  return !!(
-    state.showModal ||
-    state.showCancelConfirm ||
-    state.editingWorklog ||
-    state.deletingWorklog ||
-    state.showManualLog ||
-    state.showSettings ||
-    state.showSwapIssue ||
-    state.statusDropdown ||
-    state.assigneeDropdown ||
-    state.transitionFieldsModal ||
-    state.issueDetailModal ||
-    state.issuesLoading ||
-    state.worklogsLoading
-  )
-}
 
 function schedule(delay = IDLE_MS) {
   if (timer) clearTimeout(timer)

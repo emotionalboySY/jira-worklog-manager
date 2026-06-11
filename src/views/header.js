@@ -1,7 +1,7 @@
 // 헤더 / 탭 / 컨텐츠 / 프로젝트 선택
 import { state, PROJECTS } from '../state.js'
 import { getSavedUser } from '../auth.js'
-import { getProjectFromKey } from '../utils.js'
+import { getProjectFromKey, escapeHtml } from '../utils.js'
 import { renderIssuesTab } from './issues.js'
 import { renderLogsTab } from './logs.js'
 import { renderSummaryTab } from './summary.js'
@@ -21,7 +21,7 @@ export function renderHeader() {
         </span>
       </div>
       <div class="header-right">
-        <span class="user-info">${getSavedUser()?.displayName || ''}</span>
+        <span class="user-info">${escapeHtml(getSavedUser()?.displayName || '')}</span>
         <button class="theme-switch ${state.theme === 'dark' ? 'dark' : 'light'}" id="btn-theme" role="switch" aria-checked="${state.theme === 'dark'}" title="테마 전환 (라이트 ↔ 다크)">
           <span class="theme-switch-icon icon-light" aria-hidden="true">☀︎</span>
           <span class="theme-switch-icon icon-dark" aria-hidden="true">☾</span>
@@ -45,8 +45,8 @@ export function renderProjectSelector(isSearchMode = false) {
       <span class="project-selector-label">프로젝트</span>
       <button class="project-chip ${!isSearchMode && state.currentProject === 'ALL' ? 'active' : ''}" data-project="ALL">전체</button>
       ${projectList.map(p => `
-        <button class="project-chip ${!isSearchMode && state.currentProject === p.key ? 'active' : ''}" data-project="${p.key}">
-          ${p.name} (${p.key})
+        <button class="project-chip ${!isSearchMode && state.currentProject === p.key ? 'active' : ''}" data-project="${escapeHtml(p.key)}">
+          ${escapeHtml(p.name)} (${escapeHtml(p.key)})
         </button>
       `).join('')}
     </div>

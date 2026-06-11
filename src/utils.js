@@ -22,6 +22,29 @@ export function getProjectKeysOrFallback() {
     : [...DEFAULT_PROJECT_ORDER]
 }
 
+// 사용자가 입력/편집 중일 수 있는 UI(모달/드롭다운)가 떠 있거나 로딩 중인지.
+// 자동 새로고침(autoReload)·원격 세션 반영(sessionSync)이 전체 렌더로 DOM 입력값을
+// 날리지 않도록 양쪽이 공유하는 단일 판정 — 새 모달 추가 시 여기에만 등록하면 된다.
+export function isBusyUI() {
+  return !!(
+    state.showModal ||
+    state.showCancelConfirm ||
+    state.editingWorklog ||
+    state.deletingWorklog ||
+    state.showManualLog ||
+    state.showSettings ||
+    state.showSwapIssue ||
+    state.showCreateIssue ||
+    state.statusDropdown ||
+    state.assigneeDropdown ||
+    state.typeDropdown ||
+    state.transitionFieldsModal ||
+    state.issueDetailModal ||
+    state.issuesLoading ||
+    state.worklogsLoading
+  )
+}
+
 // 비동기 액션 동안 버튼을 스피너로 잠그는 패턴(Jira 등록/삭제 등) 공통화.
 // fn이 throw하면 원래 라벨로 복구 후 다시 throw.
 // extraDisabled: 같이 잠궈야 할 버튼들(취소 등)

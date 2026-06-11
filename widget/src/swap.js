@@ -4,20 +4,16 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { emit } from '@tauri-apps/api/event'
 import { getSessions, postSessionAction, fetchMyIssues } from './api.js'
+import { escapeHtml as esc, NO_ISSUE_KEY } from './shared.js'
 
 const win = getCurrentWindow()
 const oldKey = new URLSearchParams(location.search).get('key')
-const NO_ISSUE_KEY = '__NO_ISSUE__'
 const isAssign = oldKey === NO_ISSUE_KEY   // 미지정 세션에 일감을 '지정'하는 모드(교체 대상 없음)
 
 let issues = []
 let oldSummary = ''
 let selected = null    // { key, summary } — '확인' 누르기 전 선택 상태
 let busy = false
-
-function esc(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
 function statusClass(cat) {
   if (cat === 'done') return 'st-done'
   if (cat === 'indeterminate') return 'st-prog'

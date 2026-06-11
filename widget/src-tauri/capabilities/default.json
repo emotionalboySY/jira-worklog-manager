@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "위젯 창 권한 (본체 + 종료 다이얼로그)",
+  "description": "위젯 창 권한 (본체 + 종료/교체 다이얼로그). 창 제어는 실제 JS 사용처만 — 스냅/리사이즈가 Rust 후킹으로 이관되며 set-size/position 계열은 제거됨.",
   "windows": ["main", "finish", "swap"],
   "permissions": [
     "core:default",
@@ -26,17 +26,7 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-always-on-top",
     "core:window:allow-hide",
-    "core:window:allow-show",
     "core:window:allow-close",
-    "core:window:allow-minimize",
-    "core:window:allow-unminimize",
-    "core:window:allow-set-focus",
-    "core:window:allow-set-size",
-    "core:window:allow-set-position",
-    "core:window:allow-inner-size",
-    "core:window:allow-outer-size",
-    "core:window:allow-outer-position",
-    "core:window:allow-scale-factor",
-    "core:window:allow-current-monitor"
+    "core:window:allow-set-focus"
   ]
 }

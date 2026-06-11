@@ -54,7 +54,7 @@ export function renderIssuesTab() {
   return `
     <div class="search-bar">
       <div class="search-input-wrap">
-        <input type="text" class="search-input" id="issue-search" placeholder="이슈 키 또는 요약 검색 (예: DKT-123, 키워드)" value="${state.searchQuery}" />
+        <input type="text" class="search-input" id="issue-search" placeholder="이슈 키 또는 요약 검색 (예: DKT-123, 키워드)" value="${escapeHtml(state.searchQuery || '')}" />
         ${state.searchQuery ? `<button class="search-clear" id="search-clear" type="button" aria-label="검색어 지우기" title="검색어 지우기">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
         </button>` : ''}

@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { CONFIG } from './config.js'
 import { isLoggedIn, login } from './auth.js'
 import { getSessions, postSessionAction, getLatestWorklogEnd } from './api.js'
+import { escapeHtml, NO_ISSUE_KEY } from './shared.js'
 import { load } from '@tauri-apps/plugin-store'
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart'
 import { check as checkUpdate } from '@tauri-apps/plugin-updater'
@@ -38,13 +39,6 @@ function elapsedMs(session, nowMs) {
   }
   return Math.max(0, total)
 }
-function fmtMinutes(min) {
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  if (h === 0) return `${m}분`
-  if (m === 0) return `${h}시간`
-  return `${h}시간 ${m}분`
-}
 function fmtClock(ms) {
   const s = Math.floor(ms / 1000)
   const hh = String(Math.floor(s / 3600)).padStart(2, '0')
@@ -63,7 +57,6 @@ function activeSession() {
 function pausedSessions() {
   return state.sessions.filter(s => s.status === 'paused')
 }
-const NO_ISSUE_KEY = '__NO_ISSUE__'
 
 // 헤더 버튼 flat 아이콘(line, currentColor 단색)
 const ICONS = {
@@ -73,10 +66,6 @@ const ICONS = {
 }
 
 // ===== 렌더 =====
-function escapeHtml(str) {
-  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
-
 function render() {
   const app = document.getElementById('app')
   app.innerHTML = `
@@ -366,12 +355,18 @@ async function doAction(action, key) {
   state.busy = true; render()
   try {
     const { status, data } = await postSessionAction(action, { issueKey: key, nowMs: Date.now() })
-    if ((status === 200 || status === 409) && data) {
-      state.sessions = data.sessions || []
-      state.rev = data.rev || state.rev
+    // 4xx 검증 실패/409 충돌 응답에도 서버가 최신 sessions/rev를 실어 보내므로 보정에 활용
+    if (data && Array.isArray(data.sessions) && typeof data.rev === 'number' && data.rev >= state.rev) {
+      state.sessions = data.sessions
+      state.rev = data.rev
+    }
+    if (status !== 200) {
+      showNotice((data && data.error) || `동작이 적용되지 않았습니다 (${status})`)
     }
   } catch (e) {
+    // 네트워크 단절 등 — 무성 유실 대신 사용자에게 알림 (변이는 적용되지 않음)
     console.error('동작 실패:', e)
+    showNotice('동기화 실패 — 네트워크 확인 후 다시 시도해주세요.')
   } finally {
     state.busy = false
     render()
@@ -392,8 +387,14 @@ async function handleAdjustStart(key) {
     else if (latestEnd.getTime() >= startDate.getTime()) msg = '직전 종료 시간이 현재 시작보다 늦어 조정할 수 없습니다.'
     else {
       const { status, data } = await postSessionAction('adjustStart', { issueKey: key, newStartMs: latestEnd.getTime() })
-      if ((status === 200 || status === 409) && data) { state.sessions = data.sessions || []; state.rev = data.rev || state.rev }
-      msg = `시작 시간을 ${fmtTime(latestEnd)}(으)로 조정했습니다.`
+      if (data && Array.isArray(data.sessions) && typeof data.rev === 'number' && data.rev >= state.rev) {
+        state.sessions = data.sessions
+        state.rev = data.rev
+      }
+      // 409(동시 수정 충돌)·400은 적용 실패 — 성공 메시지를 띄우지 않는다
+      msg = status === 200
+        ? `시작 시간을 ${fmtTime(latestEnd)}(으)로 조정했습니다.`
+        : ((data && data.error) || '조정이 적용되지 않았습니다. 다시 시도해주세요.')
     }
   } catch (e) {
     console.error('직전 종료 시간 조정 실패:', e)
@@ -405,13 +406,31 @@ async function handleAdjustStart(key) {
   if (msg) showNotice(msg)
 }
 
-// 종료 다이얼로그(별도 작은 창) 열기. 이미 떠 있으면 포커스만.
-async function openFinishDialog(key) {
+// 다이얼로그 창 열기 공통: 같은 key로 이미 떠 있으면 포커스만, 다른 key면 닫고 새로 연다.
+// (기존: key 비교 없이 포커스만 해서 다른 일감에 대한 요청이 무시됐음)
+const _dialogKeys = {}   // label → 마지막으로 연 key
+async function openDialogWindow(label, key, options) {
   try {
-    const existing = await WebviewWindow.getByLabel('finish')
-    if (existing) { await existing.setFocus(); return }
+    const existing = await WebviewWindow.getByLabel(label)
+    if (existing) {
+      if (_dialogKeys[label] === key) { await existing.setFocus(); return }
+      // 다른 일감 대상 — 기존 창을 닫고 destroy 완료를 기다린 뒤 재생성 (label 충돌 방지)
+      const destroyed = new Promise(resolve => {
+        existing.once('tauri://destroyed', resolve)
+        setTimeout(resolve, 500)   // destroy 이벤트 유실 대비 안전장치
+      })
+      await existing.close()
+      await destroyed
+    }
   } catch {}
-  const w = new WebviewWindow('finish', {
+  _dialogKeys[label] = key
+  const w = new WebviewWindow(label, options)
+  w.once('tauri://error', (e) => console.error(`${label} 창 생성 오류:`, e))
+}
+
+// 종료 다이얼로그(별도 작은 창) 열기.
+function openFinishDialog(key) {
+  return openDialogWindow('finish', key, {
     url: `finish.html?key=${encodeURIComponent(key)}`,
     title: '작업 종료',
     width: 380,
@@ -422,16 +441,11 @@ async function openFinishDialog(key) {
     decorations: true,
     skipTaskbar: true,
   })
-  w.once('tauri://error', (e) => console.error('finish 창 생성 오류:', e))
 }
 
-// 일감 교체 다이얼로그(별도 작은 창) 열기. 이미 떠 있으면 포커스만.
-async function openSwapDialog(key) {
-  try {
-    const existing = await WebviewWindow.getByLabel('swap')
-    if (existing) { await existing.setFocus(); return }
-  } catch {}
-  const w = new WebviewWindow('swap', {
+// 일감 교체 다이얼로그(별도 작은 창) 열기.
+function openSwapDialog(key) {
+  return openDialogWindow('swap', key, {
     url: `swap.html?key=${encodeURIComponent(key)}`,
     title: key === NO_ISSUE_KEY ? '일감 지정' : '일감 교체',
     width: 440,
@@ -444,7 +458,6 @@ async function openSwapDialog(key) {
     decorations: true,
     skipTaskbar: true,
   })
-  w.once('tauri://error', (e) => console.error('swap 창 생성 오류:', e))
 }
 
 let noticeTimer = null
@@ -468,11 +481,14 @@ async function loadAll() {
 function pollDelay() {
   return activeSession() ? 3000 : 10000
 }
+let pollFailures = 0
 function startPolling() {
   stopPolling()
+  pollFailures = 0
   const tick = async () => {
     try {
       const data = await getSessions()
+      pollFailures = 0
       if ((data.rev || 0) >= state.rev) {
         const changed = JSON.stringify(state.sessions) !== JSON.stringify(data.sessions)
         state.sessions = data.sessions || []
@@ -481,8 +497,13 @@ function startPolling() {
       }
     } catch (e) {
       if (e.code === 'unauthorized' || e.code === 'not-authed') { handleLogout(); return }
+      pollFailures++
     }
-    pollTimer = setTimeout(tick, pollDelay())
+    // 연속 실패 시 지수 백오프(최대 30초) — 네트워크 단절 중 무의미한 재시도 폭주 방지
+    const delay = pollFailures > 0
+      ? Math.min(30000, pollDelay() * Math.pow(2, pollFailures))
+      : pollDelay()
+    pollTimer = setTimeout(tick, delay)
   }
   pollTimer = setTimeout(tick, pollDelay())
 }

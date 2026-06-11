@@ -7,7 +7,11 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { refresh_token } = req.body
+  // 토큰이 담기는 응답 — 브라우저/중간 캐시 차단
+  res.setHeader('Cache-Control', 'no-store')
+
+  // 본문 없는 POST/비JSON 요청에서 TypeError로 500이 나지 않도록 방어
+  const { refresh_token } = req.body || {}
   if (!refresh_token) return res.status(400).json({ error: 'refresh_token is required' })
 
   const clientId = process.env.ATLASSIAN_CLIENT_ID || process.env.VITE_ATLASSIAN_CLIENT_ID

@@ -38,6 +38,7 @@ import {
   getCatalogTransitionsForIssue,
   recordTransitionsForIssue,
 } from './transitionCatalog.js'
+import { updateFinishDurationReadouts } from './views/modals.js'
 
 import { on } from './events/_dom.js'
 import {
@@ -741,12 +742,41 @@ export function installDelegatedHandlers() {
     const segIdx = parseInt(btn.dataset.segIdx, 10)
     if (!Number.isFinite(segIdx)) return
     if (!confirm(`구간 ${segIdx + 1}을(를) 삭제할까요?\n이 구간의 작업 시간은 Jira에 기록되지 않습니다.`)) return
+
+    // 재렌더로 사라질 사용자 편집값(구간별 시간 input + 코멘트)을 캡처.
+    // 삭제된 구간 이후의 행은 인덱스가 한 칸 당겨지므로 매핑을 보정한다.
+    const savedTimes = new Map()
+    document.querySelectorAll('#modal-overlay .finish-segment').forEach(row => {
+      const i = parseInt(row.dataset.segIdx, 10)
+      if (!Number.isFinite(i) || i === segIdx) return
+      savedTimes.set(i > segIdx ? i - 1 : i, {
+        start: row.querySelector('.finish-seg-start')?.value || '',
+        end: row.querySelector('.finish-seg-end')?.value || '',
+      })
+    })
+    const savedComment = document.getElementById('finish-comment')?.value ?? ''
+
     const result = deleteSessionSegment(state.showModal, segIdx)
     if (!result.ok) {
       alert(result.error || '구간 삭제에 실패했습니다.')
       return
     }
     render({ sections: ['sessions', 'modals'] })
+
+    // 캡처한 편집값 복원 (renderModal은 세션 데이터 기준으로 다시 그리므로)
+    document.querySelectorAll('#modal-overlay .finish-segment').forEach(row => {
+      const i = parseInt(row.dataset.segIdx, 10)
+      const saved = savedTimes.get(i)
+      if (!saved) return
+      const s = row.querySelector('.finish-seg-start')
+      const en = row.querySelector('.finish-seg-end')
+      if (s && saved.start) s.value = saved.start
+      if (en && saved.end) en.value = saved.end
+    })
+    const cmt = document.getElementById('finish-comment')
+    if (cmt && savedComment) cmt.value = savedComment
+    // 복원된 값 기준으로 구간별/합계 readout 재계산
+    updateFinishDurationReadouts()
   })
 
   // 일감 교체 버튼 → 교체 모달

@@ -40,38 +40,6 @@ export async function postSessionAction(action, payload) {
   return { status: res.status, data }
 }
 
-// 오늘 날짜의 내 워크로그 합계(분) — Jira에 직접 조회.
-// 진행 중(미제출) 세션 경과는 별도로 더해 표시한다.
-export async function getTodayLoggedMinutes() {
-  const token = await ensureAccessToken()
-  if (!token) return 0
-  // cloudId 확보(접근 가능 리소스 첫 사이트)
-  const cloudId = await getCloudId(token)
-  if (!cloudId) return 0
-  const myAccountId = await getMyAccountId(token, cloudId)
-  if (!myAccountId) return 0
-
-  const today = ymd(new Date())
-  const jql = `worklogAuthor = currentUser() AND worklogDate = "${today}"`
-  const url = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=worklog&maxResults=100`
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } })
-  if (!res.ok) return 0
-  const data = await res.json().catch(() => null)
-  const issues = data?.issues || []
-  const start = new Date(today + 'T00:00:00')
-  const end = new Date(today + 'T23:59:59.999')
-  let totalSec = 0
-  for (const issue of issues) {
-    const list = issue.fields?.worklog?.worklogs || []
-    for (const w of list) {
-      if (w.author?.accountId !== myAccountId) continue
-      const s = new Date(w.started)
-      if (s >= start && s <= end) totalSec += w.timeSpentSeconds || 0
-    }
-  }
-  return Math.round(totalSec / 60)
-}
-
 // ----- 내부 캐시(앱 실행 동안) -----
 let _cloudId = null
 let _accountId = null

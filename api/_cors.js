@@ -18,9 +18,9 @@ function getAllowedOrigin(req) {
     return allowList.includes(origin) ? origin : null
   }
 
-  // fallback: 같은 host의 origin만
+  // fallback: 같은 host의 https origin만 (Vercel 배포는 항상 https — 평문 허용 이유 없음)
   const host = req.headers.host || ''
-  if (origin === `https://${host}` || origin === `http://${host}`) return origin
+  if (origin === `https://${host}`) return origin
   return null
 }
 

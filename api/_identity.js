@@ -24,7 +24,9 @@ function tokenKey(accessToken) {
 }
 
 // Atlassian access token → accountId 해석.
-// 매 폴링마다 Atlassian을 때리지 않도록 token→accountId를 Redis에 5분 캐시.
+// 매 폴링마다 Atlassian을 때리지 않도록 token→accountId를 Redis에 캐시.
+// TTL 60초 — 폐기된 토큰이 캐시로 인증을 통과하는 유예를 최소화하면서
+// 폴링(2.5~12초 간격)의 Atlassian 호출은 충분히 흡수한다.
 // 실패(만료/무효 토큰 등) 시 null 반환 → 호출부가 401 처리.
 //
 // 주의: api.atlassian.com/me 는 read:me scope를 요구하는데 이 앱은 그 scope가 없다.
@@ -68,6 +70,6 @@ export async function resolveAccountId(accessToken) {
   }
   if (!accountId) { console.error('[identity] accountId 없음'); return null }
 
-  await redis.set(cacheKey, accountId, { ex: 300 })
+  await redis.set(cacheKey, accountId, { ex: 60 })
   return accountId
 }

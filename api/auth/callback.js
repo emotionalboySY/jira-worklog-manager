@@ -7,7 +7,11 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { code, redirect_uri } = req.body
+  // 토큰이 담기는 응답 — 브라우저/중간 캐시 차단
+  res.setHeader('Cache-Control', 'no-store')
+
+  // 본문 없는 POST/비JSON 요청에서 TypeError로 500이 나지 않도록 방어
+  const { code, redirect_uri } = req.body || {}
   if (!code) return res.status(400).json({ error: 'code is required' })
 
   // 서버 전용 별칭(ATLASSIAN_CLIENT_ID)이 있으면 우선 사용, 없으면 VITE_* fallback

@@ -76,39 +76,64 @@ export async function handleOAuthCallback() {
 }
 
 // 토큰 갱신.
-// 동시에 여러 API가 401을 받아 refresh를 동시에 시도하면 Atlassian의 일회성 refresh_token 정책상
-// 두 번째 시도가 거부되어 잘못된 logout으로 이어진다. in-flight promise를 캐시해 한 번만 실제 호출.
+// 1) 같은 탭의 동시 401: in-flight promise 캐시로 1회만 호출 (기존 동작 유지)
+// 2) 멀티탭 동시 401: 토큰은 localStorage로 모든 탭이 공유하는데 in-flight 캐시는 탭 단위라,
+//    두 탭이 동시에 refresh하면 회전형(rotating) refresh token이 충돌하고(재사용 감지 시
+//    토큰 패밀리 폐기 가능) 실패한 탭의 logout이 성공한 탭의 새 토큰까지 지웠다.
+//    → Web Locks API로 사이트 전역 직렬화 + 락 획득 후 "다른 탭이 이미 갱신했는지" 재확인.
+// 3) 로그아웃은 (a) 서버가 4xx로 토큰을 실제 거부했고 (b) 실패한 refresh token이 여전히
+//    저장값과 같을 때만 — 네트워크 오류/5xx나 타 컨텍스트가 이미 갱신한 경우엔 세션 유지.
 let _refreshInflight = null
 export async function refreshAccessToken() {
   if (_refreshInflight) return _refreshInflight
+  // 락 대기 전 스냅샷 — 대기 중 다른 탭이 갱신을 끝내면 액세스 토큰이 달라진다
+  const accessBefore = localStorage.getItem('jira_access_token')
   _refreshInflight = (async () => {
-    const refreshToken = localStorage.getItem('jira_refresh_token')
-    if (!refreshToken) return false
-    try {
-      const res = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        console.error('토큰 갱신 실패:', data)
-        logout({ reason: 'refresh-failed' })
+    const doLocked = async () => {
+      // 다른 탭이 이미 갱신함 → 추가 API 호출 없이 성공 (호출부가 새 토큰을 다시 읽음)
+      const accessNow = localStorage.getItem('jira_access_token')
+      if (accessNow && accessNow !== accessBefore) return true
+      const refreshToken = localStorage.getItem('jira_refresh_token')
+      if (!refreshToken) return false
+      try {
+        const res = await fetch('/api/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        })
+        const data = await res.json().catch(() => null)
+        if (!res.ok) {
+          console.error('토큰 갱신 실패:', res.status, data)
+          // 4xx = Atlassian이 이 refresh token을 실제로 거부. 5xx/일시 장애는 세션 유지.
+          if (res.status >= 400 && res.status < 500) maybeLogoutAfterRefreshFailure(refreshToken)
+          return false
+        }
+        saveTokens(data)
+        return true
+      } catch (err) {
+        // 네트워크 오류 — 토큰이 거부된 것이 아니므로 로그아웃하지 않음 (다음 시도에서 재갱신)
+        console.error('토큰 갱신 실패(네트워크):', err)
         return false
       }
-      saveTokens(data)
-      return true
-    } catch (err) {
-      console.error('토큰 갱신 실패:', err)
-      logout({ reason: 'refresh-failed' })
-      return false
     }
+    // Web Locks 미지원 환경(구형 브라우저)에서는 탭 내 직렬화만 유지
+    if (navigator.locks?.request) {
+      return navigator.locks.request('jira-token-refresh', doLocked)
+    }
+    return doLocked()
   })()
   try {
     return await _refreshInflight
   } finally {
     _refreshInflight = null
   }
+}
+
+// 갱신 거부 후 로그아웃 직전 재확인: 그 사이 다른 탭이 이미 새 토큰으로 갈아끼웠다면
+// (저장된 refresh token이 실패한 것과 다름) 로그아웃하면 안 된다.
+function maybeLogoutAfterRefreshFailure(failedRefreshToken) {
+  const current = localStorage.getItem('jira_refresh_token')
+  if (current === failedRefreshToken) logout({ reason: 'refresh-failed' })
 }
 
 // 429 응답을 받으면 Retry-After만큼 기다렸다가 1회 재시도.

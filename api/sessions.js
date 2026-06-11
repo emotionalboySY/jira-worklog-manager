@@ -57,6 +57,9 @@ export default async function handler(req, res) {
   applyCors(req, res, 'GET, POST, OPTIONS')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
+  // 사용자 세션 데이터 — 캐시 차단
+  res.setHeader('Cache-Control', 'no-store')
+
   const auth = req.headers.authorization || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
   if (!token) return res.status(401).json({ error: 'unauthorized' })
@@ -83,7 +86,8 @@ export default async function handler(req, res) {
 
       // 시각 의존 변이(start/pause/resume)는 클라가 보낸 nowMs로 적용해
       // 낙관적 결과와 권위 결과의 타임스탬프를 일치시킨다(서버/클라 시계 차 방지).
-      const nowMs = (payload && typeof payload.nowMs === 'number') ? payload.nowMs : Date.now()
+      // Number.isFinite — JSON의 1e999(→Infinity) 등이 iso() RangeError 500을 내지 않도록
+      const nowMs = (payload && Number.isFinite(payload.nowMs)) ? payload.nowMs : Date.now()
       const maxAttempts = action === 'replaceAll' ? 1 : 4
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         const current = await readState(redis, key)
