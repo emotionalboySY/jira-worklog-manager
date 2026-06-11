@@ -106,6 +106,7 @@ export function bindCommentEvents() {
 // 매 bindEvents 후 호출: 작성/편집 모드의 mount element가 있으면 tiptap 인스턴스 마운트.
 // modals 재렌더로 element가 새로 생기면 이전 인스턴스를 destroy하고 새 element에 다시 마운트.
 // onUpdate가 ADF를 m.commentDraftAdf / m.editingCommentDraftAdf에 보존하므로 입력 내용은 유지된다.
+// createEditorInstance가 async(tiptap 본체 lazy 로드)라 import 대기 중 재진입/상태 변화를 가드한다.
 export function ensureCommentEditors() {
   const m = state.issueDetailModal
   if (!m || !m.data) return
@@ -113,13 +114,17 @@ export function ensureCommentEditors() {
   // ----- 작성기 -----
   if (m.commentComposeOpen) {
     const newMount = document.getElementById('detail-comment-compose-editor')
-    if (newMount && newMount !== m._composeMount) {
+    if (newMount && newMount !== m._composeMount && !newMount.__tt_mounting) {
+      newMount.__tt_mounting = true
       // 이전 인스턴스(detached element 포함) 정리
       if (m._composeMount) destroyInstanceOnMount(m._composeMount)
-      const editor = createEditorInstance(newMount, m.commentDraftAdf, {
-        // 작성기를 처음 연 시점에만 자동 포커스. 이후 재렌더로 인한 재마운트에서
-        // 또 포커스하면 caret 스크롤로 본문 스크롤이 작성기 위치로 끌려간다.
-        autofocus: !m._composeFocused,
+      m._composeMount = newMount  // await 전에 선점 — 같은 mount에 대한 중복 생성 방지
+      // 작성기를 처음 연 시점에만 자동 포커스. 이후 재렌더로 인한 재마운트에서
+      // 또 포커스하면 caret 스크롤로 본문 스크롤이 작성기 위치로 끌려간다.
+      const wantFocus = !m._composeFocused
+      m._composeFocused = true
+      createEditorInstance(newMount, m.commentDraftAdf, {
+        autofocus: wantFocus,
         onUpdate: (adf) => {
           const cur = state.issueDetailModal
           if (cur) cur.commentDraftAdf = adf
@@ -127,11 +132,21 @@ export function ensureCommentEditors() {
         attachments: m.data?.attachments || [],
         onImagePaste: makeCommentImagePaste(m.key),
         onUploadError: (err) => showToast(`이미지 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠'),
+      }).then(editor => {
+        newMount.__tt_mounting = false
+        if (!editor) return
+        // import 대기 중 모달/작성기가 닫혔거나 mount가 재렌더로 교체됐으면 즉시 폐기
+        if (state.issueDetailModal !== m || !m.commentComposeOpen || !newMount.isConnected) {
+          destroyInstanceOnMount(newMount)
+          if (m._composeMount === newMount) m._composeMount = null
+          return
+        }
+        newMount.dataset.tiptapMounted = '1'
+        if (m.commentSubmitting) editor.setEditable(false)
+      }).catch(err => {
+        newMount.__tt_mounting = false
+        console.error('[comments] 에디터 마운트 실패:', err)
       })
-      newMount.dataset.tiptapMounted = '1'
-      if (m.commentSubmitting) editor.setEditable(false)
-      m._composeMount = newMount
-      m._composeFocused = true
     }
   } else if (m._composeMount) {
     destroyInstanceOnMount(m._composeMount)
@@ -143,11 +158,15 @@ export function ensureCommentEditors() {
   if (m.editingCommentId) {
     const id = m.editingCommentId
     const newMount = document.getElementById(`detail-comment-edit-editor-${id}`)
-    if (newMount && newMount !== m._editMount) {
+    if (newMount && newMount !== m._editMount && !newMount.__tt_mounting) {
+      newMount.__tt_mounting = true
       if (m._editMount) destroyInstanceOnMount(m._editMount)
-      const editor = createEditorInstance(newMount, m.editingCommentDraftAdf, {
-        // 작성기와 동일 — 해당 댓글 편집을 시작한 시점에만 자동 포커스
-        autofocus: m._editFocusedId !== id,
+      m._editMount = newMount
+      // 작성기와 동일 — 해당 댓글 편집을 시작한 시점에만 자동 포커스
+      const wantFocus = m._editFocusedId !== id
+      m._editFocusedId = id
+      createEditorInstance(newMount, m.editingCommentDraftAdf, {
+        autofocus: wantFocus,
         onUpdate: (adf) => {
           const cur = state.issueDetailModal
           if (cur) cur.editingCommentDraftAdf = adf
@@ -155,11 +174,20 @@ export function ensureCommentEditors() {
         attachments: m.data?.attachments || [],
         onImagePaste: makeCommentImagePaste(m.key),
         onUploadError: (err) => showToast(`이미지 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠'),
+      }).then(editor => {
+        newMount.__tt_mounting = false
+        if (!editor) return
+        if (state.issueDetailModal !== m || m.editingCommentId !== id || !newMount.isConnected) {
+          destroyInstanceOnMount(newMount)
+          if (m._editMount === newMount) m._editMount = null
+          return
+        }
+        newMount.dataset.tiptapMounted = '1'
+        if (m.editingCommentSaving) editor.setEditable(false)
+      }).catch(err => {
+        newMount.__tt_mounting = false
+        console.error('[comments] 에디터 마운트 실패:', err)
       })
-      newMount.dataset.tiptapMounted = '1'
-      if (m.editingCommentSaving) editor.setEditable(false)
-      m._editMount = newMount
-      m._editFocusedId = id
     }
   } else if (m._editMount) {
     destroyInstanceOnMount(m._editMount)

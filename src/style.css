@@ -102,7 +102,8 @@ textarea,
 #sec-tabs,
 #sec-favorites,
 #sec-settings-fab,
-#sec-modals {
+#sec-modals,
+#sec-dropdowns {
   display: contents;
 }
 

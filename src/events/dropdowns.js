@@ -23,7 +23,7 @@ import { render } from '../render.js'
 // 담당자 드롭다운 닫기
 export function closeAssigneeDropdown({ skipRender = false } = {}) {
   state.assigneeDropdown = null
-  if (!skipRender) render({ sections: ['modals'] })
+  if (!skipRender) render({ sections: ['dropdowns'] })
 }
 
 // 리스트 영역만 부분 재렌더. 전체 render()를 피해 검색 input의 IME 조합 유지.

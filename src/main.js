@@ -1,6 +1,6 @@
-// 엔트리: 스타일/플랫픽커 CSS 로드, 초기화 흐름만 담당
+// 엔트리: 스타일 로드, 초기화 흐름만 담당
+// (flatpickr CSS는 events/calendar.js에서 라이브러리와 함께 lazy 로드)
 import './style.css'
-import 'flatpickr/dist/flatpickr.min.css'
 import { handleOAuthCallback, isLoggedIn, fetchCurrentUser, saveUser, getSavedUser } from './auth.js'
 import { applyTheme, applyPreferences, showToast } from './ui.js'
 import { loadPreferences } from './storage.js'

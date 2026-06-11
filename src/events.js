@@ -126,7 +126,7 @@ function handleGlobalClick(e) {
     const clickedOnTrigger = e.target.closest?.('[data-action="toggle-status-menu"]')
     if (dd && !dd.contains(e.target) && !clickedOnTrigger) {
       state.statusDropdown = null
-      render({ sections: ['modals'] })
+      render({ sections: ['dropdowns'] })
     }
   }
 
@@ -145,7 +145,7 @@ function handleGlobalClick(e) {
     const clickedOnTrigger = e.target.closest?.('[data-action="toggle-type-menu"]')
     if (dd && !dd.contains(e.target) && !clickedOnTrigger) {
       state.typeDropdown = null
-      render({ sections: ['modals'] })
+      render({ sections: ['dropdowns'] })
     }
   }
 
@@ -185,7 +185,7 @@ function handleGlobalKeydown(e) {
   }
   if (state.statusDropdown) {
     state.statusDropdown = null
-    render(modalsOnly)
+    render({ sections: ['dropdowns'] })
     return
   }
   if (state.assigneeDropdown) {
@@ -194,7 +194,7 @@ function handleGlobalKeydown(e) {
   }
   if (state.typeDropdown) {
     state.typeDropdown = null
-    render(modalsOnly)
+    render({ sections: ['dropdowns'] })
     return
   }
   if (state.showSwapIssue) {
@@ -406,7 +406,7 @@ export function bindEvents() {
     on(issueListEl, 'scroll', () => {
       if (state.statusDropdown) {
         state.statusDropdown = null
-        render({ sections: ['modals'] })
+        render({ sections: ['dropdowns'] })
       }
     })
   }
@@ -500,7 +500,7 @@ export function installDelegatedHandlers() {
     if (!key) return
     if (state.typeDropdown && state.typeDropdown.issueKey === key) {
       state.typeDropdown = null
-      render({ sections: ['modals'] })
+      render({ sections: ['dropdowns'] })
       return
     }
     const rect = btn.getBoundingClientRect()
@@ -514,21 +514,21 @@ export function installDelegatedHandlers() {
     }
     if (state.statusDropdown) state.statusDropdown = null
     if (state.assigneeDropdown) closeAssigneeDropdown({ skipRender: true })
-    render({ sections: ['modals'] })
+    render({ sections: ['dropdowns'] })
     try {
       const types = await fetchIssueTypes(key)
       setCachedIssueTypes(key, types)
       if (state.typeDropdown && state.typeDropdown.issueKey === key) {
         state.typeDropdown.types = types
         state.typeDropdown.loading = false
-        render({ sections: ['modals'] })
+        render({ sections: ['dropdowns'] })
       }
     } catch (err) {
       console.error('이슈 유형 조회 실패:', err)
       if (cached) return
       if (state.typeDropdown && state.typeDropdown.issueKey === key) {
         state.typeDropdown = null
-        render({ sections: ['modals'] })
+        render({ sections: ['dropdowns'] })
       }
       showToast(`유형 조회 실패: ${formatJiraError(err)}`, '⚠')
     }
@@ -546,7 +546,7 @@ export function installDelegatedHandlers() {
       iconUrl: btn.dataset.typeIcon || '',
     }
     state.typeDropdown = null
-    render({ sections: ['modals'] })
+    render({ sections: ['dropdowns'] })
     await performTypeChange(issueKey, typeInfo)
   })
 
@@ -557,7 +557,7 @@ export function installDelegatedHandlers() {
     if (!key) return
     if (state.statusDropdown && state.statusDropdown.issueKey === key) {
       state.statusDropdown = null
-      render({ sections: ['modals'] })
+      render({ sections: ['dropdowns'] })
       return
     }
     const rect = btn.getBoundingClientRect()
@@ -574,7 +574,7 @@ export function installDelegatedHandlers() {
       transitions: cached,
       loading: !cached,
     }
-    render({ sections: ['modals'] })
+    render({ sections: ['dropdowns'] })
     // 신선한 캐시로 이미 표시 중이면 추가 API 호출 없이 종료
     if (isFresh) return
     try {
@@ -584,14 +584,14 @@ export function installDelegatedHandlers() {
       if (state.statusDropdown && state.statusDropdown.issueKey === key) {
         state.statusDropdown.transitions = transitions
         state.statusDropdown.loading = false
-        render({ sections: ['modals'] })
+        render({ sections: ['dropdowns'] })
       }
     } catch (err) {
       console.error('전이 조회 실패:', err)
       if (cached) return
       if (state.statusDropdown && state.statusDropdown.issueKey === key) {
         state.statusDropdown = null
-        render({ sections: ['modals'] })
+        render({ sections: ['dropdowns'] })
       }
       showToast(`상태 조회 실패: ${formatJiraError(err)}`, '⚠')
     }
@@ -617,7 +617,7 @@ export function installDelegatedHandlers() {
       query: '',
     }
     if (state.statusDropdown) state.statusDropdown = null
-    render({ sections: ['modals'] })
+    render({ sections: ['dropdowns'] })
     loadAssignableUsers(key)
   })
 
@@ -634,10 +634,10 @@ export function installDelegatedHandlers() {
     state.statusDropdown = null
     if (needsFields) {
       state.transitionFieldsModal = { issueKey, transition, values: {}, submitting: false }
-      render({ sections: ['modals'] })
+      render({ sections: ['modals', 'dropdowns'] })
       return
     }
-    render({ sections: ['modals'] })
+    render({ sections: ['dropdowns'] })
     await performTransition(issueKey, transition, null)
   })
 

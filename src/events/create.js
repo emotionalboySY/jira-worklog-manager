@@ -190,17 +190,20 @@ async function loadCreateAssigneesFor(projectKey, query = '') {
   }
 }
 
+// createEditorInstance가 async(tiptap 본체 lazy 로드)라 import 대기 중 재진입/상태 변화를 가드한다.
 export function ensureCreateIssueEditor() {
   const m = state.showCreateIssue
   if (!m) return
   const newMount = document.getElementById('create-issue-desc-editor')
-  if (newMount && newMount !== m._descMount) {
+  if (newMount && newMount !== m._descMount && !newMount.__tt_mounting) {
+    newMount.__tt_mounting = true
     if (m._descMount) destroyInstanceOnMount(m._descMount)
+    m._descMount = newMount  // await 전에 선점 — 같은 mount에 대한 중복 생성 방지
     // 재마운트 시 paste 이미지가 사라지지 않도록 _pendingImages를 다시 mount에 주입
     const pendingPreviews = Object.entries(m._pendingImages || {}).map(([id, e]) => ({
       id, file: e?.file, filename: e?.filename || '',
     })).filter(p => p.file)
-    const editor = createEditorInstance(newMount, m.descriptionAdf, {
+    createEditorInstance(newMount, m.descriptionAdf, {
       autofocus: false,
       onUpdate: (adf) => {
         const cur = state.showCreateIssue
@@ -213,10 +216,21 @@ export function ensureCreateIssueEditor() {
         showToast(`이미지 처리 실패: ${err?.message || '알 수 없는 오류'}`, '⚠')
       },
       pendingPreviews,
+    }).then(editor => {
+      newMount.__tt_mounting = false
+      if (!editor) return
+      // import 대기 중 모달이 닫혔거나 mount가 재렌더로 교체됐으면 즉시 폐기
+      if (state.showCreateIssue !== m || !newMount.isConnected) {
+        destroyInstanceOnMount(newMount)
+        if (m._descMount === newMount) m._descMount = null
+        return
+      }
+      newMount.dataset.tiptapMounted = '1'
+      if (m.submitting) editor.setEditable(false)
+    }).catch(err => {
+      newMount.__tt_mounting = false
+      console.error('[create] 에디터 마운트 실패:', err)
     })
-    newMount.dataset.tiptapMounted = '1'
-    if (m.submitting) editor.setEditable(false)
-    m._descMount = newMount
   } else if (!newMount && m._descMount) {
     destroyInstanceOnMount(m._descMount)
     m._descMount = null

@@ -1,12 +1,24 @@
 // 로그 탭 달력 + 날짜 네비게이션 + flatpickr 인스턴스 관리.
-import flatpickr from 'flatpickr'
-import { Korean } from 'flatpickr/dist/l10n/ko.js'
 import { state } from '../state.js'
 import { isLoggedIn } from '../auth.js'
 import { loadWorklogs } from '../actions.js'
 import { toDateString, shiftDate } from '../utils.js'
 import { render } from '../render.js'
 import { on } from './_dom.js'
+
+// flatpickr는 로그 탭 날짜 선택기에서만 필요 — 초기 번들에서 제외하고 최초 사용 시 lazy 로드.
+// CSS도 라이브러리와 함께 동적 로드(Vite가 별도 청크로 분리해 주입).
+let _flatpickrLoader = null
+function loadFlatpickr() {
+  if (!_flatpickrLoader) {
+    _flatpickrLoader = Promise.all([
+      import('flatpickr'),
+      import('flatpickr/dist/l10n/ko.js'),
+      import('flatpickr/dist/flatpickr.min.css'),
+    ]).then(([fp, ko]) => ({ flatpickr: fp.default, Korean: ko.Korean }))
+  }
+  return _flatpickrLoader
+}
 
 export function bindCalendarEvents() {
   // 달력 열기/닫기 토글
@@ -130,18 +142,23 @@ export function bindCalendarEvents() {
   // content 섹션이 재렌더될 때는 render.js가 먼저 destroy하므로 그 외에는 재생성하지 않는다.
   const logDatePicker = document.getElementById('log-date-picker')
   if (logDatePicker && !state.flatpickrInstance) {
-    state.flatpickrInstance = flatpickr(logDatePicker, {
-      locale: Korean,
-      dateFormat: 'Y년 m월 d일 (D)',
-      defaultDate: new Date(state.logDate + 'T00:00:00'),
-      maxDate: 'today',
-      disableMobile: true,
-      onChange: (selectedDates) => {
-        if (selectedDates.length > 0) {
-          state.logDate = toDateString(selectedDates[0])
-          render()
-        }
-      },
-    })
+    loadFlatpickr().then(({ flatpickr, Korean }) => {
+      // 로드되는 사이 재렌더로 input이 교체/제거됐거나 이미 다른 호출이 생성했을 수 있음
+      const el = document.getElementById('log-date-picker')
+      if (!el || state.flatpickrInstance) return
+      state.flatpickrInstance = flatpickr(el, {
+        locale: Korean,
+        dateFormat: 'Y년 m월 d일 (D)',
+        defaultDate: new Date(state.logDate + 'T00:00:00'),
+        maxDate: 'today',
+        disableMobile: true,
+        onChange: (selectedDates) => {
+          if (selectedDates.length > 0) {
+            state.logDate = toDateString(selectedDates[0])
+            render()
+          }
+        },
+      })
+    }).catch(err => console.error('[calendar] flatpickr 로드 실패:', err))
   }
 }

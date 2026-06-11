@@ -277,41 +277,57 @@ export function isEditorDirty() {
 // 매 bindEvents 호출 후 실행: 편집 모드면 tiptap을 마운트
 // 저장 중에도 외부 사정으로 재렌더가 일어날 수 있으므로 다시 마운트하되,
 // 입력은 잠근 상태로 유지한다.
-export function ensureIssueDetailEditor() {
+// createEditor가 async(tiptap 본체 lazy 로드)라 import 대기 중 재진입/상태 변화를 가드한다.
+export async function ensureIssueDetailEditor() {
   const m = state.issueDetailModal
   if (!m?.editing) return
   const mount = document.getElementById('issue-detail-edit-editor')
-  if (!mount || mount.dataset.tiptapMounted === '1') return
-  createEditor(mount, m.editAdf, {
-    attachments: m.data?.attachments || [],
-    // 모달 부분 재렌더로 mount가 다시 만들어질 때 입력 내용/이미지가 사라지지 않도록
-    // editAdf를 지속 동기화 → 다음 마운트가 이 값을 그대로 복원
-    onUpdate: (adf) => {
-      const cur = state.issueDetailModal
-      if (cur && cur.editing) cur.editAdf = adf
-    },
-    onImagePaste: async (file) => {
-      // 업로드 → 모달 상태의 attachments에 즉시 반영 (이후 같은 이미지를 같은 id로 매칭하기 위함)
-      const result = await uploadIssueAttachment(m.key, file)
-      const cur = state.issueDetailModal
-      if (cur && cur.key === m.key && cur.data) {
-        if (!Array.isArray(cur.data.attachments)) cur.data.attachments = []
-        cur.data.attachments.push({
-          id: result.id,
-          mediaId: result.mediaId || '',
-          filename: result.filename,
-          mimeType: result.mimeType,
-          size: result.size,
-          contentUrl: result.contentUrl,
-          thumbnailUrl: result.thumbnailUrl,
-        })
-      }
-      return result
-    },
-    onUploadError: (err) => {
-      showToast(`이미지 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠')
-    },
-  })
+  if (!mount || mount.dataset.tiptapMounted === '1' || mount.__tt_mounting) return
+  mount.__tt_mounting = true
+  let editor = null
+  try {
+    editor = await createEditor(mount, m.editAdf, {
+      attachments: m.data?.attachments || [],
+      // 모달 부분 재렌더로 mount가 다시 만들어질 때 입력 내용/이미지가 사라지지 않도록
+      // editAdf를 지속 동기화 → 다음 마운트가 이 값을 그대로 복원
+      onUpdate: (adf) => {
+        const cur = state.issueDetailModal
+        if (cur && cur.editing) cur.editAdf = adf
+      },
+      onImagePaste: async (file) => {
+        // 업로드 → 모달 상태의 attachments에 즉시 반영 (이후 같은 이미지를 같은 id로 매칭하기 위함)
+        const result = await uploadIssueAttachment(m.key, file)
+        const cur = state.issueDetailModal
+        if (cur && cur.key === m.key && cur.data) {
+          if (!Array.isArray(cur.data.attachments)) cur.data.attachments = []
+          cur.data.attachments.push({
+            id: result.id,
+            mediaId: result.mediaId || '',
+            filename: result.filename,
+            mimeType: result.mimeType,
+            size: result.size,
+            contentUrl: result.contentUrl,
+            thumbnailUrl: result.thumbnailUrl,
+          })
+        }
+        return result
+      },
+      onUploadError: (err) => {
+        showToast(`이미지 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠')
+      },
+    })
+  } catch (err) {
+    console.error('[detail] 에디터 마운트 실패:', err)
+    return
+  } finally {
+    mount.__tt_mounting = false
+  }
+  if (!editor) return  // import 대기 중 더 새로운 createEditor가 대체함
+  // import 대기 중 편집 종료/모달 닫힘/mount 교체가 일어났으면 즉시 폐기
+  if (state.issueDetailModal !== m || !m.editing || !mount.isConnected) {
+    destroyEditor()
+    return
+  }
   if (m.saving) setEditable(false)
   mount.dataset.tiptapMounted = '1'
   // 라운드트립으로 정규화된 ADF를 dirty 비교의 기준으로 기록 (이미 있으면 유지)
@@ -524,8 +540,13 @@ function ensureBlobUrl(m, sourceUrl) {
   const inFlight = m.blobUrlInFlight.get(sourceUrl)
   if (inFlight) return inFlight
   const p = fetchAttachmentBlobUrl(sourceUrl).then(blobUrl => {
-    if (blobUrl) m.blobUrlCache.set(sourceUrl, blobUrl)
     m.blobUrlInFlight.delete(sourceUrl)
+    // 모달이 이미 닫혔거나 다른 이슈로 교체됐으면 캐시에 못 넣으므로 즉시 해제 (누수 방지)
+    if (blobUrl && state.issueDetailModal !== m) {
+      try { URL.revokeObjectURL(blobUrl) } catch {}
+      return null
+    }
+    if (blobUrl) m.blobUrlCache.set(sourceUrl, blobUrl)
     return blobUrl
   }).catch(err => {
     m.blobUrlInFlight.delete(sourceUrl)

@@ -44,12 +44,20 @@ function renderModalsHtml() {
     ${state.showManualLog ? renderManualLogModal() : ''}
     ${state.showSettings ? renderSettingsModal() : ''}
     ${state.showSwapIssue ? renderSwapIssueModal() : ''}
-    ${state.statusDropdown ? renderStatusDropdown() : ''}
-    ${state.assigneeDropdown ? renderAssigneeDropdown() : ''}
-    ${state.typeDropdown ? renderTypeDropdown() : ''}
     ${state.transitionFieldsModal ? renderTransitionFieldsModal() : ''}
     ${state.showCreateIssue ? renderCreateIssueModal() : ''}
     ${state.issueDetailModal ? renderIssueDetailModal() : ''}
+  `
+}
+
+// 드롭다운 3종은 modals와 분리된 섹션 — 드롭다운을 여닫을 때 상세 모달 전체
+// (tiptap 에디터 재마운트 포함)가 재렌더되는 비용을 피한다. position:fixed +
+// z-index 200(> 모달 오버레이 100/110)이라 컨테이너 위치와 무관하게 위에 뜬다.
+function renderDropdownsHtml() {
+  return `
+    ${state.statusDropdown ? renderStatusDropdown() : ''}
+    ${state.assigneeDropdown ? renderAssigneeDropdown() : ''}
+    ${state.typeDropdown ? renderTypeDropdown() : ''}
   `
 }
 
@@ -62,6 +70,7 @@ const SECTIONS = {
   favorites:     { id: 'sec-favorites',    render: renderFavoritesPanel },
   'settings-fab':{ id: 'sec-settings-fab', render: renderSettingsFab },
   modals:        { id: 'sec-modals',       render: renderModalsHtml },
+  dropdowns:     { id: 'sec-dropdowns',    render: renderDropdownsHtml },
 }
 const ALL_SECTIONS = Object.keys(SECTIONS)
 
@@ -75,6 +84,7 @@ function ensureShell(app) {
     <div id="sec-favorites"></div>
     <div id="sec-settings-fab"></div>
     <div id="sec-modals"></div>
+    <div id="sec-dropdowns"></div>
   `
   shellInitialized = true
 }
