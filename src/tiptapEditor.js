@@ -197,6 +197,20 @@ export function buildEditorInstance(mountEl, adfContent, {
   }
 
   mountEl.__tt_editor = editor
+
+  // 마운트 박스의 빈 여백(contenteditable이 채우지 못한 영역)을 클릭해도 에디터에
+  // 포커스가 잡히도록 — 클릭이 빗나가 입력이 안 되는 문제 방지. element당 1회만 바인드.
+  // (handler는 mountEl.__tt_editor를 동적으로 읽어 재마운트 후에도 동작)
+  if (!mountEl.__tt_focus_bound) {
+    mountEl.__tt_focus_bound = true
+    mountEl.addEventListener('mousedown', (e) => {
+      if (e.target !== mountEl) return  // 래퍼 자체(빈 여백)를 직접 클릭한 경우만
+      e.preventDefault()
+      const ed = mountEl.__tt_editor
+      if (ed) { try { ed.commands.focus('end') } catch {} }
+    })
+  }
+
   if (autofocus) {
     setTimeout(() => { try { editor?.commands.focus('end') } catch {} }, 50)
   }

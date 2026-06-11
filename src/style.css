@@ -5085,13 +5085,17 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 }
 
 /* 댓글용 컴팩트 에디터 */
-.detail-comment-editor-mount {
+/* 댓글 작성/편집 박스 — 마운트가 .tiptap-editor-mount(min-height 220px, 본문 에디터용)와
+   두 클래스를 함께 가져 소스 순서상 220px에 덮인다. 복합 선택자로 우선순위를 높여
+   의도한 컴팩트 크기(80px)를 적용 → contenteditable(아래 min-height)이 박스를 꽉 채워
+   빈 여백(클릭이 빗나가 포커스가 안 잡히는 죽은 영역)이 생기지 않게 한다. */
+.detail-comment-editor-mount.tiptap-editor-mount {
   min-height: 80px;
   max-height: 320px;
 }
 
 .detail-comment-editor-mount .tiptap-content {
-  min-height: 60px;
+  min-height: 56px;
 }
 
 /* 댓글 본문 이미지에도 본문 영역과 동일한 로딩/에러 시각 효과 */
