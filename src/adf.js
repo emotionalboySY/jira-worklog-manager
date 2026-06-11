@@ -121,8 +121,15 @@ function renderNode(node, ctx) {
         (altAttr ? ctx.attachmentsByFilename?.[altAttr] : null)
       const contentUrl = att?.contentUrl || ''
       const alt = escapeHtml(att?.filename || altAttr)
+      // attrs.width/height(px)가 있으면 속성으로 출력 — blob 로딩 전에도 브라우저가
+      // aspect-ratio로 공간을 예약해, 재렌더 시 높이 붕괴로 스크롤 복원이 깨지지 않게 함
+      const mw = Number(attrs?.width)
+      const mh = Number(attrs?.height)
+      const dimAttrs = (Number.isFinite(mw) && mw > 0 && Number.isFinite(mh) && mh > 0)
+        ? ` width="${Math.round(mw)}" height="${Math.round(mh)}"`
+        : ''
       // src는 이후 이벤트 레이어에서 Blob URL로 교체됨
-      return `<img data-adf-media-url="${escapeHtml(contentUrl)}" alt="${alt}" />`
+      return `<img data-adf-media-url="${escapeHtml(contentUrl)}" alt="${alt}"${dimAttrs} />`
     }
 
     case 'inlineCard':

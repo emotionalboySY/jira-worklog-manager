@@ -117,6 +117,9 @@ export function ensureCommentEditors() {
       // 이전 인스턴스(detached element 포함) 정리
       if (m._composeMount) destroyInstanceOnMount(m._composeMount)
       const editor = createEditorInstance(newMount, m.commentDraftAdf, {
+        // 작성기를 처음 연 시점에만 자동 포커스. 이후 재렌더로 인한 재마운트에서
+        // 또 포커스하면 caret 스크롤로 본문 스크롤이 작성기 위치로 끌려간다.
+        autofocus: !m._composeFocused,
         onUpdate: (adf) => {
           const cur = state.issueDetailModal
           if (cur) cur.commentDraftAdf = adf
@@ -128,10 +131,12 @@ export function ensureCommentEditors() {
       newMount.dataset.tiptapMounted = '1'
       if (m.commentSubmitting) editor.setEditable(false)
       m._composeMount = newMount
+      m._composeFocused = true
     }
   } else if (m._composeMount) {
     destroyInstanceOnMount(m._composeMount)
     m._composeMount = null
+    m._composeFocused = false
   }
 
   // ----- 편집기 (한 번에 하나만 활성) -----
@@ -141,6 +146,8 @@ export function ensureCommentEditors() {
     if (newMount && newMount !== m._editMount) {
       if (m._editMount) destroyInstanceOnMount(m._editMount)
       const editor = createEditorInstance(newMount, m.editingCommentDraftAdf, {
+        // 작성기와 동일 — 해당 댓글 편집을 시작한 시점에만 자동 포커스
+        autofocus: m._editFocusedId !== id,
         onUpdate: (adf) => {
           const cur = state.issueDetailModal
           if (cur) cur.editingCommentDraftAdf = adf
@@ -152,10 +159,12 @@ export function ensureCommentEditors() {
       newMount.dataset.tiptapMounted = '1'
       if (m.editingCommentSaving) editor.setEditable(false)
       m._editMount = newMount
+      m._editFocusedId = id
     }
   } else if (m._editMount) {
     destroyInstanceOnMount(m._editMount)
     m._editMount = null
+    m._editFocusedId = null
   }
   // 댓글 본문 이미지는 detail.js의 loadIssueDetailImages가 bindDetailModalEvents에서 통합 처리
 }

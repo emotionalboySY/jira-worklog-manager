@@ -116,6 +116,11 @@ export function render(options = {}) {
     if (existingList) savedIssueListScrollTop = existingList.scrollTop
   }
 
+  // 이슈 상세 모달 본문 스크롤 — 섹션 루프에서 즉시 복원하고, post-render hook
+  // (tiptap 마운트, 캐시 이미지 src 적용) 이후 한 번 더 복원하기 위해 함수 스코프에 보관.
+  // 복원 시점에 에디터/이미지 높이가 아직 0이면 scrollTop이 작은 값으로 클램프되기 때문.
+  let savedDetailBodyScroll = null
+
   // 이미 열려 있는 모달/패널은 재렌더 시 CSS 애니메이션이 다시 재생되면
   // "모달이 다시 로드되는 것처럼" 보인다. 재생성 직전에 상태를 기록해두고
   // 재생성 직후 같은 상태라면 애니메이션을 꺼 준다.
@@ -142,12 +147,11 @@ export function render(options = {}) {
     let settingsScroll = null
     // 이슈 상세 모달의 본문(.detail-body) 스크롤 위치 보존 — 댓글 작성/연결 추가 등
     // 모달 내부 액션이 'modals' 섹션을 통째로 재렌더하므로 캡처/복원 없이는 스크롤이 0으로 튄다.
-    let issueDetailBodyScroll = null
     if (name === 'modals') {
       const modal = container.querySelector('.modal-settings')
       if (modal) settingsScroll = modal.scrollTop
       const detailBody = container.querySelector('#issue-detail-overlay .detail-body')
-      if (detailBody) issueDetailBodyScroll = detailBody.scrollTop
+      if (detailBody) savedDetailBodyScroll = detailBody.scrollTop
     }
 
     // 재렌더 전 오픈 상태 캡처 (애니메이션 재생 방지용)
@@ -168,9 +172,9 @@ export function render(options = {}) {
       const modal = container.querySelector('.modal-settings')
       if (modal) modal.scrollTop = settingsScroll
     }
-    if (issueDetailBodyScroll !== null) {
+    if (savedDetailBodyScroll !== null) {
       const detailBody = container.querySelector('#issue-detail-overlay .detail-body')
-      if (detailBody) detailBody.scrollTop = issueDetailBodyScroll
+      if (detailBody) detailBody.scrollTop = savedDetailBodyScroll
     }
 
     // 재렌더 전후 동일하게 떠 있는 모달/패널은 애니메이션 끔
@@ -202,6 +206,13 @@ export function render(options = {}) {
   // 갱신된 섹션의 새 element에만 리스너가 추가된다.
   for (const fn of postRenderHooks) {
     try { fn() } catch (e) { console.error('[render] post-hook 실패:', e) }
+  }
+
+  // 이슈 상세 모달 본문 스크롤 재복원 — hook에서 tiptap 마운트(댓글 작성기 내용 복원)와
+  // 캐시된 이미지 src 적용으로 컨텐츠 높이가 늘어난 뒤 다시 적용해야 클램프되지 않는다.
+  if (savedDetailBodyScroll !== null) {
+    const detailBody = document.querySelector('#issue-detail-overlay .detail-body')
+    if (detailBody) detailBody.scrollTop = savedDetailBodyScroll
   }
 }
 
