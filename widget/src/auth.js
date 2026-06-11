@@ -48,14 +48,19 @@ export async function login() {
   const state = crypto.randomUUID()
   const port = await invoke('start_oauth_listener') // 43117
 
-  // 콜백 대기 (3분 타임아웃)
+  // 콜백 대기 (3분 타임아웃). 타임아웃 시 이벤트 리스너도 해제해 다음 로그인 시도의
+  // 리스너만 콜백을 받도록 한다 (루프백 리스너는 Rust 쪽에 상주하며 재사용됨).
   const callbackPromise = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('로그인 시간 초과')), 180000)
+    let unlisten = null
+    const timer = setTimeout(() => {
+      if (unlisten) { try { unlisten() } catch {} }
+      reject(new Error('로그인 시간 초과'))
+    }, 180000)
     once('oauth-callback', (e) => {
       clearTimeout(timer)
       const params = new URLSearchParams(e.payload || '')
       resolve({ code: params.get('code'), state: params.get('state'), error: params.get('error') })
-    }).catch(reject)
+    }).then(fn => { unlisten = fn }, (err) => { clearTimeout(timer); reject(err) })
   })
 
   const authUrl = `https://auth.atlassian.com/authorize?` + new URLSearchParams({

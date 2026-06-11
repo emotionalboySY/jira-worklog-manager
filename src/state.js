@@ -11,8 +11,8 @@ export const PROJECTS = [
   { key: 'DD', name: '독도' },
 ]
 
-export const LUNCH_START = 11 * 60 + 30 // 11:30 (분 단위)
-export const LUNCH_END = 12 * 60 + 30   // 12:30 (분 단위)
+// 점심시간 상수 — 웹앱/위젯이 공유하는 lib/worklogLogic.js가 단일 소스 (기존 import 경로 호환용 재export)
+export { LUNCH_START, LUNCH_END } from '../lib/worklogLogic.js'
 
 export const ISSUE_TYPES = {
   task:      { icon: '✓', label: '작업' },

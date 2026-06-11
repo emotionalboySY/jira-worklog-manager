@@ -9,6 +9,10 @@ import {
   DEFAULT_PROJECT_ORDER,
   CLOSED_CATEGORY,
 } from './state.js'
+import {
+  buildWorklogPiecesFromTimes,
+  computeRangeMinutes,
+} from '../lib/worklogLogic.js'
 
 // realProjects가 비어있을 때(초기 로딩 등) 사용할 프로젝트 키 fallback.
 // 자동완성/검색이 realProjects 의존이라 빈 배열이면 검색이 동작하지 않으므로 기본값 보장.
@@ -89,31 +93,11 @@ export function buildJiraStarted(dateStr, timeStr) {
   return `${dateStr}T${hh}:${mm}:00.000${getJiraTzOffset()}`
 }
 
-// 점심시간(LUNCH_START~LUNCH_END, 기본 11:30~12:30)을 피해 worklog 구간을 분리 생성.
-// 종료 시간을 유지하기 위해 점심 전/후 2개의 worklog로 쪼갬.
+// 점심시간(11:30~12:30)을 피해 worklog 구간을 분리 생성. 종료 시간이 시작보다 이르면
+// 자정을 넘긴 것으로 간주해 날짜 경계로도 분할한다 — lib/worklogLogic.js에 위임 (위젯과 공유).
 // 반환: [{ started, seconds }, ...]
 export function buildWorklogSegments(dateStr, startTime, endTime) {
-  const [sh, sm] = startTime.split(':').map(Number)
-  const [eh, em] = endTime.split(':').map(Number)
-  const startMin = sh * 60 + sm
-  const endMin = eh * 60 + em
-  const minToHHmm = (min) =>
-    `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
-
-  const ranges = []
-  if (endMin <= LUNCH_START || startMin >= LUNCH_END) {
-    ranges.push([startMin, endMin])
-  } else {
-    if (startMin < LUNCH_START) ranges.push([startMin, LUNCH_START])
-    if (endMin > LUNCH_END) ranges.push([LUNCH_END, endMin])
-  }
-
-  return ranges
-    .filter(([s, e]) => e > s)
-    .map(([s, e]) => ({
-      started: buildJiraStarted(dateStr, minToHHmm(s)),
-      seconds: (e - s) * 60,
-    }))
+  return buildWorklogPiecesFromTimes(dateStr, startTime, endTime)
 }
 
 // Jira API 에러 응답(JSON)에서 사람이 읽을 수 있는 메시지로 변환
@@ -131,13 +115,10 @@ export function formatJiraError(err) {
   return err?.message || '알 수 없는 오류가 발생했습니다.'
 }
 
-// 점심시간(LUNCH_START~LUNCH_END) 구간과 겹치는 분 수 반환
+// 점심시간(LUNCH_START~LUNCH_END) 구간과 겹치는 분 수 반환.
+// 자정을 넘기는 구간도 날짜별로 나눠 정확히 계산 (공유 로직 위임)
 export function calcLunchOverlap(startDate, endDate) {
-  const startMinutes = startDate.getHours() * 60 + startDate.getMinutes()
-  const endMinutes = endDate.getHours() * 60 + endDate.getMinutes()
-  const overlapStart = Math.max(startMinutes, LUNCH_START)
-  const overlapEnd = Math.min(endMinutes, LUNCH_END)
-  return Math.max(0, overlapEnd - overlapStart)
+  return computeRangeMinutes(startDate, endDate).lunchMinutes
 }
 
 export function formatMinutes(totalMinutes) {

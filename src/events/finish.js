@@ -8,6 +8,7 @@ import {
   buildWorklogSegments,
   formatLunchRange,
   formatJiraError,
+  shiftDate,
 } from '../utils.js'
 import {
   isValidIssueKeyFormat,
@@ -195,10 +196,14 @@ export function bindFinishModalEvents() {
       const invalidatedMonths = new Set()
       for (const seg of result.perSegment) {
         if (!seg || !seg.date) continue
-        const monthStart = `${seg.date.substring(0, 7)}-01`
-        if (!invalidatedMonths.has(monthStart)) {
-          invalidatedMonths.add(monthStart)
-          invalidateWorklogMonth(monthStart)
+        // 자정을 넘긴 구간은 다음 날(다음 달일 수 있음)에도 worklog가 생기므로 함께 무효화
+        const dates = seg.crossesMidnight ? [seg.date, shiftDate(seg.date, 1)] : [seg.date]
+        for (const d of dates) {
+          const monthStart = `${d.substring(0, 7)}-01`
+          if (!invalidatedMonths.has(monthStart)) {
+            invalidatedMonths.add(monthStart)
+            invalidateWorklogMonth(monthStart)
+          }
         }
       }
       showToast(`Jira에 ${successCount}건 기록했습니다.`, '✓')

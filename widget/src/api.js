@@ -2,6 +2,7 @@
 import { fetch } from '@tauri-apps/plugin-http'
 import { CONFIG } from './config.js'
 import { ensureAccessToken, refreshAccessToken, getTokens } from './auth.js'
+import { buildWorklogPiecesFromRange } from '../../lib/worklogLogic.js'
 
 // 인증 헤더를 붙여 호출하고, 401이면 1회 갱신 후 재시도.
 async function authedFetch(url, options = {}) {
@@ -104,47 +105,20 @@ function ymd(d) {
   return `${y}-${m}-${day}`
 }
 
-// ===== 종료(워크로그 생성) — src/utils.js의 워크로그 로직을 미러 =====
-const LUNCH_START = 11 * 60 + 30 // 11:30
-const LUNCH_END = 12 * 60 + 30   // 12:30
-
-function jiraTzOffset() {
-  const off = new Date().getTimezoneOffset()
-  const sign = off <= 0 ? '+' : '-'
-  const abs = Math.abs(off)
-  return `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}${String(abs % 60).padStart(2, '0')}`
-}
-function jiraStarted(dateStr, hhmm) {
-  const [h = '00', m = '00'] = hhmm.split(':')
-  return `${dateStr}T${h.padStart(2, '0')}:${m.padStart(2, '0')}:00.000${jiraTzOffset()}`
-}
-// 점심(11:30~12:30) 제외하고 worklog 구간을 분할 → [{ started, seconds }]
-function worklogPieces(dateStr, startMin, endMin) {
-  const ranges = []
-  if (endMin <= LUNCH_START || startMin >= LUNCH_END) ranges.push([startMin, endMin])
-  else {
-    if (startMin < LUNCH_START) ranges.push([startMin, LUNCH_START])
-    if (endMin > LUNCH_END) ranges.push([LUNCH_END, endMin])
-  }
-  const toHHMM = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
-  return ranges.filter(([s, e]) => e > s).map(([s, e]) => ({ started: jiraStarted(dateStr, toHHMM(s)), seconds: (e - s) * 60 }))
-}
+// ===== 종료(워크로그 생성) — 점심/자정 분할 로직은 웹앱과 공유(lib/worklogLogic.js) =====
 function textToAdf(text) {
   return { type: 'doc', version: 1, content: text ? [{ type: 'paragraph', content: [{ type: 'text', text }] }] : [] }
 }
 
-// 세션의 각 구간을 점심 제외해 worklog 조각으로 환산(미리보기/제출 공용).
-// 활성(열린) 구간은 현재 시각까지로 계산.
+// 세션의 각 구간을 자정 경계 + 점심 제외로 worklog 조각 환산(미리보기/제출 공용).
+// 활성(열린) 구간은 현재 시각까지로 계산. 자정을 넘긴 구간도 날짜별로 정확히 기록된다.
 export function sessionWorklogs(session) {
   const out = []
   for (const seg of session.segments || []) {
     const start = new Date(seg.start)
     const end = seg.end ? new Date(seg.end) : new Date()
     if (end <= start) continue
-    const dateStr = ymd(start)
-    const startMin = start.getHours() * 60 + start.getMinutes()
-    const endMin = end.getHours() * 60 + end.getMinutes()
-    out.push(...worklogPieces(dateStr, startMin, endMin))
+    out.push(...buildWorklogPiecesFromRange(start, end))
   }
   return out
 }
@@ -218,18 +192,29 @@ export async function fetchMyIssues() {
   }))
 }
 
-// 세션 종료: 구간별 worklog 생성(점심 제외). 성공 건수 반환. (세션 제거는 호출부가 remove로 처리)
-export async function finishSession(session, comment) {
-  const token = await ensureAccessToken()
-  if (!token) throw new Error('not-authed')
-  const cloudId = await getCloudId(token)
-  if (!cloudId) throw new Error('cloudId를 확인할 수 없습니다.')
-  const pieces = sessionWorklogs(session)
-  if (!pieces.length) throw new Error('기록할 시간이 없습니다(점심 제외 후 0분).')
-  let count = 0
-  for (const p of pieces) {
-    await createWorklog(token, cloudId, session.issueKey, { started: p.started, seconds: p.seconds, comment })
-    count++
+// 워크로그 조각들을 from 인덱스부터 순서대로 기록. 반환: 기록 완료된 누적 조각 수.
+// 중간 실패 시 에러에 .posted(성공 누적 수)를 실어 던진다 — 호출부가 재시도 시
+// 이미 기록된 조각을 건너뛰고 이어서 기록할 수 있다 (중복 worklog 방지).
+export async function postWorklogPieces(issueKey, pieces, comment, { from = 0 } = {}) {
+  let posted = from
+  let token, cloudId
+  try {
+    token = await ensureAccessToken()
+    if (!token) throw new Error('not-authed')
+    cloudId = await getCloudId(token)
+    if (!cloudId) throw new Error('cloudId를 확인할 수 없습니다.')
+  } catch (e) {
+    e.posted = posted
+    throw e
   }
-  return count
+  for (let i = from; i < pieces.length; i++) {
+    try {
+      await createWorklog(token, cloudId, issueKey, { started: pieces[i].started, seconds: pieces[i].seconds, comment })
+      posted = i + 1
+    } catch (e) {
+      e.posted = posted
+      throw e
+    }
+  }
+  return posted
 }

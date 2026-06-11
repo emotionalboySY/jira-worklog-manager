@@ -6,6 +6,7 @@ import {
   buildWorklogSegments,
   formatJiraError,
   withSpinner,
+  shiftDate,
 } from '../utils.js'
 import {
   invalidateWorklogMonth,
@@ -82,6 +83,11 @@ export function bindEditWorklogEvents() {
         const savedDate = state.editingWorklog.date
         state.editingWorklog = null
         invalidateWorklogMonth(savedDate)
+        // 자정을 넘긴 기록은 다음 날(다음 달일 수 있음) 월 캐시도 무효화
+        if (dur.crossesMidnight) {
+          const next = shiftDate(savedDate, 1)
+          if (next.substring(0, 7) !== savedDate.substring(0, 7)) invalidateWorklogMonth(next)
+        }
         showToast('작업 로그를 수정했습니다.', '✓')
       } catch (e) {
         console.error('작업 로그 수정 실패:', e)

@@ -1,5 +1,5 @@
 // 모든 모달 + 이슈 키 자동완성 관련 로직
-import { state, ISSUE_KEY_PATTERN, LUNCH_START, LUNCH_END, WORKLOG_CACHE_KEY, NO_ISSUE_KEY, NO_ISSUE_SUMMARY, EXCLUDED_CREATE_PROJECT_KEYS } from '../state.js'
+import { state, ISSUE_KEY_PATTERN, WORKLOG_CACHE_KEY, NO_ISSUE_KEY, NO_ISSUE_SUMMARY, EXCLUDED_CREATE_PROJECT_KEYS } from '../state.js'
 import {
   loadSessions,
   loadFavorites,
@@ -19,6 +19,7 @@ import {
 import { loadWorklogs } from '../actions.js'
 import { renderAdf } from '../adf.js'
 import { getCachedMyself } from '../jira.js'
+import { computeMinutesFromTimes } from '../../lib/worklogLogic.js'
 
 // 이슈 키 형식 검사 (예: DKT-123) — ISSUE_KEY_PATTERN도 여기에서 재노출
 export { ISSUE_KEY_PATTERN }
@@ -187,12 +188,9 @@ export function updateFinishDurationReadouts() {
       return
     }
     readout.classList.remove('error')
-    const main = formatMinutes(dur.actualMinutes)
-    readout.textContent = dur.lunchMinutes > 0
-      ? `${main} (점심시간 ${formatMinutes(dur.lunchMinutes)} 제외)`
-      : main
+    readout.textContent = formatDurationReadout(dur)
     totalActual += dur.actualMinutes
-    perSegment[i] = { valid: true, actualMinutes: dur.actualMinutes, startTime, endTime, date }
+    perSegment[i] = { valid: true, actualMinutes: dur.actualMinutes, startTime, endTime, date, crossesMidnight: !!dur.crossesMidnight }
   })
   const totalEl = document.getElementById('finish-total-readout')
   if (totalEl) {
@@ -1175,10 +1173,7 @@ export function updateManualDurationReadout() {
     return
   }
   readout.classList.remove('error')
-  const main = formatMinutes(dur.actualMinutes)
-  readout.textContent = dur.lunchMinutes > 0
-    ? `${main} (점심시간 ${formatMinutes(dur.lunchMinutes)} 제외)`
-    : main
+  readout.textContent = formatDurationReadout(dur)
 }
 
 // 소요 시간 readout 업데이트 (수정 모달)
@@ -1194,26 +1189,28 @@ export function updateEditDurationReadout() {
     return
   }
   readout.classList.remove('error')
-  const main = formatMinutes(dur.actualMinutes)
-  readout.textContent = dur.lunchMinutes > 0
-    ? `${main} (점심시간 ${formatMinutes(dur.lunchMinutes)} 제외)`
-    : main
+  readout.textContent = formatDurationReadout(dur)
 }
 
 // 시작/종료 시간(HH:MM)으로부터 점심시간 차감된 실제 소요(분) 계산
 // 반환: { totalMinutes, lunchMinutes, actualMinutes, valid, message }
 export function computeDurationFromTimes(startTime, endTime) {
   if (!startTime || !endTime) return { valid: false, message: '시간을 입력해주세요.' }
-  const [sh, sm] = startTime.split(':').map(Number)
-  const [eh, em] = endTime.split(':').map(Number)
-  const startMin = sh * 60 + sm
-  const endMin = eh * 60 + em
-  if (endMin <= startMin) return { valid: false, message: '종료 시간은 시작 시간보다 이후여야 합니다.' }
-  const totalMinutes = endMin - startMin
-  const lunchMinutes = Math.max(0, Math.min(endMin, LUNCH_END) - Math.max(startMin, LUNCH_START))
-  const actualMinutes = Math.max(0, totalMinutes - lunchMinutes)
+  // 종료 < 시작이면 자정을 넘긴 것으로 간주 (crossesMidnight) — 기록 시 날짜 경계로 분할됨.
+  // 종료 == 시작은 0분으로 무효 처리 (24시간 worklog로 오인 방지).
+  const { totalMinutes, lunchMinutes, actualMinutes, crossesMidnight } = computeMinutesFromTimes(startTime, endTime)
+  if (totalMinutes <= 0) return { valid: false, message: '종료 시간은 시작 시간보다 이후여야 합니다.' }
   if (actualMinutes <= 0) return { valid: false, message: '점심시간을 제외하면 실제 작업 시간이 없습니다.' }
-  return { valid: true, totalMinutes, lunchMinutes, actualMinutes }
+  return { valid: true, totalMinutes, lunchMinutes, actualMinutes, crossesMidnight }
+}
+
+// readout 공통 포맷 — 점심 제외/자정 넘김 주석 포함
+function formatDurationReadout(dur) {
+  const main = formatMinutes(dur.actualMinutes)
+  const notes = []
+  if (dur.lunchMinutes > 0) notes.push(`점심시간 ${formatMinutes(dur.lunchMinutes)} 제외`)
+  if (dur.crossesMidnight) notes.push('자정 넘김 — 다음 날로 이어 기록')
+  return notes.length ? `${main} (${notes.join(' · ')})` : main
 }
 
 // ========== 이슈 상세 모달 ==========

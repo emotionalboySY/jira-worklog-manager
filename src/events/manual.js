@@ -6,6 +6,7 @@ import { showToast } from '../ui.js'
 import {
   buildWorklogSegments,
   formatJiraError,
+  shiftDate,
 } from '../utils.js'
 import {
   isValidIssueKeyFormat,
@@ -183,6 +184,11 @@ export function bindManualModalEvents() {
         state.showManualLog = null
         state.manualIssueCheck = null
         invalidateWorklogMonth(date)
+        // 자정을 넘긴 기록은 다음 날(다음 달일 수 있음) 월 캐시도 무효화
+        if (dur.crossesMidnight) {
+          const next = shiftDate(date, 1)
+          if (next.substring(0, 7) !== date.substring(0, 7)) invalidateWorklogMonth(next)
+        }
         showToast('작업 로그가 기록되었습니다.', '✓')
         render()
       } catch (e) {

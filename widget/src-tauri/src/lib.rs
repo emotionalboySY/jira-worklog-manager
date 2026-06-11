@@ -10,15 +10,30 @@ use tauri::{
     Emitter, Manager,
 };
 
-// 고정 포트(43117)로 로컬 루프백 서버를 띄워 OAuth 콜백(code/state)을 한 번 받는다.
+// 고정 포트(43117)로 로컬 루프백 서버를 띄워 OAuth 콜백(code/state)을 받는다.
 // Atlassian 개발자 콘솔에 redirect_uri = http://localhost:43117/callback 등록 필요.
-// 콜백 수신 시 쿼리스트링을 'oauth://callback' 이벤트로 프론트엔드에 전달한다.
+// 콜백 수신 시 쿼리스트링을 'oauth-callback' 이벤트로 프론트엔드에 전달한다.
+//
+// 리스너는 최초 호출에서 1회만 bind하고 앱 수명 동안 상주하며 accept 루프를 돈다.
+// (이전: accept 1회 후 종료하는 스레드가 인증 중단 시 accept에 영원히 블록돼 포트를
+//  점유 → 다음 로그인 시도에서 bind 실패 → 앱 재시작 전까지 재로그인 불가)
+static OAUTH_LISTENER_STARTED: std::sync::Mutex<bool> = std::sync::Mutex::new(false);
+
 #[tauri::command]
 async fn start_oauth_listener(app: tauri::AppHandle) -> Result<u16, String> {
     let port: u16 = 43117;
+    let mut started = OAUTH_LISTENER_STARTED
+        .lock()
+        .map_err(|e| e.to_string())?;
+    if *started {
+        // 이미 상주 중 — 재로그인 시도는 기존 리스너를 재사용
+        return Ok(port);
+    }
     let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|e| e.to_string())?;
+    *started = true;
     std::thread::spawn(move || {
-        if let Ok((mut stream, _)) = listener.accept() {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
             let mut buf = [0u8; 4096];
             let n = stream.read(&mut buf).unwrap_or(0);
             let req = String::from_utf8_lossy(&buf[..n]);
@@ -34,7 +49,10 @@ async fn start_oauth_listener(app: tauri::AppHandle) -> Result<u16, String> {
             );
             let _ = stream.write_all(resp.as_bytes());
             let _ = stream.flush();
-            let _ = app.emit("oauth-callback", query);
+            // 콜백 경로가 아닌 잡음 요청(파비콘 등)은 이벤트로 전달하지 않음
+            if path.starts_with("/callback") {
+                let _ = app.emit("oauth-callback", query);
+            }
         }
     });
     Ok(port)
