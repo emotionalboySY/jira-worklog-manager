@@ -20,7 +20,7 @@
       "allow": [
         { "url": "https://api.atlassian.com/*" },
         { "url": "https://auth.atlassian.com/*" },
-        { "url": "https://dk-jira-worklog-manager.vercel.app/*" }
+        { "url": "https://jira-worklog-manager.vercel.app/*" }
       ]
     },
     "core:window:allow-start-dragging",

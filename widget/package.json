@@ -1,5 +1,5 @@
 {
-  "name": "dk-worklog-widget",
+  "name": "jira-worklog-widget",
   "private": true,
   "version": "0.1.8",
   "type": "module",

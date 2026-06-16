@@ -69,7 +69,7 @@ export function renderSettingsModal() {
 
         <div class="modal-section-label" style="margin-top:20px;">데스크톱 위젯</div>
         <div class="settings-hint">작업 세션을 바탕화면에 띄워 시작·중단·종료할 수 있는 Windows 위젯입니다. 설치 후 본인 Jira 계정으로 로그인하면 웹앱과 세션이 실시간 동기화됩니다.</div>
-        <a class="btn btn-sm" href="https://github.com/emotionalboySY/dk-worklog-widget-releases/releases/latest" target="_blank" rel="noopener" style="display:inline-block; text-decoration:none;">위젯 다운로드 (Windows)</a>
+        <a class="btn btn-sm" href="https://github.com/emotionalboySY/jira-worklog-widget-releases/releases/latest" target="_blank" rel="noopener" style="display:inline-block; text-decoration:none;">위젯 다운로드 (Windows)</a>
 
         <div class="modal-actions settings-actions">
           <button class="btn btn-sm" id="settings-reset">기본값으로 재설정</button>

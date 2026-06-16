@@ -1,5 +1,5 @@
 {
-  "name": "dk_jira_worklog_manager",
+  "name": "jira-worklog-manager",
   "version": "0.0.0",
   "private": true,
   "type": "module",
