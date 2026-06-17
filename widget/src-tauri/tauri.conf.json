@@ -36,6 +36,7 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "EmotionB_SY",
     "createUpdaterArtifacts": true,
     "targets": ["nsis"],
     "icon": [
