@@ -2879,6 +2879,39 @@ span.flatpickr-weekday {
   font-size: 14px;
 }
 
+/* 로그인 실패 사유 박스 (OAuth 거부/사이트 없음 등) */
+.login-error {
+  max-width: 440px;
+  padding: 14px 16px;
+  background: var(--red-bg);
+  border: 1px solid var(--red);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.login-error-title {
+  color: var(--red);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.login-error-detail {
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.login-error-code {
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 .btn-login {
   padding: 12px 32px;
   font-size: 15px;

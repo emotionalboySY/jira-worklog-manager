@@ -6,6 +6,32 @@ function getRedirectUri() {
   return window.location.origin + '/'
 }
 
+// ========== 로그인 실패 사유 노출 ==========
+// 외부 조직(타 회사 도메인) 사용자가 로그인에 실패했을 때 "왜 막혔는지"를 로그인 화면에
+// 그대로 보여주기 위한 마지막 에러 보관소. Atlassian이 콜백 URL로 돌려주는 error 코드,
+// 토큰 교환 실패, 접근 가능한 사이트 없음 등을 사용자 친화적 메시지로 변환해 담는다.
+// 형태: { code, message, detail }
+let lastAuthError = null
+export function getLastAuthError() { return lastAuthError }
+export function clearLastAuthError() { lastAuthError = null }
+
+// OAuth/토큰 에러 코드 → 한국어 안내. 매일국어 외부 공유 맥락에서 흔한 원인(조직의 외부 앱
+// 차단/관리자 승인 정책)을 함께 안내한다. description은 Atlassian 원문(디버그용)으로 보존.
+function describeAuthError(code, description) {
+  const map = {
+    access_denied: '로그인 동의가 거부되었습니다. 회사 조직이 외부 앱 사용에 관리자 승인을 요구하는 경우일 수 있어요. 친구 회사의 Atlassian 관리자에게 이 앱 허용을 요청해야 할 수 있습니다.',
+    unauthorized_client: '이 앱이 해당 계정/조직에서 인증을 허용받지 못했습니다. 조직의 외부 앱 차단 정책일 가능성이 큽니다.',
+    invalid_scope: '요청한 권한(scope)이 거부되었습니다. 조직 정책으로 일부 권한이 막혔을 수 있어요.',
+    server_error: 'Atlassian 인증 서버에서 일시적 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+    temporarily_unavailable: 'Atlassian 인증 서버가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해주세요.',
+  }
+  return {
+    code: code || 'unknown',
+    message: map[code] || '로그인에 실패했습니다. 잠시 후 다시 시도하거나 아래 오류 코드를 확인해주세요.',
+    detail: description || '',
+  }
+}
+
 // 인증 URL 생성 후 리다이렉트
 // prompt:'consent'는 매 로그인마다 동의 화면을 강제 → refresh_token 정상 흐름에서는 불필요.
 // 권한 이슈 디버깅이 필요하면 일시적으로 추가.
@@ -30,13 +56,24 @@ export async function handleOAuthCallback() {
   const params = new URLSearchParams(window.location.search)
   const code = params.get('code')
   const state = params.get('state')
+  const oauthError = params.get('error')
+  const oauthErrorDesc = params.get('error_description')
 
-  if (!code) return false
+  // Atlassian이 code 없이 error만 돌려준 경우(동의 거부/조직 차단/관리자 승인 필요 등).
+  // 이전엔 cleanUrl로 사유를 지워버려 화면에 아무것도 안 떴다 → 이제 사유를 보관해 노출.
+  if (!code) {
+    if (oauthError) {
+      lastAuthError = describeAuthError(oauthError, oauthErrorDesc)
+      cleanUrl()
+    }
+    return false
+  }
 
   // state 검증
   const savedState = sessionStorage.getItem('oauth_state')
   if (state !== savedState) {
     console.error('OAuth state 불일치')
+    lastAuthError = { code: 'state_mismatch', message: '보안 검증(state)에 실패했습니다. 새 창/시크릿 모드 충돌일 수 있어요. 다시 시도해주세요.', detail: '' }
     cleanUrl()
     return false
   }
@@ -56,6 +93,8 @@ export async function handleOAuthCallback() {
 
     if (!res.ok) {
       console.error('토큰 교환 실패:', data)
+      // Atlassian/프록시가 준 error 코드를 그대로 변환해 노출
+      lastAuthError = describeAuthError(data?.error || 'token_exchange_failed', data?.error_description)
       cleanUrl()
       return false
     }
@@ -64,12 +103,23 @@ export async function handleOAuthCallback() {
     saveTokens(data)
     cleanUrl()
 
-    // Cloud ID 가져오기
-    await fetchAndSaveCloudId()
+    // Cloud ID 가져오기 — 접근 가능한 Jira Cloud 사이트가 없으면 사실상 사용 불가.
+    // 이 경우 토큰만 받고 화면이 텅 비는 대신, 토큰을 정리하고 명확히 안내한다.
+    const cloudId = await fetchAndSaveCloudId()
+    if (!cloudId) {
+      logout()  // 토큰 등 정리 (reason 'user' → 자동 로그아웃 이벤트 미발행)
+      lastAuthError = {
+        code: 'no_site',
+        message: '이 계정으로 접근 가능한 Jira Cloud 사이트가 없습니다. 회사가 Jira Cloud(*.atlassian.net)를 사용하는지, 그리고 그 계정에 접근 권한이 있는지 확인해주세요. (사내 Jira가 온프레미스(Server/Data Center)면 이 앱으로는 연결되지 않습니다.)',
+        detail: '',
+      }
+      return false
+    }
 
     return true
   } catch (err) {
     console.error('OAuth 콜백 처리 실패:', err)
+    lastAuthError = { code: 'network', message: '로그인 처리 중 네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', detail: err?.message || '' }
     cleanUrl()
     return false
   }
@@ -201,9 +251,11 @@ export async function jiraFetch(path, options = {}) {
 }
 
 // 접근 가능한 리소스에서 Cloud ID 가져오기
+// 접근 가능한 사이트가 있으면 cloudId(문자열) 반환, 없거나 실패 시 null.
+// 콜백에서 반환값으로 "볼 수 있는 사이트가 있는지"를 판별한다.
 async function fetchAndSaveCloudId() {
   const accessToken = localStorage.getItem('jira_access_token')
-  if (!accessToken) return
+  if (!accessToken) return null
 
   try {
     const res = await fetch(`/api/proxy?url=${encodeURIComponent('https://api.atlassian.com/oauth/token/accessible-resources')}`, {
@@ -215,7 +267,7 @@ async function fetchAndSaveCloudId() {
 
     if (!res.ok) {
       console.error('Cloud ID 조회 실패:', res.status)
-      return
+      return null
     }
 
     const resources = await res.json()
@@ -223,9 +275,12 @@ async function fetchAndSaveCloudId() {
     if (Array.isArray(resources) && resources.length > 0) {
       localStorage.setItem('jira_cloud_id', resources[0].id)
       localStorage.setItem('jira_site_name', resources[0].name)
+      return resources[0].id
     }
+    return null
   } catch (e) {
     console.error('Cloud ID 조회 실패:', e)
+    return null
   }
 }
 
