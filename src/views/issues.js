@@ -104,7 +104,7 @@ export function renderIssuesTab() {
     <div class="issue-list ${(isSearchMode || state.currentProject === 'ALL') ? 'show-project-bar' : ''} ${hasSelection ? 'has-selection' : ''}">
       ${filtered.length === 0 ? `
         <div class="no-session">해당 조건에 맞는 이슈가 없습니다.</div>
-      ` : paginateIssues(filtered).map(issue => {
+      ` : (isSearchMode ? filtered : paginateIssues(filtered)).map(issue => {
         const statusCss = getStatusCss(issue.statusCategory || issue.status)
         const rawStatus = issue.statusCategory ? issue.status : getStatusInfo(issue.status).label
         const statusLabel = getShortStatusLabel(rawStatus)
