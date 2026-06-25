@@ -6,13 +6,13 @@ Tauri v2 + Vite Vanilla JS.
 
 ## 구조
 
-- `src/main.js` — 본체 창: 세션 표시(1초 경과시계), 중단/재개/종료/교체/시작시각 조정, 설정 패널(투명도·자동시작·업데이트), 폴링(3s/10s + 실패 시 지수 백오프)
-- `src/finish.js` — 종료 다이얼로그: 제출 직전 세션 재검증 → worklog 조각 기록(실패 시 이어서 재시도, 중복 방지) → 세션 제거
+- `src/main.js` — 본체 창: 세션 표시(1초 경과시계), 중단/재개/종료/교체/시작시각 조정, 설정 패널(투명도·자동시작·기본 점심시간·업데이트), 폴링(3s/10s + 실패 시 지수 백오프)
+- `src/finish.js` — 종료 다이얼로그: 구간별 시작/종료 시간 편집 + 점심시간 조정/차감 끄기 + 기록할 시간 미리보기 → 제출 직전 세션 재검증 → worklog 조각 기록(실패 시 이어서 재시도, 중복 방지) → 세션 제거
 - `src/swap.js` — 일감 교체/지정 다이얼로그
 - `src/api.js` — 백엔드(세션)·Jira API 호출 (http 플러그인으로 CORS 우회)
 - `src/auth.js` — 데스크톱 OAuth(3LO, loopback 43117), 토큰은 plugin-store(`auth.json`)
 - `src/shared.js` — 창 공통 헬퍼 (escapeHtml/fmtMinutes/NO_ISSUE_KEY)
-- `../../lib/worklogLogic.js` — **웹앱과 공유**하는 점심(11:30~12:30)·자정 분할 worklog 로직
+- `../../lib/worklogLogic.js` — **웹앱과 공유**하는 점심(기본 11:30~12:30, 인자로 재정의 가능)·자정 분할 worklog 로직
 - `src-tauri/src/lib.rs` — 트레이, OAuth 루프백 리스너(상주), 마그넷 스냅(Windows 창 후킹), single-instance
 
 ## 개발

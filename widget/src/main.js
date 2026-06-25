@@ -8,7 +8,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { CONFIG } from './config.js'
 import { isLoggedIn, login } from './auth.js'
 import { getSessions, postSessionAction, getLatestWorklogEnd } from './api.js'
-import { escapeHtml, NO_ISSUE_KEY } from './shared.js'
+import { escapeHtml, fmtHHMM, parseHHMM, NO_ISSUE_KEY } from './shared.js'
+import { DEFAULT_LUNCH } from '../../lib/worklogLogic.js'
 import { load } from '@tauri-apps/plugin-store'
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart'
 import { check as checkUpdate } from '@tauri-apps/plugin-updater'
@@ -199,6 +200,21 @@ async function saveOpacity(v) {
   try { const s = await settingsStore(); await s.set('opacity', v); await s.save() } catch (e) { console.error(e) }
 }
 
+// ===== 기본 점심시간(settings.json) — 종료 다이얼로그가 같은 파일에서 읽어 기본값으로 사용 =====
+async function loadLunchSetting() {
+  try {
+    const s = await settingsStore()
+    const ls = await s.get('lunchStart')
+    const le = await s.get('lunchEnd')
+    if (typeof ls === 'number' && typeof le === 'number') return { start: ls, end: le }
+  } catch (e) { console.error(e) }
+  return { ...DEFAULT_LUNCH }
+}
+async function saveLunchSetting(start, end) {
+  try { const s = await settingsStore(); await s.set('lunchStart', start); await s.set('lunchEnd', end); await s.save() }
+  catch (e) { console.error(e) }
+}
+
 // 설정 패널(투명도 + 자동시작)은 render() 밖의 독립 DOM — 폴링 재렌더가 드래그를 끊지 않도록 한다.
 let settingsPanel = null
 function toggleSettingsPanel() {
@@ -214,6 +230,12 @@ function toggleSettingsPanel() {
       <input type="checkbox" id="autostart-chk">
       <span class="set-label">시작 시 자동 실행</span>
     </label>
+    <div class="set-row set-lunch">
+      <span class="set-label">기본 점심시간</span>
+      <input type="time" id="lunch-start-set" class="set-time">
+      <span class="set-tilde">~</span>
+      <input type="time" id="lunch-end-set" class="set-time">
+    </div>
     <div class="set-row set-update">
       <button class="set-update-btn" id="btn-check-update">업데이트 확인</button>
     </div>`
@@ -230,6 +252,17 @@ function toggleSettingsPanel() {
     try { want ? await enableAutostart() : await disableAutostart() }
     catch (e) { console.error(e); chk.checked = !want }   // 실패 시 체크 상태 되돌림
   })
+  // 기본 점심시간 — 저장값 복원 후, 변경 시 settings.json에 저장(종료 다이얼로그 기본값)
+  const lsEl = panel.querySelector('#lunch-start-set')
+  const leEl = panel.querySelector('#lunch-end-set')
+  loadLunchSetting().then(l => { lsEl.value = fmtHHMM(l.start); leEl.value = fmtHHMM(l.end) }).catch(e => console.error(e))
+  const onLunchChange = () => {
+    const s = parseHHMM(lsEl.value)
+    const e = parseHHMM(leEl.value)
+    if (s != null && e != null) saveLunchSetting(s, e)
+  }
+  lsEl.addEventListener('change', onLunchChange)
+  leEl.addEventListener('change', onLunchChange)
   // 업데이트 확인
   const upBtn = panel.querySelector('#btn-check-update')
   upBtn.addEventListener('click', () => checkForUpdate(upBtn))
@@ -433,9 +466,11 @@ function openFinishDialog(key) {
   return openDialogWindow('finish', key, {
     url: `finish.html?key=${encodeURIComponent(key)}`,
     title: '작업 종료',
-    width: 380,
-    height: 250,
-    resizable: false,
+    width: 400,
+    height: 430,
+    minWidth: 360,
+    minHeight: 320,
+    resizable: true,
     center: true,
     alwaysOnTop: true,
     decorations: true,

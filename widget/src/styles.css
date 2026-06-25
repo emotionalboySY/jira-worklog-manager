@@ -260,3 +260,43 @@ html, body {
 .dlg-actions button:hover { background: rgba(255, 255, 255, 0.12); }
 .dlg-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .dlg-actions button:disabled { opacity: 0.6; cursor: default; }
+
+/* 종료 다이얼로그: 편집 가능한 구간/점심 시간 — 창 높이를 넘으면 스크롤 */
+.dialog-body { overflow-y: auto; }
+.dlg-sub + .fin-section { margin-top: 2px; }
+.fin-section { font-size: 11px; color: var(--fg-dim); font-weight: 600; }
+.fin-input {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05); color: var(--fg);
+  border-radius: 7px; padding: 5px 7px; font-size: 12px; font-family: inherit;
+  color-scheme: dark;
+}
+.fin-input:focus { outline: none; border-color: var(--accent); }
+.fin-input:disabled { opacity: 0.45; cursor: not-allowed; }
+.fseg { display: flex; flex-direction: column; gap: 3px; }
+.fseg-label { font-size: 11px; color: var(--fg-dim); }
+.fseg-row, .lunch-row { display: flex; align-items: center; gap: 6px; }
+.fseg-row .fin-input { flex: 1; min-width: 0; }
+.fseg-arrow { color: var(--fg-dim); flex-shrink: 0; }
+.lunch-row .fin-input { flex: 1; min-width: 0; }
+.lunch-skip {
+  display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+  font-size: 11px; color: var(--fg-dim); white-space: nowrap; cursor: pointer;
+}
+.lunch-skip input { accent-color: var(--accent); cursor: pointer; margin: 0; }
+.mini-btn {
+  border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.06);
+  color: var(--fg); border-radius: 7px; padding: 4px 9px; font-size: 11px; cursor: pointer;
+  flex-shrink: 0;
+}
+.mini-btn:hover { background: rgba(255, 255, 255, 0.12); }
+
+/* 설정 패널의 기본 점심시간 행 */
+.settings-panel .set-lunch { flex-wrap: wrap; }
+.settings-panel .set-time {
+  border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.05);
+  color: var(--fg); border-radius: 6px; padding: 3px 5px; font-size: 11px;
+  font-family: inherit; color-scheme: dark;
+}
+.settings-panel .set-time:focus { outline: none; border-color: var(--accent); }
+.settings-panel .set-tilde { color: var(--fg-dim); font-size: 11px; }
