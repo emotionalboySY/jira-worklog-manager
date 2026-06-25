@@ -116,11 +116,20 @@ export function buildJiraStarted(dateStr, timeStr) {
   return `${dateStr}T${hh}:${mm}:00.000${getJiraTzOffset()}`
 }
 
-// 점심시간(11:30~12:30)을 피해 worklog 구간을 분리 생성. 종료 시간이 시작보다 이르면
-// 자정을 넘긴 것으로 간주해 날짜 경계로도 분할한다 — lib/worklogLogic.js에 위임 (위젯과 공유).
+// 사용자 설정에 저장된 기본 점심시간 → { start, end } (분 단위).
+// 모달에서 점심시간을 따로 지정하지 않았을 때의 기본값으로 쓴다.
+export function getDefaultLunch() {
+  return {
+    start: state.userPrefs?.lunchStart ?? LUNCH_START,
+    end: state.userPrefs?.lunchEnd ?? LUNCH_END,
+  }
+}
+
+// 점심시간(기본 11:30~12:30, lunch로 재정의 가능)을 피해 worklog 구간을 분리 생성.
+// 종료 시간이 시작보다 이르면 자정을 넘긴 것으로 간주해 날짜 경계로도 분할 — lib/worklogLogic.js 위임(위젯과 공유).
 // 반환: [{ started, seconds }, ...]
-export function buildWorklogSegments(dateStr, startTime, endTime) {
-  return buildWorklogPiecesFromTimes(dateStr, startTime, endTime)
+export function buildWorklogSegments(dateStr, startTime, endTime, lunch = getDefaultLunch()) {
+  return buildWorklogPiecesFromTimes(dateStr, startTime, endTime, lunch)
 }
 
 // Jira API 에러 응답(JSON)에서 사람이 읽을 수 있는 메시지로 변환
@@ -138,10 +147,10 @@ export function formatJiraError(err) {
   return err?.message || '알 수 없는 오류가 발생했습니다.'
 }
 
-// 점심시간(LUNCH_START~LUNCH_END) 구간과 겹치는 분 수 반환.
+// 점심시간 구간과 겹치는 분 수 반환 (기본값은 사용자 설정의 점심시간).
 // 자정을 넘기는 구간도 날짜별로 나눠 정확히 계산 (공유 로직 위임)
-export function calcLunchOverlap(startDate, endDate) {
-  return computeRangeMinutes(startDate, endDate).lunchMinutes
+export function calcLunchOverlap(startDate, endDate, lunch = getDefaultLunch()) {
+  return computeRangeMinutes(startDate, endDate, lunch).lunchMinutes
 }
 
 export function formatMinutes(totalMinutes) {
@@ -168,9 +177,19 @@ export function formatHHMM(minutes) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-// 점심시간 범위 문자열 (예: "11:30~12:30")
-export function formatLunchRange() {
-  return `${formatHHMM(LUNCH_START)}~${formatHHMM(LUNCH_END)}`
+// "HH:MM" → 분 단위 정수. 무효 입력이면 null.
+export function parseHHMM(str) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(str || '').trim())
+  if (!m) return null
+  const h = Number(m[1])
+  const min = Number(m[2])
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null
+  return h * 60 + min
+}
+
+// 점심시간 범위 문자열 (예: "11:30~12:30"). 기본값은 사용자 설정의 점심시간.
+export function formatLunchRange(lunch = getDefaultLunch()) {
+  return `${formatHHMM(lunch.start)}~${formatHHMM(lunch.end)}`
 }
 
 // ========== HTML ==========

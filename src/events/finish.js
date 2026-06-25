@@ -18,6 +18,7 @@ import {
   renderKeyHint,
   updateKeyDropdown,
   FINISH_KEY_CTX,
+  bindLunchFieldEvents,
 } from '../views/modals.js'
 import { render } from '../render.js'
 import { on } from './_dom.js'
@@ -94,6 +95,9 @@ export function bindFinishModalEvents() {
     on(inp, 'input', updateFinishDurationReadouts)
   })
 
+  // 점심시간(시작/종료/차감 안 함) 변경 → 구간별/합계 readout 갱신
+  bindLunchFieldEvents(document.getElementById('modal-overlay'), updateFinishDurationReadouts)
+
   // 마지막 구간의 '지금' 버튼
   document.querySelectorAll('.finish-seg-now').forEach(btn => {
     on(btn, 'click', () => {
@@ -140,7 +144,7 @@ export function bindFinishModalEvents() {
         return
       }
       if (result.totalActual <= 0) {
-        alert(`기록 가능한 시간이 없습니다. 점심시간(${formatLunchRange()}) 제외 후 실제 작업 시간이 1분 이상이어야 합니다.`)
+        alert(`기록 가능한 시간이 없습니다. 점심시간(${formatLunchRange(result.lunch)}) 제외 후 실제 작업 시간이 1분 이상이어야 합니다.`)
         return
       }
       const comment = document.getElementById('finish-comment')?.value || ''
@@ -166,7 +170,8 @@ export function bindFinishModalEvents() {
         // 점심시간과 겹치면 buildWorklogSegments로 앞/뒤로 쪼개서 Jira에도 원래 시작/종료 시각 보존.
         for (const seg of result.perSegment) {
           if (!seg || !seg.valid || seg.actualMinutes <= 0) continue
-          const subSegments = buildWorklogSegments(seg.date, seg.startTime, seg.endTime)
+          // 종료 모달에서 지정/덮어쓴 점심시간 사용 (readout 계산과 동일 값)
+          const subSegments = buildWorklogSegments(seg.date, seg.startTime, seg.endTime, result.lunch)
           for (const ss of subSegments) {
             await createWorklog(targetIssueKey, {
               started: ss.started,

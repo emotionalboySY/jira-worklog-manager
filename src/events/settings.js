@@ -1,7 +1,8 @@
-// 설정 모달 — FAB 토글, 저장/취소/재설정, 주 시작 요일, 프로젝트 색상, 드래그 앤 드롭 정렬.
+// 설정 모달 — FAB 토글, 저장/취소/재설정, 주 시작 요일, 프로젝트 색상, 기본 점심시간, 드래그 앤 드롭 정렬.
 import { state } from '../state.js'
 import { savePreferences, resetPreferences } from '../storage.js'
 import { applyPreferences, showToast } from '../ui.js'
+import { parseHHMM } from '../utils.js'
 import { render } from '../render.js'
 import { on } from './_dom.js'
 
@@ -88,6 +89,18 @@ export function bindSettingsEvents() {
       if (!state.settingsDraft) return
       state.settingsDraft.summaryWeekStart = btn.dataset.weekStart
       render({ sections: ['modals'] })
+    })
+  })
+
+  // 기본 점심시간 입력 (분 단위로 draft에 저장). 무효 입력은 무시해 기존 값 유지.
+  // (재렌더하지 않음 — input이 자체 값을 들고 있어 포커스/커서를 깨지 않기 위함)
+  document.querySelectorAll('.settings-lunch-start, .settings-lunch-end').forEach(input => {
+    on(input, 'change', () => {
+      if (!state.settingsDraft) return
+      const startMin = parseHHMM(document.querySelector('.settings-lunch-start')?.value)
+      const endMin = parseHHMM(document.querySelector('.settings-lunch-end')?.value)
+      if (startMin != null) state.settingsDraft.lunchStart = startMin
+      if (endMin != null) state.settingsDraft.lunchEnd = endMin
     })
   })
 

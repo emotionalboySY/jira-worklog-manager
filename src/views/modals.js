@@ -15,6 +15,9 @@ import {
   getStatusCss,
   getShortStatusLabel,
   getProjectKeysOrFallback,
+  getDefaultLunch,
+  formatHHMM,
+  parseHHMM,
 } from '../utils.js'
 import { loadWorklogs } from '../actions.js'
 import { renderAdf } from '../adf.js'
@@ -26,6 +29,61 @@ export { ISSUE_KEY_PATTERN }
 
 export function isValidIssueKeyFormat(key) {
   return ISSUE_KEY_PATTERN.test(key)
+}
+
+// ========== 점심시간 입력 필드 (수동 기록 / 종료 / 수정 모달 공용) ==========
+// 기본값은 사용자 설정의 점심시간이며, 이 모달에서만 일시적으로 덮어쓸 수 있다.
+// '차감 안 함' 체크 시 점심 분할/차감이 일어나지 않는다.
+export function renderLunchField(lunch = getDefaultLunch()) {
+  return `
+    <div class="modal-field lunch-field">
+      <label class="modal-label">점심시간 <span class="modal-label-note">(이 기록에만 적용)</span></label>
+      <div class="lunch-row">
+        <input type="time" class="modal-input lunch-start" value="${formatHHMM(lunch.start)}" aria-label="점심 시작 시간" />
+        <span class="lunch-tilde">~</span>
+        <input type="time" class="modal-input lunch-end" value="${formatHHMM(lunch.end)}" aria-label="점심 종료 시간" />
+        <label class="lunch-skip"><input type="checkbox" class="lunch-skip-check" /> 차감 안 함</label>
+      </div>
+    </div>
+  `
+}
+
+// 모달 안의 점심시간 입력값을 읽어 { start, end }(분)로 반환.
+// '차감 안 함' 체크 또는 무효/역전 입력이면 차감하지 않음({ start:0, end:0 }).
+export function readModalLunch(scopeEl) {
+  const root = scopeEl || document
+  if (root.querySelector?.('.lunch-skip-check')?.checked) return { start: 0, end: 0 }
+  const start = parseHHMM(root.querySelector?.('.lunch-start')?.value)
+  const end = parseHHMM(root.querySelector?.('.lunch-end')?.value)
+  if (start == null || end == null || end <= start) return { start: 0, end: 0 }
+  return { start, end }
+}
+
+// 점심시간 입력(시작/종료/차감 안 함)에 변경 리스너를 연결한다.
+// onChange는 보통 해당 모달의 소요시간 readout 갱신 함수.
+// '차감 안 함' 체크 시 시각 입력을 비활성화해 의도를 시각적으로 드러낸다.
+// (on()과 동일한 idempotent 가드 — 부분 렌더로 새 노드가 생겨도 1회만 바인드)
+export function bindLunchFieldEvents(scopeEl, onChange) {
+  if (!scopeEl) return
+  const startEl = scopeEl.querySelector('.lunch-start')
+  const endEl = scopeEl.querySelector('.lunch-end')
+  const skipEl = scopeEl.querySelector('.lunch-skip-check')
+  const syncDisabled = () => {
+    const off = !!skipEl?.checked
+    if (startEl) startEl.disabled = off
+    if (endEl) endEl.disabled = off
+  }
+  const bind = (el, ev, fn) => {
+    if (!el) return
+    const key = `__bound_${ev}`
+    if (el[key]) return
+    el[key] = true
+    el.addEventListener(ev, fn)
+  }
+  bind(startEl, 'input', onChange)
+  bind(endEl, 'input', onChange)
+  bind(skipEl, 'change', () => { syncDisabled(); onChange() })
+  syncDisabled()
 }
 
 // 이미 로드된 이슈 목록에서 찾기 (API 호출 없이)
@@ -143,6 +201,7 @@ export function renderModal() {
         ${issueBlockHtml}
         ${isMulti ? `<div class="modal-section-label">작업 구간 (${details.length}건)</div>` : `<div class="modal-section-label">작업 시간</div>`}
         ${segmentsHtml}
+        ${renderLunchField()}
         <div class="modal-info finish-total-row">
           <span class="modal-info-label">실 작업 시간 합계</span>
           <span class="modal-info-value" id="finish-total-readout">-</span>
@@ -167,6 +226,7 @@ export function renderModal() {
 export function updateFinishDurationReadouts() {
   const modal = document.getElementById('modal-overlay')
   if (!modal) return { valid: false, totalActual: 0, perSegment: [] }
+  const lunch = readModalLunch(modal)
   const segRows = modal.querySelectorAll('.finish-segment')
   const perSegment = []
   let totalActual = 0
@@ -179,7 +239,7 @@ export function updateFinishDurationReadouts() {
     const readout = row.querySelector('.finish-seg-duration')
     const startTime = startInput?.value || ''
     const endTime = endInput?.value || ''
-    const dur = computeDurationFromTimes(startTime, endTime)
+    const dur = computeDurationFromTimes(startTime, endTime, lunch)
     if (!dur.valid) {
       anyInvalid = true
       readout.textContent = dur.message || '-'
@@ -197,7 +257,7 @@ export function updateFinishDurationReadouts() {
     totalEl.textContent = totalActual > 0 ? formatMinutes(totalActual) : '-'
     totalEl.classList.toggle('error', anyInvalid)
   }
-  return { valid: !anyInvalid, totalActual, perSegment }
+  return { valid: !anyInvalid, totalActual, perSegment, lunch }
 }
 
 // ========== 이슈 상태 전이 드롭다운 ==========
@@ -864,6 +924,7 @@ export function renderEditWorklogModal() {
             <button type="button" class="btn btn-sm" id="edit-end-now">지금</button>
           </div>
         </div>
+        ${renderLunchField()}
         <div class="modal-field">
           <label class="modal-label">소요 시간</label>
           <div class="duration-readout" id="edit-duration-readout">-</div>
@@ -952,6 +1013,7 @@ export function renderManualLogModal() {
             <button type="button" class="btn btn-sm" id="manual-end-now">지금</button>
           </div>
         </div>
+        ${renderLunchField()}
         <div class="modal-field">
           <label class="modal-label">소요 시간</label>
           <div class="duration-readout" id="manual-duration-readout">-</div>
@@ -1166,7 +1228,8 @@ export function updateManualDurationReadout() {
   const endEl = document.getElementById('manual-end-time')
   const readout = document.getElementById('manual-duration-readout')
   if (!startEl || !endEl || !readout) return
-  const dur = computeDurationFromTimes(startEl.value, endEl.value)
+  const lunch = readModalLunch(document.getElementById('manual-log-overlay'))
+  const dur = computeDurationFromTimes(startEl.value, endEl.value, lunch)
   if (!dur.valid) {
     readout.textContent = dur.message || '-'
     readout.classList.add('error')
@@ -1182,7 +1245,8 @@ export function updateEditDurationReadout() {
   const endEl = document.getElementById('edit-end-time')
   const readout = document.getElementById('edit-duration-readout')
   if (!startEl || !endEl || !readout) return
-  const dur = computeDurationFromTimes(startEl.value, endEl.value)
+  const lunch = readModalLunch(document.getElementById('edit-worklog-overlay'))
+  const dur = computeDurationFromTimes(startEl.value, endEl.value, lunch)
   if (!dur.valid) {
     readout.textContent = dur.message || '-'
     readout.classList.add('error')
@@ -1193,12 +1257,13 @@ export function updateEditDurationReadout() {
 }
 
 // 시작/종료 시간(HH:MM)으로부터 점심시간 차감된 실제 소요(분) 계산
+// lunch 미지정 시 사용자 설정의 기본 점심시간 사용.
 // 반환: { totalMinutes, lunchMinutes, actualMinutes, valid, message }
-export function computeDurationFromTimes(startTime, endTime) {
+export function computeDurationFromTimes(startTime, endTime, lunch = getDefaultLunch()) {
   if (!startTime || !endTime) return { valid: false, message: '시간을 입력해주세요.' }
   // 종료 < 시작이면 자정을 넘긴 것으로 간주 (crossesMidnight) — 기록 시 날짜 경계로 분할됨.
   // 종료 == 시작은 0분으로 무효 처리 (24시간 worklog로 오인 방지).
-  const { totalMinutes, lunchMinutes, actualMinutes, crossesMidnight } = computeMinutesFromTimes(startTime, endTime)
+  const { totalMinutes, lunchMinutes, actualMinutes, crossesMidnight } = computeMinutesFromTimes(startTime, endTime, lunch)
   if (totalMinutes <= 0) return { valid: false, message: '종료 시간은 시작 시간보다 이후여야 합니다.' }
   if (actualMinutes <= 0) return { valid: false, message: '점심시간을 제외하면 실제 작업 시간이 없습니다.' }
   return { valid: true, totalMinutes, lunchMinutes, actualMinutes, crossesMidnight }

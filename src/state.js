@@ -11,8 +11,10 @@ export const PROJECTS = [
   { key: 'DD', name: '독도' },
 ]
 
-// 점심시간 상수 — 웹앱/위젯이 공유하는 lib/worklogLogic.js가 단일 소스 (기존 import 경로 호환용 재export)
-export { LUNCH_START, LUNCH_END } from '../lib/worklogLogic.js'
+// 점심시간 상수 — 웹앱/위젯이 공유하는 lib/worklogLogic.js가 단일 소스
+// (로컬 바인딩으로 import해 userPrefs 기본값 등에 사용 + 기존 import 경로 호환용 재export)
+import { LUNCH_START, LUNCH_END } from '../lib/worklogLogic.js'
+export { LUNCH_START, LUNCH_END }
 
 export const ISSUE_TYPES = {
   task:      { icon: '✓', label: '작업' },
@@ -140,6 +142,8 @@ export const state = {
     projectOrder: [...DEFAULT_PROJECT_ORDER],
     projectColors: JSON.parse(JSON.stringify(DEFAULT_PROJECT_COLORS)),
     summaryWeekStart: DEFAULT_SUMMARY_WEEK_START,
+    lunchStart: LUNCH_START, // 기본 점심 시작 (분 단위)
+    lunchEnd: LUNCH_END,     // 기본 점심 종료 (분 단위)
   },
   manualIssueCheck: null,  // 이슈 키 검증 결과: null | { status: 'checking'|'ok'|'error', key, summary, message }
   manualKeySearchTimer: null,  // 이슈 키 자동완성 API debounce 타이머

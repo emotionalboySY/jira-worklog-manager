@@ -1,5 +1,6 @@
-// 설정 FAB 버튼 + 설정 모달 (정렬 순서, 프로젝트 색상)
-import { state, DEFAULT_PROJECT_COLORS } from '../state.js'
+// 설정 FAB 버튼 + 설정 모달 (정렬 순서, 프로젝트 색상, 기본 점심시간)
+import { state, DEFAULT_PROJECT_COLORS, LUNCH_START, LUNCH_END } from '../state.js'
+import { formatHHMM } from '../utils.js'
 
 // 우측 하단 설정 플로팅 버튼
 export function renderSettingsFab() {
@@ -65,6 +66,14 @@ export function renderSettingsModal() {
         <div class="settings-segmented" role="radiogroup" aria-label="주 시작 요일">
           <button type="button" class="settings-segmented-btn ${draft.summaryWeekStart === 'thursday' ? 'active' : ''}" role="radio" aria-checked="${draft.summaryWeekStart === 'thursday'}" data-week-start="thursday">목요일 ~ 수요일</button>
           <button type="button" class="settings-segmented-btn ${draft.summaryWeekStart === 'monday' ? 'active' : ''}" role="radio" aria-checked="${draft.summaryWeekStart === 'monday'}" data-week-start="monday">월요일 ~ 일요일</button>
+        </div>
+
+        <div class="modal-section-label" style="margin-top:20px;">기본 점심시간</div>
+        <div class="settings-hint">자동 기록·세션 종료·수동 기록 시 이 시간대와 겹치는 만큼 자동으로 차감됩니다. 특정 날만 다르면(예: 행사·경기 시청) 각 기록 모달에서 그날만 즉석으로 바꿀 수 있습니다.</div>
+        <div class="lunch-row settings-lunch-row">
+          <input type="time" class="modal-input settings-lunch-start" value="${formatHHMM(draft.lunchStart ?? LUNCH_START)}" aria-label="기본 점심 시작 시간" />
+          <span class="lunch-tilde">~</span>
+          <input type="time" class="modal-input settings-lunch-end" value="${formatHHMM(draft.lunchEnd ?? LUNCH_END)}" aria-label="기본 점심 종료 시간" />
         </div>
 
         <div class="modal-section-label" style="margin-top:20px;">데스크톱 위젯</div>

@@ -12,6 +12,8 @@ import {
   DEFAULT_PROJECT_ORDER,
   DEFAULT_PROJECT_COLORS,
   DEFAULT_SUMMARY_WEEK_START,
+  LUNCH_START,
+  LUNCH_END,
 } from './state.js'
 import { calcLunchOverlap } from './utils.js'
 import {
@@ -367,7 +369,16 @@ function defaultPreferences() {
     projectOrder: [...DEFAULT_PROJECT_ORDER],
     projectColors: JSON.parse(JSON.stringify(DEFAULT_PROJECT_COLORS)),
     summaryWeekStart: DEFAULT_SUMMARY_WEEK_START,
+    lunchStart: LUNCH_START,
+    lunchEnd: LUNCH_END,
   }
+}
+
+// 저장된 점심 시각(분) 검증: 0~1440 정수면 채택, 아니면 기본값 fallback.
+// start >= end(차감 안 함 의미)도 유효한 설정으로 그대로 허용한다.
+function validLunchMin(value, fallback) {
+  const n = Number(value)
+  return Number.isInteger(n) && n >= 0 && n <= 1440 ? n : fallback
 }
 
 export function loadPreferences() {
@@ -388,6 +399,8 @@ export function loadPreferences() {
       summaryWeekStart: (saved.summaryWeekStart === 'monday' || saved.summaryWeekStart === 'thursday')
         ? saved.summaryWeekStart
         : defaults.summaryWeekStart,
+      lunchStart: validLunchMin(saved.lunchStart, defaults.lunchStart),
+      lunchEnd: validLunchMin(saved.lunchEnd, defaults.lunchEnd),
     }
     return merged
   } catch {

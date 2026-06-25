@@ -18,6 +18,8 @@ import {
   renderManualKeyHint,
   updateManualKeyDropdown,
   MANUAL_KEY_CTX,
+  readModalLunch,
+  bindLunchFieldEvents,
 } from '../views/modals.js'
 import { ensureMonthWorklogsLoaded } from '../actions.js'
 import { render } from '../render.js'
@@ -144,6 +146,8 @@ export function bindManualModalEvents() {
   const manualEndInput = document.getElementById('manual-end-time')
   if (manualStartInput) on(manualStartInput, 'input', updateManualDurationReadout)
   if (manualEndInput) on(manualEndInput, 'input', updateManualDurationReadout)
+  // 점심시간(시작/종료/차감 안 함) 변경 → 소요 시간 실시간 갱신
+  bindLunchFieldEvents(document.getElementById('manual-log-overlay'), updateManualDurationReadout)
   if (manualStartInput || manualEndInput) updateManualDurationReadout()
 
   // 제출
@@ -163,11 +167,13 @@ export function bindManualModalEvents() {
       if (state.manualIssueCheck?.status === 'error') { alert('이슈 키를 확인해주세요.'); return }
       if (!date) { alert('날짜를 입력해주세요.'); return }
 
-      const dur = computeDurationFromTimes(startTime, endTime)
+      // 이 모달에서 지정/덮어쓴 점심시간 ('차감 안 함'이면 차감 없음)
+      const lunch = readModalLunch(document.getElementById('manual-log-overlay'))
+      const dur = computeDurationFromTimes(startTime, endTime, lunch)
       if (!dur.valid) { alert(dur.message); return }
 
       // 점심시간이 겹치면 두 개 구간으로 쪼개서 기록 (종료 시간 유지를 위해)
-      const segments = buildWorklogSegments(date, startTime, endTime)
+      const segments = buildWorklogSegments(date, startTime, endTime, lunch)
       if (segments.length === 0) { alert('유효한 작업 구간이 없습니다.'); return }
 
       // 제출 중: 버튼을 스피너로 전환 + 중복 클릭 방지
