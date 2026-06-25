@@ -4552,6 +4552,13 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   border-color: var(--accent);
 }
 
+/* 첨부 다운로드(파일 받는 중) — 진행 표시 + 중복 클릭 방지 */
+.detail-attachment.is-downloading {
+  opacity: 0.6;
+  cursor: progress;
+  pointer-events: none;
+}
+
 .detail-attachment-remove {
   position: absolute;
   top: 4px;

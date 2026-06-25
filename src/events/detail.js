@@ -708,19 +708,31 @@ export function bindDetailModalEvents() {
   const detailCloseFooterBtn = document.getElementById('issue-detail-close-footer')
   if (detailCloseFooterBtn) on(detailCloseFooterBtn, 'click', closeIssueDetailModal)
 
-  // 첨부 클릭 → 새 탭으로 Jira 다운로드 URL 열기
+  // 첨부 클릭 → 인증 프록시로 받아 바로 다운로드 (새 탭을 열지 않음)
   document.querySelectorAll('#issue-detail-overlay .detail-attachment').forEach(el => {
     on(el, 'click', async (e) => {
       e.preventDefault()
+      if (el.dataset.downloading === '1') return  // 받는 중 중복 클릭 방지
       const url = el.dataset.attachmentUrl
       if (!url) return
-      const blobUrl = await fetchAttachmentBlobUrl(url)
-      if (blobUrl) {
-        window.open(blobUrl, '_blank', 'noopener,noreferrer')
-        // 메모리 누수 방지를 위해 일정 시간 후 revoke
+      const filename = el.dataset.filename || 'download'
+      el.dataset.downloading = '1'
+      el.classList.add('is-downloading')
+      try {
+        const blobUrl = await fetchAttachmentBlobUrl(url)
+        if (!blobUrl) { showToast('첨부파일을 불러오지 못했습니다.', '⚠'); return }
+        // 임시 <a download>으로 브라우저 다운로드를 트리거 (탭 전환 없음)
+        const a = document.createElement('a')
+        a.href = blobUrl
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        // 다운로드가 시작될 시간을 준 뒤 blob URL 해제 (메모리 누수 방지)
         setTimeout(() => { try { URL.revokeObjectURL(blobUrl) } catch {} }, 60000)
-      } else {
-        showToast('첨부파일을 불러오지 못했습니다.', '⚠')
+      } finally {
+        delete el.dataset.downloading
+        el.classList.remove('is-downloading')
       }
     })
   })

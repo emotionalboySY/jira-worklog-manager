@@ -2026,7 +2026,7 @@ function renderAttachmentTile(a, opts = {}) {
   if (isImage) {
     return `
       <div class="detail-attachment-wrap">
-        <a class="detail-attachment detail-attachment-image" data-attachment-url="${dataUrl}" href="#" title="${fn}">
+        <a class="detail-attachment detail-attachment-image" data-attachment-url="${dataUrl}" data-filename="${fn}" href="#" title="${fn}">
           <span class="detail-attachment-thumb" data-thumb-url="${escapeHtml(a.thumbnailUrl || a.contentUrl || '')}"></span>
           <span class="detail-attachment-name">${fn}</span>
         </a>
@@ -2036,7 +2036,7 @@ function renderAttachmentTile(a, opts = {}) {
   }
   return `
     <div class="detail-attachment-wrap">
-      <a class="detail-attachment detail-attachment-file" data-attachment-url="${dataUrl}" href="#" title="${fn}">
+      <a class="detail-attachment detail-attachment-file" data-attachment-url="${dataUrl}" data-filename="${fn}" href="#" title="${fn}">
         <span class="detail-attachment-icon">📄</span>
         <span class="detail-attachment-name">${fn}</span>
         ${sizeKb ? `<span class="detail-attachment-size">${sizeKb}</span>` : ''}
