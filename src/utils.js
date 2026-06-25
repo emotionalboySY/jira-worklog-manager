@@ -177,9 +177,11 @@ export function formatHHMM(minutes) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-// "HH:MM" → 분 단위 정수. 무효 입력이면 null.
+// "HH:MM"(또는 "HH:MM:SS") → 분 단위 정수. 무효 입력이면 null.
+// 일부 브라우저/상태에서 <input type="time">이 "HH:MM:SS"를 반환하므로 초도 허용(무시).
+// (buildJiraStarted/lib의 dateAtTime과 동일한 관용성 — 안 그러면 점심시간이 조용히 무시됨)
 export function parseHHMM(str) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(String(str || '').trim())
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(String(str || '').trim())
   if (!m) return null
   const h = Number(m[1])
   const min = Number(m[2])
