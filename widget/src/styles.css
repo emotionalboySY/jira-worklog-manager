@@ -218,13 +218,13 @@ html, body {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
 }
 
-/* 설정 패널(투명도 + 자동시작) — 헤더 아래 플로팅 */
+/* 설정 패널(투명도 + 자동시작) — 설정 버튼 하단에 플로팅(위치는 JS가 계산) */
 .settings-panel {
-  position: absolute; top: 36px; left: 50%; transform: translateX(-50%);
+  position: absolute; top: 34px; left: 8px;
   display: flex; flex-direction: column; gap: 8px; z-index: 20;
   background: rgba(30, 33, 43, 0.98);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px; padding: 8px 12px;
+  border-radius: 8px; padding: 8px 10px;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
 }
 .settings-panel .set-row { display: flex; align-items: center; gap: 8px; }
@@ -235,9 +235,11 @@ html, body {
 
 /* ===== 종료 다이얼로그(별도 창, 불투명) ===== */
 .dialog-body { background: #1a1c24 !important; }
+#finish-app { height: 100%; }
 .dlg {
   display: flex; flex-direction: column; gap: 8px;
   padding: 14px 16px; color: var(--fg);
+  height: 100%;
   font-family: 'Pretendard Variable', Pretendard, 'Segoe UI', system-ui, sans-serif;
 }
 .dlg-title { font-size: 14px; }
@@ -250,6 +252,8 @@ html, body {
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.05); color: var(--fg);
   padding: 6px 8px; font-size: 12px; font-family: inherit;
+  /* 창 크기에 따라 남는 세로 공간을 코멘트 입력이 모두 차지 */
+  flex: 1; min-height: 44px;
 }
 .dlg textarea:focus { outline: none; border-color: var(--accent); }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
@@ -291,12 +295,14 @@ html, body {
 }
 .mini-btn:hover { background: rgba(255, 255, 255, 0.12); }
 
-/* 설정 패널의 기본 점심시간 행 */
-.settings-panel .set-lunch { flex-wrap: wrap; }
+/* 설정 패널의 기본 점심시간 행 — 한 줄로 표시(위젯 높이가 고정이라 줄바꿈 금지) */
+.settings-panel .set-lunch { flex-wrap: nowrap; gap: 5px; }
+.settings-panel .set-lunch .set-label { flex: none; }
 .settings-panel .set-time {
   border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.05);
-  color: var(--fg); border-radius: 6px; padding: 3px 5px; font-size: 11px;
+  color: var(--fg); border-radius: 6px; padding: 3px 3px; font-size: 11px;
   font-family: inherit; color-scheme: dark;
+  width: 66px; flex: none;
 }
 .settings-panel .set-time:focus { outline: none; border-color: var(--accent); }
 .settings-panel .set-tilde { color: var(--fg-dim); font-size: 11px; }

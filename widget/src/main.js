@@ -217,8 +217,34 @@ async function saveLunchSetting(start, end) {
 
 // 설정 패널(투명도 + 자동시작)은 render() 밖의 독립 DOM — 폴링 재렌더가 드래그를 끊지 않도록 한다.
 let settingsPanel = null
+function closeSettingsPanel() {
+  if (!settingsPanel) return
+  settingsPanel.remove()
+  settingsPanel = null
+  document.removeEventListener('mousedown', onOutsideSettingsClick, true)
+}
+// 패널/설정 버튼 바깥을 누르면 닫는다. capture 단계에서 판정해 다른 핸들러보다 먼저 동작.
+// (설정 버튼 자체 클릭은 toggle이 처리하므로 여기선 무시)
+function onOutsideSettingsClick(e) {
+  if (!settingsPanel) return
+  if (settingsPanel.contains(e.target)) return
+  if (e.target.closest?.('#btn-settings')) return
+  closeSettingsPanel()
+}
+// 설정 버튼 바로 아래에 패널을 배치한다(우측 정렬, 창 경계 안으로 보정).
+function positionSettingsPanel(panel) {
+  const btn = document.getElementById('btn-settings')
+  if (!btn) return
+  const r = btn.getBoundingClientRect()
+  const margin = 6
+  const pw = panel.offsetWidth
+  let left = r.right - pw   // 패널 우측을 설정 버튼 우측에 맞춤
+  left = Math.max(margin, Math.min(left, window.innerWidth - pw - margin))
+  panel.style.left = `${Math.round(left)}px`
+  panel.style.top = `${Math.round(r.bottom + 4)}px`
+}
 function toggleSettingsPanel() {
-  if (settingsPanel) { settingsPanel.remove(); settingsPanel = null; return }
+  if (settingsPanel) { closeSettingsPanel(); return }
   const panel = document.createElement('div')
   panel.className = 'settings-panel'
   panel.innerHTML = `
@@ -267,6 +293,8 @@ function toggleSettingsPanel() {
   const upBtn = panel.querySelector('#btn-check-update')
   upBtn.addEventListener('click', () => checkForUpdate(upBtn))
   settingsPanel = panel
+  positionSettingsPanel(panel)
+  document.addEventListener('mousedown', onOutsideSettingsClick, true)
 }
 
 // ===== 자동 업데이트 =====
@@ -318,7 +346,7 @@ async function autoCheckUpdateOnce() {
 
 // 업데이트 설치 확인 모달(위젯 본체 위 오버레이)
 function showUpdateModal(update) {
-  if (settingsPanel) { settingsPanel.remove(); settingsPanel = null }
+  closeSettingsPanel()
   const overlay = document.createElement('div')
   overlay.className = 'update-overlay'
   overlay.innerHTML = `
