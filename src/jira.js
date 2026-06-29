@@ -151,10 +151,15 @@ export async function searchIssuesByKey(query, projectKeys, { signal } = {}) {
       // 프로젝트 키만 입력 (예: DKT): 프로젝트 내 내 이슈
       jql = `project = "${qUpper}" AND ${myFilter} ORDER BY updated DESC`
     } else {
-      // 요약 텍스트 검색 (내 이슈 범위)
+      // 요약 텍스트 검색 — 접근 가능한 프로젝트 전체 범위.
+      // (내 이슈로 한정하면 담당자/보고자/관찰자가 본인이 아닌 이슈는
+      //  제목에 키워드가 있어도 검색되지 않는 문제가 있어 myFilter 제거)
       // JQL 문자열 안의 큰따옴표/백슬래시 이스케이프
       const escaped = trimmed.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-      jql = `summary ~ "${escaped}" AND ${myFilter} ORDER BY updated DESC`
+      const projScope = projectKeys.length
+        ? `project in (${projectKeys.map(p => `"${p}"`).join(',')}) AND `
+        : ''
+      jql = `${projScope}summary ~ "${escaped}" ORDER BY updated DESC`
     }
   }
 
