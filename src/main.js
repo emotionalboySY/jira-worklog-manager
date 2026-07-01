@@ -1,7 +1,7 @@
 // 엔트리: 스타일 로드, 초기화 흐름만 담당
 // (flatpickr CSS는 events/calendar.js에서 라이브러리와 함께 lazy 로드)
 import './style.css'
-import { handleOAuthCallback, isLoggedIn, fetchCurrentUser, saveUser, getSavedUser } from './auth.js'
+import { handleOAuthCallback, isLoggedIn, fetchCurrentUser, saveUser, getSavedUser, startTokenAutoRefresh, stopTokenAutoRefresh } from './auth.js'
 import { applyTheme, applyPreferences, showToast } from './ui.js'
 import { loadPreferences } from './storage.js'
 import { render, registerPostRender } from './render.js'
@@ -19,6 +19,7 @@ window.addEventListener('jira-auth-cleared', () => {
   authClearedHandled = true
   // 세션 백엔드 폴링 중단 + 직전 사용자의 in-memory 데이터(이슈/워크로그/캐시 Map들) 정리
   try { stopSessionPolling() } catch {}
+  try { stopTokenAutoRefresh() } catch {}
   try { resetInMemoryUserData() } catch {}
   try { clearTransitionCatalog() } catch {}
   try { showToast('세션이 만료되었습니다. 다시 로그인해주세요.', '⚠') } catch {}
@@ -61,6 +62,7 @@ async function init() {
       loadIssues()
       setupAutoReload()
       initSessionSync()
+      startTokenAutoRefresh()  // 만료 전 선제 갱신 → 재로그인 없이 세션 유지
     }
   } catch (e) {
     console.error('초기화 실패:', e)

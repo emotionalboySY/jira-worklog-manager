@@ -11,6 +11,8 @@
 // utils.js는 state.js/lib만 import하므로 순환 없음.
 import { SESSIONS_KEY } from './state.js'
 import { isBusyUI } from './utils.js'
+// auth.js는 leaf 모듈(다른 src 모듈을 import하지 않음)이라 순환 없음.
+import { ensureAccessToken, refreshAccessToken } from './auth.js'
 
 const API = '/api/sessions'
 // 적응형 폴링 간격: 활성 세션이 있으면 짧게(반응성), 유휴면 길게(요청량 절약).
@@ -58,17 +60,31 @@ function applyAuthoritative(data) {
 }
 
 // ===== API =====
+// 요청 전 ensureAccessToken으로 만료 임박 토큰을 선제 갱신하고, 그래도 401이면(서버측
+// 무효화 등) 1회 refresh 후 재시도한다. 이 경로가 없어 폴링이 만료 토큰으로 401을 무한
+// 반복하던 문제(콘솔 401 누적)를 막는다.
 async function apiGet() {
-  const res = await fetch(API, { headers: { Authorization: `Bearer ${authToken()}` } })
+  const token = await ensureAccessToken()
+  if (!token) { const e = new Error('GET 401'); e.status = 401; throw e }
+  let res = await fetch(API, { headers: { Authorization: `Bearer ${token}` } })
+  if (res.status === 401 && await refreshAccessToken()) {
+    res = await fetch(API, { headers: { Authorization: `Bearer ${authToken()}` } })
+  }
   if (!res.ok) { const e = new Error(`GET ${res.status}`); e.status = res.status; throw e }
   return res.json() // { sessions, rev }
 }
 async function apiPost(action, payload) {
-  const res = await fetch(API, {
+  const token = await ensureAccessToken()
+  if (!token) return { status: 401, data: null }
+  const send = (t) => fetch(API, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken()}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
     body: JSON.stringify({ action, payload }),
   })
+  let res = await send(token)
+  if (res.status === 401 && await refreshAccessToken()) {
+    res = await send(authToken())
+  }
   let data = null
   try { data = await res.json() } catch {}
   return { status: res.status, data }

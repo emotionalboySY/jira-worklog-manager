@@ -186,6 +186,51 @@ function maybeLogoutAfterRefreshFailure(failedRefreshToken) {
   if (current === failedRefreshToken) logout({ reason: 'refresh-failed' })
 }
 
+// ===== 선제적 토큰 갱신 =====
+// 만료가 임박했으면 401을 기다리지 않고 미리 refresh 한다. 모든 인증 호출(jiraFetch·세션
+// 폴링)이 이 함수를 먼저 거쳐, 만료된 토큰으로 API를 때려 401이 쌓이는 것을 방지한다.
+const REFRESH_SKEW_MS = 2 * 60 * 1000           // 만료 2분 전이면 미리 갱신
+const AUTO_REFRESH_INTERVAL_MS = 4 * 60 * 1000  // 백그라운드 선제 갱신 점검 주기
+let _autoRefreshTimer = null
+let _visibilityBound = false
+
+// 유효한 access token 확보. 만료 임박 시 선제 갱신, 갱신 실패 시 null.
+export async function ensureAccessToken() {
+  const accessToken = localStorage.getItem('jira_access_token')
+  if (!accessToken) return null
+  const expiresAt = parseInt(localStorage.getItem('jira_token_expires_at') || '0', 10)
+  if (expiresAt && Date.now() > expiresAt - REFRESH_SKEW_MS) {
+    const ok = await refreshAccessToken()
+    if (!ok) return null
+    return localStorage.getItem('jira_access_token')
+  }
+  return accessToken
+}
+
+// 앱이 열려 있는 동안 access token을 주기적으로 선제 갱신한다.
+// 효과: (1) 사용자가 조회 액션을 하지 않아도 세션이 유지되고, (2) refresh token의 미사용(idle)
+// 만료 타이머가 계속 리셋되어 재로그인 빈도가 급감한다. 백그라운드 탭은 브라우저가 타이머를
+// 조일 수 있어, 탭으로 돌아올 때(visibilitychange)도 만료 여부를 점검한다.
+export function startTokenAutoRefresh() {
+  if (!_visibilityBound && typeof document !== 'undefined') {
+    _visibilityBound = true
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && isLoggedIn()) ensureAccessToken().catch(() => {})
+    })
+  }
+  if (_autoRefreshTimer) return
+  const tick = async () => {
+    _autoRefreshTimer = null
+    if (isLoggedIn()) { try { await ensureAccessToken() } catch {} }
+    if (isLoggedIn()) _autoRefreshTimer = setTimeout(tick, AUTO_REFRESH_INTERVAL_MS)
+  }
+  _autoRefreshTimer = setTimeout(tick, AUTO_REFRESH_INTERVAL_MS)
+}
+
+export function stopTokenAutoRefresh() {
+  if (_autoRefreshTimer) { clearTimeout(_autoRefreshTimer); _autoRefreshTimer = null }
+}
+
 // 429 응답을 받으면 Retry-After만큼 기다렸다가 1회 재시도.
 // Atlassian의 동적 rate limit 대응 (https://developer.atlassian.com/cloud/jira/platform/rate-limiting/).
 async function fetchWithRateLimit(doFetch, token) {
@@ -201,8 +246,9 @@ async function fetchWithRateLimit(doFetch, token) {
 // 성공: JSON 응답 반환 (204 No Content나 JSON이 아닌 경우 null)
 // 실패: HTTP 상태 에러는 throw하여 호출부 try/catch가 감지 가능하도록 함
 export async function jiraFetch(path, options = {}) {
-  const accessToken = localStorage.getItem('jira_access_token')
   const cloudId = localStorage.getItem('jira_cloud_id')
+  // 만료 임박이면 호출 전에 선제 갱신 → 401 왕복 없이 최신 토큰으로 바로 요청
+  const accessToken = await ensureAccessToken()
 
   if (!accessToken || !cloudId) return null
 
