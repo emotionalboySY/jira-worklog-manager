@@ -7,6 +7,7 @@ import StarterKit from '@tiptap/starter-kit'
 import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
 import { adfToPm, pmToAdf } from './adfProsemirror.js'
 import { MediaSingle, Media, MediaPlaceholder, MediaPaste } from './tiptapMedia.js'
+import { InlineCard, BlockCard } from './tiptapCard.js'
 import { setMountAttachments } from './tiptapMounts.js'
 import { destroyInstanceOnMount } from './tiptap.js'
 
@@ -124,6 +125,8 @@ function buildExtensions() {
     Media,
     MediaPlaceholder,
     MediaPaste,
+    InlineCard,
+    BlockCard,
   ]
 }
 

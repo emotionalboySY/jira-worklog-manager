@@ -250,6 +250,33 @@ export function getJiraIssueUrl(issueKey) {
   return `https://${siteName}.atlassian.net/browse/${issueKey}`
 }
 
+// 스마트 링크(inlineCard/blockCard) URL에서 이슈 키 추출 — 같은 사이트 이슈면 리치 카드 렌더용.
+// 지원 형태:
+//   https://<site>.atlassian.net/browse/PROJ-123
+//   .../jira/software/projects/PROJ/boards/1?selectedIssue=PROJ-123
+//   .../issues/PROJ-123
+// atlassian.net 호스트가 아니거나(외부 링크), 현재 로그인 사이트와 다르면 null.
+export function extractJiraIssueKeyFromUrl(url) {
+  if (!url || typeof url !== 'string') return null
+  const m = url.match(/^https?:\/\/([^/]+)(\/[^\s]*)?$/i)
+  if (!m) return null
+  const host = m[1].toLowerCase()
+  const path = m[2] || ''
+  if (!host.endsWith('.atlassian.net')) return null
+  // API로 조회 가능한 건 현재 로그인 사이트뿐 — 다른 사이트 링크는 제외해 헛된 404 요청 방지
+  const site = (localStorage.getItem('jira_site_name') || '').toLowerCase()
+  if (site && host !== `${site}.atlassian.net`) return null
+
+  const KEY = '([A-Za-z][A-Za-z0-9]+-\\d+)'
+  const sel = path.match(new RegExp(`[?&]selectedIssue=${KEY}`))
+  if (sel) return sel[1].toUpperCase()
+  const browse = path.match(new RegExp(`/browse/${KEY}`))
+  if (browse) return browse[1].toUpperCase()
+  const issues = path.match(new RegExp(`/issues/${KEY}`))
+  if (issues) return issues[1].toUpperCase()
+  return null
+}
+
 // 이슈 키를 Jira 페이지로 연결하는 링크로 렌더 (프로젝트별 색상 적용용 data-project 포함)
 export function renderIssueKeyLink(issueKey) {
   const project = getProjectFromKey(issueKey)

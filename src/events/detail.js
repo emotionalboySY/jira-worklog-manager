@@ -16,8 +16,9 @@ import {
   searchIssuesByKey,
   normalizeMediaForSave,
   fetchIssueChangelog,
+  fetchIssueMeta,
 } from '../jira.js'
-import { getProjectKeysOrFallback, formatJiraError } from '../utils.js'
+import { getProjectKeysOrFallback, formatJiraError, extractJiraIssueKeyFromUrl, getStatusCss, getProjectFromKey } from '../utils.js'
 import { renderAddLinkSuggestionsHtml } from '../views/modals.js'
 import { detectLossyFeatures, isEmptyAdf, hasUploadPlaceholders, stripUploadPlaceholders } from '../adfProsemirror.js'
 import {
@@ -619,6 +620,78 @@ export function loadIssueDetailImages() {
       thumb.classList.remove('detail-img-loading')
     })
   })
+
+  // 본문/댓글의 스마트 링크(같은 사이트 이슈)를 리치 카드로 교체
+  resolveIssueDetailCards()
+}
+
+// 설명/댓글 본문의 스마트 링크 앵커(a.adf-card[data-adf-card-url])를 검사해
+// 같은 사이트 이슈면 fetchIssueMeta로 키/제목/상태를 받아 리치 카드로 교체.
+// 결과는 modal 캐시에 저장 → 재렌더 시 네트워크 재요청 없이 즉시 반영.
+function resolveIssueDetailCards() {
+  const m = state.issueDetailModal
+  if (!m) return
+  const modal = document.getElementById('issue-detail-overlay')
+  if (!modal) return
+  const modalKey = m.key
+  if (!m.cardMetaCache) m.cardMetaCache = new Map()      // issueKey → meta | null
+  if (!m.cardMetaInFlight) m.cardMetaInFlight = new Map() // issueKey → Promise<meta|null>
+
+  const cards = modal.querySelectorAll(
+    '.detail-description a.adf-card[data-adf-card-url], .detail-comment-body a.adf-card[data-adf-card-url]'
+  )
+  cards.forEach(a => {
+    const url = a.getAttribute('data-adf-card-url')
+    a.removeAttribute('data-adf-card-url') // 재처리 방지 (재렌더 시 새 앵커로 다시 붙음)
+    if (!url) return
+    const key = extractJiraIssueKeyFromUrl(url)
+    if (!key) return // 외부/타사이트 링크는 기본 링크 칩 그대로 유지
+
+    const cached = m.cardMetaCache.get(key)
+    if (cached !== undefined) {
+      if (cached) applyIssueCard(a, cached)
+      return
+    }
+
+    a.classList.add('adf-card-loading')
+    let p = m.cardMetaInFlight.get(key)
+    if (!p) {
+      p = fetchIssueMeta(key)
+        .then(meta => { m.cardMetaInFlight.delete(key); m.cardMetaCache.set(key, meta || null); return meta || null })
+        .catch(() => { m.cardMetaInFlight.delete(key); m.cardMetaCache.set(key, null); return null })
+      m.cardMetaInFlight.set(key, p)
+    }
+    p.then(meta => {
+      if (!state.issueDetailModal || state.issueDetailModal.key !== modalKey) return
+      a.classList.remove('adf-card-loading')
+      if (meta) applyIssueCard(a, meta)
+    })
+  })
+}
+
+// 스마트 링크 앵커 내용을 이슈 리치 카드(키/제목/상태)로 채운다. href는 그대로 두어 클릭 시 Jira로 이동.
+function applyIssueCard(a, meta) {
+  a.textContent = ''
+  a.classList.add('adf-card-resolved')
+
+  const keyEl = document.createElement('span')
+  keyEl.className = 'adf-card-key issue-key'
+  keyEl.dataset.project = getProjectFromKey(meta.key)
+  keyEl.textContent = meta.key
+  a.appendChild(keyEl)
+
+  const sum = document.createElement('span')
+  sum.className = 'adf-card-summary'
+  sum.textContent = meta.summary || ''
+  a.appendChild(sum)
+
+  if (meta.status) {
+    const st = document.createElement('span')
+    st.className = `adf-card-status issue-status ${getStatusCss(meta.statusCategory)}`
+    st.textContent = meta.status
+    a.appendChild(st)
+  }
+  a.title = `${meta.key} · ${meta.summary || ''}`
 }
 
 // closeIssueDetailModal의 ESC 흐름에서 댓글 작성기/편집기 취소도 같이 처리되도록 재export

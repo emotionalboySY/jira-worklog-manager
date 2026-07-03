@@ -23,10 +23,10 @@ const PM_TO_ADF_MARK = {
 
 // ADF 중 Markdown/tiptap MVP로 표현 못 하는 요소 (경고 대상)
 // mediaSingle/media는 커스텀 노드로 지원하므로 손실 대상에서 제외.
+// inlineCard/blockCard(스마트 링크)도 커스텀 노드로 보존 → 손실 대상에서 제외.
 // mediaGroup은 여전히 미지원 — 다중 인라인 이미지는 평탄화된다.
 const LOSSY_NODES = new Set([
   'panel', 'mention', 'status', 'date', 'emoji',
-  'inlineCard', 'blockCard',
   'mediaGroup',
   'taskList', 'taskItem',
   'decisionList', 'decisionItem',
@@ -61,6 +61,9 @@ const ADF_NODE_ATTRS = {
   media: ['id', 'type', 'collection', 'width', 'height', 'alt'],
   // 업로드 중 자리표시자 — 에디터 내부 전용. Jira 저장 직전 stripUploadPlaceholders로 제거.
   mediaPlaceholder: ['uploadId', 'previewUrl', 'filename'],
+  // 스마트 링크 — url 기반 카드. data(JSON-LD)만 있는 카드도 라운드트립 보존.
+  inlineCard: ['url', 'data'],
+  blockCard: ['url', 'data'],
 }
 
 const ADF_MARK_ATTRS = {

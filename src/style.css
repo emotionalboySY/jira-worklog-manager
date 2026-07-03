@@ -5612,6 +5612,86 @@ body.tt-media-resizing {
   background: rgba(0, 0, 0, 0.55);
 }
 
+/* ========== 스마트 링크 카드(inlineCard/blockCard) ========== */
+/* 편집기(.tt-card)와 읽기 모드(.adf-card) 공통 룩 — 링크 칩 또는 이슈 리치 카드 */
+.tt-card,
+.adf-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  vertical-align: baseline;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  font-size: 13px;
+  line-height: 1.7;
+  text-decoration: none;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tt-card:hover,
+.adf-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.tt-card-block,
+.adf-card-block {
+  display: flex;
+  margin: 8px 0;
+}
+
+/* 로딩 스피너 */
+.tt-card-loading,
+.adf-card-loading { color: var(--text-dim); }
+
+.tt-card-spinner {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: tt-media-spin 0.8s linear infinite;
+}
+
+/* 이슈 리치 카드: 키 뱃지 + 제목(생략) + 상태 뱃지 */
+.tt-card-key,
+.tt-card-status,
+.adf-card-key,
+.adf-card-status { flex: none; }
+
+.tt-card-summary,
+.adf-card-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+/* 일반 링크 칩 */
+.tt-card-icon,
+.adf-card-icon { flex: none; font-size: 11px; opacity: 0.75; }
+
+.tt-card-label,
+.adf-card-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--accent);
+}
+
+/* 에디터에서 선택된 카드 노드 강조 */
+.tt-card.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* ========== 접근성: 모션 최소화 설정 시 애니메이션 축소 ========== */
 @media (prefers-reduced-motion: reduce) {
   *,

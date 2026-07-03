@@ -136,7 +136,9 @@ function renderNode(node, ctx) {
     case 'blockCard': {
       const url = attrs?.url || ''
       const safe = escapeHtml(url)
-      return `<a class="adf-card" href="${safe}" target="_blank" rel="noopener noreferrer">${safe}</a>`
+      const cls = type === 'blockCard' ? 'adf-card adf-card-block' : 'adf-card'
+      // data-adf-card-url: 상세 모달 렌더 후 detail.js가 같은 사이트 이슈면 리치 카드로 교체
+      return `<a class="${cls}" data-adf-card-url="${safe}" href="${safe}" target="_blank" rel="noopener noreferrer">${safe || '스마트 링크'}</a>`
     }
 
     case 'emoji':
