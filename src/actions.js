@@ -214,7 +214,8 @@ export async function refreshIssues() {
 // 이슈와 워크로그를 병렬 호출 (서로 독립이라 순차로 할 이유가 없음)
 // 이슈 목록의 "표시되는 변경" 감지용 서명(요약/상태/담당/부모/역할). 값이 바뀌면 변경으로 본다.
 function issueSig(iss) {
-  return JSON.stringify([iss.summary, iss.status, iss.statusCategory, iss.type, iss.assignee, iss.parent, iss.role])
+  // updated(최종수정시각)를 포함 → 설명·댓글·워크로그 등 목록에 안 보이는 변경도 감지.
+  return JSON.stringify([iss.updated, iss.summary, iss.status, iss.statusCategory, iss.type, iss.assignee, iss.parent, iss.role])
 }
 function issueSigMap(issues) {
   const m = new Map()
@@ -279,7 +280,8 @@ export async function autoReloadIssuesAndWorklogs(options = {}) {
   const results = await Promise.allSettled([issuesTask, worklogsTask])
   const anyUpdated = results.some(r => r.status === 'fulfilled')
   // 강조 등록은 render 전에 — 렌더가 해당 행에 클래스/지연을 그린다.
-  if (flash && changedKeys.length) markIssuesFlashing(changedKeys)
+  // 한 번에 너무 많이 바뀌면(캐시 스키마 변화 등 체계적 변동) 폭주 방지 위해 강조 생략.
+  if (flash && changedKeys.length && changedKeys.length <= 12) markIssuesFlashing(changedKeys)
   if (anyUpdated) render()
 }
 

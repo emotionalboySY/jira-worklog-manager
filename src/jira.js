@@ -5,7 +5,7 @@ import { getFallbackTemplateForType } from './issueTemplates.js'
 
 // 이슈 목록/검색에 필요한 필드. priority/priorityIconUrl은 상세 모달에서만 필요해
 // fetchIssueDetail의 별도 fetch에서 가져오도록 분리(목록 응답 크기 절감).
-const FIELDS = 'summary,issuetype,status,reporter,assignee,watches,parent'
+const FIELDS = 'summary,issuetype,status,reporter,assignee,watches,parent,updated'
 
 // 이슈의 parent(상위 항목/에픽) 추출. 없으면 null
 function extractParent(fields) {
@@ -111,6 +111,7 @@ export async function fetchMyIssues() {
       parent: extractParent(fields),
       assignee: extractAssignee(fields),
       role,
+      updated: fields.updated || null, // 변경 감지용(설명·댓글 등 어떤 변경이든 바뀜)
     }
   })
 }
@@ -182,6 +183,7 @@ export async function searchIssuesByKey(query, projectKeys, { signal } = {}) {
       parent: extractParent(fields),
       assignee: extractAssignee(fields),
       role,
+      updated: fields.updated || null, // 변경 감지용(설명·댓글 등 어떤 변경이든 바뀜)
     }
   })
 }
