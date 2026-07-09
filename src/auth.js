@@ -35,9 +35,9 @@ function describeAuthError(code, description) {
 }
 
 // 인증 URL 생성 후 리다이렉트
-// prompt:'consent'는 매 로그인마다 동의 화면을 강제 → 새 scope(manage:jira-webhook)가
-// 기존 동의 재사용으로 토큰에 안 실리는 문제를 방지한다. Atlassian이 이미 동의된 앱은
-// 증분 동의를 건너뛰어 옛 scope 토큰을 발급할 수 있어, scope 추가 후에는 필수.
+// prompt:'consent'는 매 로그인마다 동의 화면을 강제 → refresh_token 정상 흐름에서는 불필요.
+// scope를 추가할 때는 기존 동의 재사용으로 새 scope가 토큰에 안 실릴 수 있으니, 그때만
+// 일시적으로 prompt:'consent'를 추가해 재동의를 강제한다(적용 후 다시 제거).
 export function login() {
   const state = crypto.randomUUID()
   sessionStorage.setItem('oauth_state', state)
@@ -49,7 +49,6 @@ export function login() {
     redirect_uri: getRedirectUri(),
     state,
     response_type: 'code',
-    prompt: 'consent',
   })
 
   window.location.href = `https://auth.atlassian.com/authorize?${params}`

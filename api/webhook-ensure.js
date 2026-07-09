@@ -186,7 +186,7 @@ export default async function handler(req, res) {
     const next = { webhookId, token: whToken, expiresAt: exp, jql: JQL }
     await redis.set(regKey, next)
     await redis.set(`whooktok:${whToken}`, accountId)
-    console.error('[webhook-ensure] 등록 성공 webhookId=%s', webhookId)
+    console.log('[webhook-ensure] 등록 성공 webhookId=%s', webhookId)
     return res.status(200).json({ ok: true, action: 'register', expiresAt: exp })
   } catch (e) {
     return res.status(500).json(safeError(e, 'webhook-ensure'))
