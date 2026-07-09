@@ -1,6 +1,8 @@
 // ========== Atlassian OAuth 2.0 (3LO) ==========
 const CLIENT_ID = import.meta.env.VITE_ATLASSIAN_CLIENT_ID
-const SCOPES = 'read:jira-work write:jira-work read:jira-user offline_access'
+// manage:jira-webhook — 3LO 동적 웹훅 등록/갱신(실시간 변경 감지)에 필요.
+// ※ 콘솔(Permissions → Jira API)에도 이 scope를 켜고 재로그인해야 새 토큰에 반영됨.
+const SCOPES = 'read:jira-work write:jira-work read:jira-user manage:jira-webhook offline_access'
 
 function getRedirectUri() {
   return window.location.origin + '/'

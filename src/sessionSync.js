@@ -23,6 +23,25 @@ const POLL_IDLE_MS = 12000
 let _render = () => {}
 export function setSessionRenderHook(fn) { if (typeof fn === 'function') _render = fn }
 
+// ===== Jira 웹훅 변경 감지 =====
+// 웹훅 수신 시 서버가 changes 카운터를 올리고, 세션 폴 응답에 jiraRev로 실어 보낸다.
+// jiraRev가 증가하면(다른 곳에서 내 이슈가 바뀜) 이슈/워크로그 재로드 훅을 호출한다.
+// import 순환을 피하려 실제 재로드는 main.js가 setJiraChangeHook으로 주입한다.
+let _jiraChangeHook = null
+export function setJiraChangeHook(fn) { if (typeof fn === 'function') _jiraChangeHook = fn }
+let lastJiraRev = -1 // -1: 기준값 미설정(첫 관측은 기준선으로만 삼고 재로드하지 않음)
+
+function handleJiraRev(data) {
+  if (!data || typeof data.jiraRev !== 'number') return
+  const rev = data.jiraRev
+  if (lastJiraRev === -1) { lastJiraRev = rev; return } // 최초 관측 = 기준선
+  if (rev <= lastJiraRev) return
+  // 입력 중(모달/드롭다운 등)이면 기준값을 올리지 않고 다음 틱으로 미룬다 → 입력값 보존.
+  if (isBusyUI()) return
+  lastJiraRev = rev
+  try { if (_jiraChangeHook) _jiraChangeHook() } catch (e) { console.error('Jira 변경 재로드 실패:', e) }
+}
+
 function authToken() { return localStorage.getItem('jira_access_token') }
 
 // ===== 로컬 캐시 (localStorage 'work_sessions' — storage.js와 공유) =====
@@ -159,6 +178,7 @@ async function pollTick() {
     if (typeof document !== 'undefined' && document.hidden && !hasActive) return
     const data = await apiGet()
     applyAuthoritative(data)
+    handleJiraRev(data) // 웹훅 변경 감지 → 필요 시 이슈/워크로그 재로드
   } catch (e) {
     // 일시 오류는 무시하고 다음 틱에 재시도
   } finally {
@@ -177,6 +197,7 @@ export async function initSessionSync() {
   if (!authToken()) return
   try {
     const data = await apiGet()
+    handleJiraRev(data) // 최초 관측 → jiraRev 기준선 설정(로그인 직후엔 재로드 안 함)
     const backendEmpty = data.rev === 0 && (!data.sessions || data.sessions.length === 0)
     const local = loadCacheRaw()
     if (backendEmpty && local.length > 0) {
@@ -200,4 +221,5 @@ export function stopSessionPolling() {
   pollTimer = null
   queue = []
   localRev = 0
+  lastJiraRev = -1 // 재로그인 시 다시 기준선부터
 }

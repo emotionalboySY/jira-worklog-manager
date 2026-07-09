@@ -5,11 +5,12 @@ import { handleOAuthCallback, isLoggedIn, fetchCurrentUser, saveUser, getSavedUs
 import { applyTheme, applyPreferences, showToast } from './ui.js'
 import { loadPreferences } from './storage.js'
 import { render, registerPostRender } from './render.js'
-import { loadIssues } from './actions.js'
+import { loadIssues, autoReloadIssuesAndWorklogs } from './actions.js'
 import { setupAutoReload } from './autoReload.js'
 import { resetInMemoryUserData } from './state.js'
 import { installDelegatedHandlers, bindEvents, startTimerUpdate } from './events.js'
-import { initSessionSync, stopSessionPolling, setSessionRenderHook } from './sessionSync.js'
+import { initSessionSync, stopSessionPolling, setSessionRenderHook, setJiraChangeHook } from './sessionSync.js'
+import { startWebhookEnsure, stopWebhookEnsure } from './jiraWebhook.js'
 import { clearTransitionCatalog } from './transitionCatalog.js'
 
 // 토큰 갱신 실패로 자동 로그아웃이 일어나면 즉시 로그인 화면으로 전환 + 사용자 안내
@@ -19,6 +20,7 @@ window.addEventListener('jira-auth-cleared', () => {
   authClearedHandled = true
   // 세션 백엔드 폴링 중단 + 직전 사용자의 in-memory 데이터(이슈/워크로그/캐시 Map들) 정리
   try { stopSessionPolling() } catch {}
+  try { stopWebhookEnsure() } catch {}
   try { stopTokenAutoRefresh() } catch {}
   try { resetInMemoryUserData() } catch {}
   try { clearTransitionCatalog() } catch {}
@@ -38,6 +40,8 @@ async function init() {
     registerPostRender(bindEvents)
     registerPostRender(startTimerUpdate)
     setSessionRenderHook(render)
+    // 웹훅 변경 감지 시 이슈/워크로그 재로드 (sessionSync 폴 응답의 jiraRev 증가로 트리거)
+    setJiraChangeHook(() => autoReloadIssuesAndWorklogs())
 
     applyTheme()
     applyPreferences(loadPreferences())
@@ -63,6 +67,7 @@ async function init() {
       setupAutoReload()
       initSessionSync()
       startTokenAutoRefresh()  // 만료 전 선제 갱신 → 재로그인 없이 세션 유지
+      startWebhookEnsure()     // 3LO 동적 웹훅 등록/갱신 → 근실시간 변경 감지
     }
   } catch (e) {
     console.error('초기화 실패:', e)
