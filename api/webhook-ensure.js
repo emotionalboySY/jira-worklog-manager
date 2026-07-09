@@ -50,46 +50,38 @@ async function jira(cloudId, token, path, method, body) {
 // webhook-ensure는 자체 해석(캐시 우회) + 상태코드 로깅을 쓴다.
 // 반환: { accountId, cloudId } | { error, retriable }
 async function resolveIdentity(token) {
+  // 내부에서 로깅하지 않고 사유를 구조체로 반환한다(호출부가 한 줄로 통합 로깅 → 로그
+  // 뷰어가 요청당 첫 줄만 보여주는 제약 우회). 반환: { accountId, cloudId } | { error, status, detail, retriable }
   let rr
   try {
     rr = await fetch('https://api.atlassian.com/oauth/token/accessible-resources', {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     })
   } catch (e) {
-    console.error('[webhook-ensure] accessible-resources 예외:', e?.message)
-    return { error: 'accessible-resources network', retriable: true }
+    return { error: 'accessible-resources:network', detail: e?.message, retriable: true }
   }
   if (!rr.ok) {
     const body = await rr.text().catch(() => '')
-    console.error('[webhook-ensure] accessible-resources %d %s', rr.status, body.slice(0, 150))
-    return { error: `accessible-resources ${rr.status}`, retriable: rr.status === 429 || rr.status >= 500 }
+    return { error: 'accessible-resources', status: rr.status, detail: body.slice(0, 200), retriable: rr.status === 429 || rr.status >= 500 }
   }
   const list = await rr.json().catch(() => null)
   const cloudId = Array.isArray(list) && list[0]?.id
-  if (!cloudId) {
-    console.error('[webhook-ensure] 접근 가능한 사이트 없음 (list len=%s)', Array.isArray(list) ? list.length : 'n/a')
-    return { error: 'no accessible site' }
-  }
+  if (!cloudId) return { error: 'no-accessible-site', status: Array.isArray(list) ? list.length : -1 }
   let mr
   try {
     mr = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/myself`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     })
   } catch (e) {
-    console.error('[webhook-ensure] myself 예외:', e?.message)
-    return { error: 'myself network', retriable: true }
+    return { error: 'myself:network', detail: e?.message, retriable: true }
   }
   if (!mr.ok) {
     const body = await mr.text().catch(() => '')
-    console.error('[webhook-ensure] myself %d %s', mr.status, body.slice(0, 150))
-    return { error: `myself ${mr.status}`, retriable: mr.status === 429 || mr.status >= 500 }
+    return { error: 'myself', status: mr.status, detail: body.slice(0, 200), retriable: mr.status === 429 || mr.status >= 500 }
   }
   const me = await mr.json().catch(() => null)
   const accountId = me?.accountId
-  if (!accountId) {
-    console.error('[webhook-ensure] myself 응답에 accountId 없음')
-    return { error: 'no accountId' }
-  }
+  if (!accountId) return { error: 'no-accountId' }
   return { accountId, cloudId }
 }
 
@@ -101,12 +93,9 @@ export default async function handler(req, res) {
 
   const auth = req.headers.authorization || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
-  // [진단] 401 원인 구분용 로그 — 헤더 유무/토큰 길이. 원인 확인 후 제거 예정.
-  console.error('[webhook-ensure] 진입 hasAuthHeader=%s authLen=%d tokenLen=%d hasBody=%s',
-    !!req.headers.authorization, auth.length, token.length, !!req.body)
   if (!token) {
-    console.error('[webhook-ensure] 401 no-token (Authorization 헤더 없음/형식 불일치)')
-    return res.status(401).json({ error: 'unauthorized' })
+    console.error('[webhook-ensure] 실패 원인=no-token hasAuthHeader=%s authLen=%d', !!req.headers.authorization, auth.length)
+    return res.status(401).json({ error: 'unauthorized', reason: 'no-token' })
   }
 
   // 신원 해석(accountId + cloudId). 로드 직후 레이스/레이트리밋으로 일시 실패할 수 있어
@@ -122,9 +111,10 @@ export default async function handler(req, res) {
     return res.status(500).json(safeError(e, 'webhook-ensure/identity'))
   }
   if (!ident || !ident.accountId) {
-    console.error('[webhook-ensure] 신원 해석 최종 실패:', ident?.error)
-    // 사유를 응답 본문에 노출(디버그용) — 클라 콘솔/네트워크 탭에서 확인 가능.
-    return res.status(401).json({ error: 'identity 해석 실패', detail: ident?.error || 'unknown' })
+    // 통합 진단 로그(요청당 첫 줄) — 사유·HTTP상태·Atlassian 응답 본문 일부·토큰 길이.
+    console.error('[webhook-ensure] 실패 원인=%s status=%s detail=%s tokenLen=%d',
+      ident?.error, ident?.status, ident?.detail, token.length)
+    return res.status(401).json({ error: 'identity 해석 실패', reason: ident?.error, status: ident?.status, detail: ident?.detail })
   }
   const accountId = ident.accountId
   const cloudId = ident.cloudId
