@@ -53,7 +53,13 @@ export default async function handler(req, res) {
 
   const auth = req.headers.authorization || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
-  if (!token) return res.status(401).json({ error: 'unauthorized' })
+  // [진단] 401 원인 구분용 로그 — 헤더 유무/토큰 길이. 원인 확인 후 제거 예정.
+  console.error('[webhook-ensure] 진입 hasAuthHeader=%s authLen=%d tokenLen=%d hasBody=%s',
+    !!req.headers.authorization, auth.length, token.length, !!req.body)
+  if (!token) {
+    console.error('[webhook-ensure] 401 no-token (Authorization 헤더 없음/형식 불일치)')
+    return res.status(401).json({ error: 'unauthorized' })
+  }
 
   // 클라가 조작 중인 cloudId를 그대로 사용(앱이 보는 사이트와 일치). 없으면 서버가 해석.
   let cloudId = (req.body && typeof req.body.cloudId === 'string') ? req.body.cloudId : ''
@@ -64,7 +70,10 @@ export default async function handler(req, res) {
   } catch (e) {
     return res.status(500).json(safeError(e, 'webhook-ensure/identity'))
   }
-  if (!accountId) return res.status(401).json({ error: 'unauthorized' })
+  if (!accountId) {
+    console.error('[webhook-ensure] 401 no-accountId (resolveAccountId가 null 반환)')
+    return res.status(401).json({ error: 'unauthorized' })
+  }
 
   const redis = getRedis()
 
