@@ -8,7 +8,7 @@
 //   whookreg:{accountId} = { webhookId, token, expiresAt, jql }   (등록 상태)
 //   whooktok:{token}     = accountId                              (수신 역매핑)
 import { applyCors, safeError } from './_cors.js'
-import { getRedis, resolveAccountId } from './_identity.js'
+import { getRedis } from './_identity.js'
 import { randomBytes } from 'node:crypto'
 
 // 감지 대상: 담당자/보고자/워쳐 이슈의 생성·수정·삭제.
@@ -45,6 +45,54 @@ async function jira(cloudId, token, path, method, body) {
   return { ok: r.ok, status: r.status, data }
 }
 
+// accountId + cloudId를 한 번에 해석하고, 실패 시 사유(HTTP 상태)를 명시적으로 남긴다.
+// 공유 resolveAccountId는 실패를 null로 뭉뚱그려 원인 파악이 어렵고 캐시 상태에 의존하므로,
+// webhook-ensure는 자체 해석(캐시 우회) + 상태코드 로깅을 쓴다.
+// 반환: { accountId, cloudId } | { error, retriable }
+async function resolveIdentity(token) {
+  let rr
+  try {
+    rr = await fetch('https://api.atlassian.com/oauth/token/accessible-resources', {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    })
+  } catch (e) {
+    console.error('[webhook-ensure] accessible-resources 예외:', e?.message)
+    return { error: 'accessible-resources network', retriable: true }
+  }
+  if (!rr.ok) {
+    const body = await rr.text().catch(() => '')
+    console.error('[webhook-ensure] accessible-resources %d %s', rr.status, body.slice(0, 150))
+    return { error: `accessible-resources ${rr.status}`, retriable: rr.status === 429 || rr.status >= 500 }
+  }
+  const list = await rr.json().catch(() => null)
+  const cloudId = Array.isArray(list) && list[0]?.id
+  if (!cloudId) {
+    console.error('[webhook-ensure] 접근 가능한 사이트 없음 (list len=%s)', Array.isArray(list) ? list.length : 'n/a')
+    return { error: 'no accessible site' }
+  }
+  let mr
+  try {
+    mr = await fetch(`https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/myself`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    })
+  } catch (e) {
+    console.error('[webhook-ensure] myself 예외:', e?.message)
+    return { error: 'myself network', retriable: true }
+  }
+  if (!mr.ok) {
+    const body = await mr.text().catch(() => '')
+    console.error('[webhook-ensure] myself %d %s', mr.status, body.slice(0, 150))
+    return { error: `myself ${mr.status}`, retriable: mr.status === 429 || mr.status >= 500 }
+  }
+  const me = await mr.json().catch(() => null)
+  const accountId = me?.accountId
+  if (!accountId) {
+    console.error('[webhook-ensure] myself 응답에 accountId 없음')
+    return { error: 'no accountId' }
+  }
+  return { accountId, cloudId }
+}
+
 export default async function handler(req, res) {
   applyCors(req, res, 'POST, OPTIONS')
   if (req.method === 'OPTIONS') return res.status(200).end()
@@ -61,32 +109,29 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'unauthorized' })
   }
 
-  // 클라가 조작 중인 cloudId를 그대로 사용(앱이 보는 사이트와 일치). 없으면 서버가 해석.
-  let cloudId = (req.body && typeof req.body.cloudId === 'string') ? req.body.cloudId : ''
-
-  let accountId
+  // 신원 해석(accountId + cloudId). 로드 직후 레이스/레이트리밋으로 일시 실패할 수 있어
+  // 재시도 가능한 오류(429/5xx/네트워크)는 짧게 백오프 후 재시도한다.
+  let ident = null
   try {
-    accountId = await resolveAccountId(token)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      ident = await resolveIdentity(token)
+      if (ident.accountId || !ident.retriable) break
+      await new Promise(r => setTimeout(r, 800 * (attempt + 1)))
+    }
   } catch (e) {
     return res.status(500).json(safeError(e, 'webhook-ensure/identity'))
   }
-  if (!accountId) {
-    console.error('[webhook-ensure] 401 no-accountId (resolveAccountId가 null 반환)')
-    return res.status(401).json({ error: 'unauthorized' })
+  if (!ident || !ident.accountId) {
+    console.error('[webhook-ensure] 신원 해석 최종 실패:', ident?.error)
+    // 사유를 응답 본문에 노출(디버그용) — 클라 콘솔/네트워크 탭에서 확인 가능.
+    return res.status(401).json({ error: 'identity 해석 실패', detail: ident?.error || 'unknown' })
   }
+  const accountId = ident.accountId
+  const cloudId = ident.cloudId
 
   const redis = getRedis()
 
   try {
-    if (!cloudId) {
-      const r = await fetch('https://api.atlassian.com/oauth/token/accessible-resources', {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      })
-      const list = await r.json().catch(() => null)
-      cloudId = Array.isArray(list) && list[0]?.id
-    }
-    if (!cloudId) return res.status(400).json({ error: 'cloudId 없음' })
-
     const regKey = `whookreg:${accountId}`
     const reg = await redis.get(regKey) // 객체 또는 null (@upstash 자동 역직렬화)
     const now = Date.now()
