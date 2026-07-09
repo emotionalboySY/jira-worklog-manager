@@ -15,7 +15,9 @@ import { randomBytes } from 'node:crypto'
 // (워크로그/코멘트 변경도 대개 issue_updated로 반영되고, 실제 재로드가 전량 재조회하므로
 //  이슈 이벤트만으로 "변경 신호"는 충분하다.)
 const EVENTS = ['jira:issue_created', 'jira:issue_updated', 'jira:issue_deleted']
-const JQL = 'assignee = currentUser() OR reporter = currentUser() OR watcher = currentUser()'
+// 주의: 동적 웹훅 JQL 필터는 watcher 절을 지원하지 않는다("Clause watcher is unsupported").
+// assignee/reporter만 사용(워쳐 이슈 실시간 감지는 Atlassian 제약상 불가).
+const JQL = 'assignee = currentUser() OR reporter = currentUser()'
 
 const LIFETIME_MS = 30 * 24 * 60 * 60 * 1000     // 동적 웹훅 수명 30일
 const REFRESH_BEFORE_MS = 5 * 24 * 60 * 60 * 1000 // 만료 5일 이내면 미리 갱신
