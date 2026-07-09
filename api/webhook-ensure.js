@@ -169,18 +169,22 @@ export default async function handler(req, res) {
       webhooks: [{ events: EVENTS, jqlFilter: JQL }],
     })
     if (!created.ok) {
-      return res.status(created.status || 502).json({ error: 'webhook 등록 실패', detail: created.data })
+      // Jira가 등록을 거부(대개 scope 부족이면 401/403 + 메시지). 상태·본문을 첫 줄에 로깅.
+      console.error('[webhook-ensure] 등록 거부 status=%s detail=%s', created.status, JSON.stringify(created.data).slice(0, 300))
+      return res.status(created.status || 502).json({ error: 'webhook 등록 실패', jiraStatus: created.status, detail: created.data })
     }
     const result = created.data?.webhookRegistrationResult?.[0]
     const webhookId = Number(result?.createdWebhookId)
     if (!Number.isFinite(webhookId)) {
       // JQL/이벤트 거부 등은 여기서 errors 배열로 반환됨 → 디버그용으로 그대로 노출.
+      console.error('[webhook-ensure] webhookId 없음 detail=%s', JSON.stringify(created.data).slice(0, 300))
       return res.status(502).json({ error: 'webhookId 없음', detail: created.data })
     }
     const exp = now + LIFETIME_MS
     const next = { webhookId, token: whToken, expiresAt: exp, jql: JQL }
     await redis.set(regKey, next)
     await redis.set(`whooktok:${whToken}`, accountId)
+    console.error('[webhook-ensure] 등록 성공 webhookId=%s', webhookId)
     return res.status(200).json({ ok: true, action: 'register', expiresAt: exp })
   } catch (e) {
     return res.status(500).json(safeError(e, 'webhook-ensure'))
