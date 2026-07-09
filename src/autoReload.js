@@ -30,7 +30,8 @@ async function perform() {
     return
   }
   try {
-    await autoReloadIssuesAndWorklogs()
+    // flash: 지난 로드 대비 바뀐 이슈 행을 잠깐 강조 (워칭 이슈 변경도 여기서 잡힘)
+    await autoReloadIssuesAndWorklogs({ flash: true })
   } catch (e) {
     console.error('자동 새로고침 실패:', e)
   }

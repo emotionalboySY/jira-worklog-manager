@@ -22,6 +22,7 @@ import { showToast } from './ui.js'
 import { render, resetIssueListScroll } from './render.js'
 import { getProjectKeysOrFallback } from './utils.js'
 import { prewarmTransitionCatalog } from './transitionCatalog.js'
+import { markIssuesFlashing } from './issueFlash.js'
 
 export async function loadIssues() {
   if (state.issuesLoading) return
@@ -211,7 +212,32 @@ export async function refreshIssues() {
 // 자동 새로고침: 토스트/로딩 스피너 없이 조용히 이슈 + 현재 월 작업 로그를 재조회
 // 사용자 액션 5분 비활동 후 호출되며, 데이터가 바뀌었어도 토스트 알림 없이 화면만 갱신
 // 이슈와 워크로그를 병렬 호출 (서로 독립이라 순차로 할 이유가 없음)
-export async function autoReloadIssuesAndWorklogs() {
+// 이슈 목록의 "표시되는 변경" 감지용 서명(요약/상태/담당/부모/역할). 값이 바뀌면 변경으로 본다.
+function issueSig(iss) {
+  return JSON.stringify([iss.summary, iss.status, iss.statusCategory, iss.type, iss.assignee, iss.parent, iss.role])
+}
+function issueSigMap(issues) {
+  const m = new Map()
+  if (Array.isArray(issues)) for (const iss of issues) if (iss?.key) m.set(iss.key, issueSig(iss))
+  return m
+}
+// prev(서명맵) 대비 "기존에 있던 이슈인데 내용이 바뀐" 키만 반환.
+// 신규 진입/목록 이탈은 제외해 노이즈(예: 완료 30일 창 이동)를 막는다.
+function changedIssueKeys(prevSig, freshIssues) {
+  const changed = []
+  if (!Array.isArray(freshIssues)) return changed
+  for (const iss of freshIssues) {
+    if (!iss?.key) continue
+    const before = prevSig.get(iss.key)
+    if (before !== undefined && before !== issueSig(iss)) changed.push(iss.key)
+  }
+  return changed
+}
+
+// options.flash: true면 갱신 전/후를 비교해 변경된 이슈 행을 잠깐 강조한다.
+// (웹훅 트리거·유휴 5분 폴링 등 백그라운드 갱신에서만 사용; 최초 로드/수동 새로고침은 미강조)
+export async function autoReloadIssuesAndWorklogs(options = {}) {
+  const { flash = false } = options
   if (state.issuesLoading || state.worklogsLoading) return
 
   const year = state.calendarYear
@@ -221,11 +247,16 @@ export async function autoReloadIssuesAndWorklogs() {
   const lastDay = new Date(year, month + 1, 0).getDate()
   const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
+  // 갱신 전 이슈 서명 스냅샷(강조 대상 판별용)
+  const prevSig = flash ? issueSigMap(state.realIssues) : null
+  let changedKeys = []
+
   const issuesTask = (async () => {
     const promises = [fetchMyIssues(), fetchProjects()]
     if (state.showSprintOnly) promises.push(fetchActiveSprintIssueKeys())
     const [freshIssues, freshProjects, sprintKeys] = await Promise.all(promises)
     if (state.showSprintOnly) state.activeSprintKeys = new Set(sprintKeys || [])
+    if (prevSig && prevSig.size) changedKeys = changedIssueKeys(prevSig, freshIssues)
     state.realIssues = freshIssues
     state.realProjects = freshProjects
     state.issuesLoaded = true
@@ -247,6 +278,8 @@ export async function autoReloadIssuesAndWorklogs() {
   // allSettled로 한쪽이 실패해도 다른 쪽 결과는 반영
   const results = await Promise.allSettled([issuesTask, worklogsTask])
   const anyUpdated = results.some(r => r.status === 'fulfilled')
+  // 강조 등록은 render 전에 — 렌더가 해당 행에 클래스/지연을 그린다.
+  if (flash && changedKeys.length) markIssuesFlashing(changedKeys)
   if (anyUpdated) render()
 }
 

@@ -1,6 +1,7 @@
 // 이슈 목록 탭
 import { state } from '../state.js'
 import { loadSessions, isFavorite } from '../storage.js'
+import { getFlashState } from '../issueFlash.js'
 import {
   escapeHtml,
   getStatusCss,
@@ -113,8 +114,10 @@ export function renderIssuesTab() {
           : `<span class="issue-type-icon ${issue.type}" title="${getTypeLabel(issue.type)}">${getTypeIcon(issue.type)}</span>`
         const typeLabel = issue.typeIconUrl ? issue.type : getTypeLabel(issue.type)
         const isSelected = state.selectedIssues.has(issue.key)
+        // 외부 변경으로 강조 중인 행: 클래스 + 경과시간(음수 delay)으로 애니메이션 이어붙임
+        const flash = getFlashState(issue.key)
         return `
-        <div class="issue-row ${isSelected ? 'is-selected' : ''}" data-issue-key="${issue.key}" data-issue-summary="${escapeHtml(issue.summary || '')}" data-project="${getProjectFromKey(issue.key)}">
+        <div class="issue-row ${isSelected ? 'is-selected' : ''}${flash ? ' issue-flash' : ''}" data-issue-key="${issue.key}" data-issue-summary="${escapeHtml(issue.summary || '')}" data-project="${getProjectFromKey(issue.key)}"${flash ? ` style="--flash-delay:-${flash.delayMs}ms"` : ''}>
           <span class="issue-select" data-action="toggle-select" data-key="${issue.key}" title="선택">
             <input type="checkbox" ${isSelected ? 'checked' : ''} tabindex="-1" />
           </span>
