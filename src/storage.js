@@ -16,6 +16,7 @@ import {
   LUNCH_END,
 } from './state.js'
 import { calcLunchOverlap } from './utils.js'
+import { getDemoFavorites, getDemoSessions, isDemoMode } from './demo.js'
 import {
   applyStart,
   applyPause,
@@ -36,6 +37,7 @@ import { queueSessionSync } from './sessionSync.js'
 // UI용 Date 복원 경계만 담당한다(서버리스/위젯과 동일 로직 공유).
 
 export function loadSessions() {
+  if (isDemoMode()) return getDemoSessions()
   try {
     const raw = localStorage.getItem(SESSIONS_KEY)
     if (!raw) return []
@@ -205,6 +207,7 @@ export function getDayOffLabel(type) {
 let _favoriteKeySet = null
 
 export function loadFavorites() {
+  if (isDemoMode()) return getDemoFavorites()
   try {
     const raw = localStorage.getItem(FAVORITES_KEY)
     if (!raw) return []

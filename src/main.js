@@ -13,6 +13,7 @@ import { initSessionSync, stopSessionPolling, setSessionRenderHook, setJiraChang
 import { startWebhookEnsure, stopWebhookEnsure } from './jiraWebhook.js'
 import { clearIssueFlash } from './issueFlash.js'
 import { clearTransitionCatalog } from './transitionCatalog.js'
+import { isDemoMode, setupDemoState } from './demo.js'
 
 // 토큰 갱신 실패로 자동 로그아웃이 일어나면 즉시 로그인 화면으로 전환 + 사용자 안내
 let authClearedHandled = false
@@ -48,6 +49,13 @@ async function init() {
 
     applyTheme()
     applyPreferences(loadPreferences())
+
+    // 홍보용 촬영 모드는 실제 토큰과 Jira 데이터에 접근하지 않는다.
+    if (isDemoMode()) {
+      setupDemoState()
+      render()
+      return
+    }
 
     // OAuth 콜백 처리 (로그인 후 리다이렉트된 경우)
     await handleOAuthCallback()

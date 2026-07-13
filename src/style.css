@@ -79,6 +79,14 @@ body {
   user-select: none;
 }
 
+/* 촬영용 데모에서는 실수로 실제 동작이 실행되지 않도록 상호작용을 막는다. */
+body.demo-mode button,
+body.demo-mode input,
+body.demo-mode select,
+body.demo-mode a {
+  pointer-events: none;
+}
+
 /* 텍스트 선택은 실제 입력 가능한 요소(input, textarea, contenteditable)에서만 허용 */
 input,
 textarea,

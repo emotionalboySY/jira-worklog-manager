@@ -1,3 +1,5 @@
+import { getDemoUser, isDemoMode } from './demo.js'
+
 // ========== Atlassian OAuth 2.0 (3LO) ==========
 const CLIENT_ID = import.meta.env.VITE_ATLASSIAN_CLIENT_ID
 // manage:jira-webhook — 3LO 동적 웹훅 등록/갱신(실시간 변경 감지)에 필요.
@@ -375,11 +377,12 @@ export function logout({ reason = 'user' } = {}) {
 
 // 로그인 상태 확인
 export function isLoggedIn() {
-  return !!localStorage.getItem('jira_access_token')
+  return isDemoMode() || !!localStorage.getItem('jira_access_token')
 }
 
 // 저장된 사용자 정보 (손상된 JSON이 있어도 throw하지 않음 → 호출부 방어적 처리 생략 가능)
 export function getSavedUser() {
+  if (isDemoMode()) return getDemoUser()
   const raw = localStorage.getItem('jira_user')
   if (!raw) return null
   try { return JSON.parse(raw) } catch { return null }
