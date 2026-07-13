@@ -35,13 +35,14 @@ function waitForServer(url, timeoutMs = 30_000) {
 
 async function launchBrowser() {
   try {
-    // 설치된 Chrome을 우선 사용해 별도 브라우저 설치 없이 촬영한다.
-    return await chromium.launch({ channel: 'chrome', headless: true, args: ['--disable-gpu'] })
-  } catch (chromeError) {
+    // Playwright와 함께 검증된 Chromium이 있으면 우선 사용한다.
+    return await chromium.launch({ headless: true })
+  } catch (chromiumError) {
     try {
-      return await chromium.launch({ headless: true, args: ['--disable-gpu'] })
+      // 전용 Chromium이 없는 개발 환경에서는 설치된 Chrome으로 대체한다.
+      return await chromium.launch({ channel: 'chrome', headless: true })
     } catch {
-      throw new Error(`브라우저를 실행할 수 없습니다. 먼저 'npx playwright install chromium'을 실행해주세요.\n${chromeError.message}`)
+      throw new Error(`브라우저를 실행할 수 없습니다. 먼저 'npx playwright install chromium'을 실행해주세요.\n${chromiumError.message}`)
     }
   }
 }
@@ -63,29 +64,33 @@ let browser
 try {
   await waitForServer(baseUrl)
   browser = await launchBrowser()
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 1000 },
-    deviceScaleFactor: 1,
-    locale: 'ko-KR',
-    timezoneId: 'Asia/Seoul',
-    colorScheme: 'dark',
-  })
 
   for (const target of targets) {
+    // 화면마다 컨텍스트를 격리해 이전 페이지의 합성 레이어가 섞이지 않게 한다.
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 1000 },
+      deviceScaleFactor: 1,
+      locale: 'ko-KR',
+      timezoneId: 'Asia/Seoul',
+      colorScheme: 'dark',
+    })
     const page = await context.newPage()
     await page.goto(`${baseUrl}/?demo=1&${target.query}`, { waitUntil: 'networkidle' })
     await page.locator('#app').waitFor({ state: 'visible' })
     await page.evaluate(() => document.fonts.ready)
     await page.waitForTimeout(500)
+
+    // 고정·스크롤 레이아웃의 합성 레이어가 간헐적으로 검게 찍히는 Chrome 현상을
+    // 피하기 위해 메모리로 한 번 예비 촬영한 뒤 최종 파일을 저장한다.
+    await page.screenshot({ fullPage: false })
+    await page.waitForTimeout(150)
     await page.screenshot({
       path: path.join(outputDir, `${target.name}.png`),
       fullPage: false,
     })
-    await page.close()
+    await context.close()
     console.log(`촬영 완료: screenshots/${target.name}.png`)
   }
-
-  await context.close()
 } finally {
   if (browser) await browser.close()
   server.kill()
