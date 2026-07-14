@@ -241,11 +241,17 @@ export async function loadBacklog(projectKey, { force = false } = {}) {
   }
 }
 
-// 백로그 뷰 전용 조용한 재조회 (폴링에서 사용). 스피너/토스트 없이 갱신.
-// flash: 직전 대비 바뀐 행을 잠깐 강조 (남의 이슈 변경 포함).
+// 백로그 뷰 전용 조용한 재조회 (웹훅·폴링·탭 복귀에서 공용). 스피너/토스트 없이 갱신.
+// flash: 직전 대비 바뀐 행을 잠깐 강조 (내/남 이슈 변경 모두).
+// 웹훅과 폴링이 동시에 호출해도 중복 fetch가 안 되도록 in-flight 코얼레싱:
+// 진행 중이면 새 호출은 pending으로 표시하고, 끝난 뒤 한 번만 더 돌려 최신 상태를 보장한다.
+let backlogRefreshInFlight = false
+let backlogRefreshPending = false
 export async function refreshBacklogSilently({ flash = true } = {}) {
   const proj = state.backlogProject
   if (!proj || !state.backlogLoaded || state.backlogLoading) return
+  if (backlogRefreshInFlight) { backlogRefreshPending = true; return }
+  backlogRefreshInFlight = true
   const prevSig = flash ? issueSigMap(state.backlogIssues) : null
   try {
     const fresh = await fetchBacklogIssues(proj)
@@ -257,6 +263,13 @@ export async function refreshBacklogSilently({ flash = true } = {}) {
     render()
   } catch (e) {
     console.error('백로그 재조회 실패:', e)
+  } finally {
+    backlogRefreshInFlight = false
+    // 진행 중에 다른 트리거(웹훅/폴링)가 들어왔으면 한 번만 더 최신화
+    if (backlogRefreshPending) {
+      backlogRefreshPending = false
+      refreshBacklogSilently({ flash })
+    }
   }
 }
 
@@ -290,6 +303,15 @@ function changedIssueKeys(prevSig, freshIssues) {
 // (웹훅 트리거·유휴 5분 폴링 등 백그라운드 갱신에서만 사용; 최초 로드/수동 새로고침은 미강조)
 export async function autoReloadIssuesAndWorklogs(options = {}) {
   const { flash = false } = options
+
+  // 배포 예정 뷰가 활성이면 웹훅 트리거로 백로그도 즉시 최신화한다.
+  // (내가 Jira 웹에서 직접 바꾼 담당/보고 이슈를 40초 폴링을 기다리지 않고 반영.
+  //  남의 이슈는 웹훅이 오지 않으므로 backlogPoll의 주기 폴링이 별도로 커버.
+  //  refreshBacklogSilently 내부 코얼레싱으로 폴링과 겹쳐도 중복 조회 없음.)
+  if (state.issueViewMode === 'backlog') {
+    refreshBacklogSilently({ flash }).catch(() => {})
+  }
+
   if (state.issuesLoading || state.worklogsLoading) return
 
   const year = state.calendarYear
