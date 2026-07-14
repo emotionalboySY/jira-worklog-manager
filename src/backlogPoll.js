@@ -15,6 +15,9 @@ let visibilityBound = false
 async function tick() {
   // 백로그 뷰가 활성이고 로드된 상태일 때만 동작 (그 외엔 값싸게 no-op)
   if (!isLoggedIn()) return
+  // 백그라운드 탭이면 폴링 생략 — 불필요한 API 호출 방지.
+  // (탭 복귀 시 visibilitychange 훅이 즉시 한 번 재조회하므로 공백 없음)
+  if (document.hidden) return
   if (state.issueViewMode !== 'backlog') return
   if (!state.backlogProject || !state.backlogLoaded) return
   if (state.backlogLoading || isBusyUI()) return
