@@ -7,6 +7,7 @@ import { loadPreferences } from './storage.js'
 import { render, registerPostRender } from './render.js'
 import { loadIssues, autoReloadIssuesAndWorklogs } from './actions.js'
 import { setupAutoReload } from './autoReload.js'
+import { startBacklogPolling } from './backlogPoll.js'
 import { resetInMemoryUserData } from './state.js'
 import { installDelegatedHandlers, bindEvents, startTimerUpdate } from './events.js'
 import { initSessionSync, stopSessionPolling, setSessionRenderHook, setJiraChangeHook } from './sessionSync.js'
@@ -76,6 +77,7 @@ async function init() {
     if (isLoggedIn()) {
       loadIssues()
       setupAutoReload()
+      startBacklogPolling()    // 배포 예정 뷰 활성 시 40초 주기 폴링 (남의 이슈 변경 반영)
       initSessionSync()
       startTokenAutoRefresh()  // 만료 전 선제 갱신 → 재로그인 없이 세션 유지
       startWebhookEnsure()     // 3LO 동적 웹훅 등록/갱신 → 근실시간 변경 감지

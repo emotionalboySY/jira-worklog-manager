@@ -241,6 +241,25 @@ export async function loadBacklog(projectKey, { force = false } = {}) {
   }
 }
 
+// 백로그 뷰 전용 조용한 재조회 (폴링에서 사용). 스피너/토스트 없이 갱신.
+// flash: 직전 대비 바뀐 행을 잠깐 강조 (남의 이슈 변경 포함).
+export async function refreshBacklogSilently({ flash = true } = {}) {
+  const proj = state.backlogProject
+  if (!proj || !state.backlogLoaded || state.backlogLoading) return
+  const prevSig = flash ? issueSigMap(state.backlogIssues) : null
+  try {
+    const fresh = await fetchBacklogIssues(proj)
+    if (state.backlogProject !== proj) return // 도중에 프로젝트 전환됨
+    let changed = []
+    if (prevSig && prevSig.size) changed = changedIssueKeys(prevSig, fresh)
+    state.backlogIssues = fresh
+    if (flash && changed.length && changed.length <= 12) markIssuesFlashing(changed)
+    render()
+  } catch (e) {
+    console.error('백로그 재조회 실패:', e)
+  }
+}
+
 // 자동 새로고침: 토스트/로딩 스피너 없이 조용히 이슈 + 현재 월 작업 로그를 재조회
 // 사용자 액션 5분 비활동 후 호출되며, 데이터가 바뀌었어도 토스트 알림 없이 화면만 갱신
 // 이슈와 워크로그를 병렬 호출 (서로 독립이라 순차로 할 이유가 없음)
@@ -309,6 +328,7 @@ export async function autoReloadIssuesAndWorklogs(options = {}) {
   })().catch(e => { console.error('작업 로그 자동 새로고침 실패:', e); return Promise.reject(e) })
 
   // allSettled로 한쪽이 실패해도 다른 쪽 결과는 반영
+  // (백로그 뷰 최신화는 backlogPoll.js의 주기 폴링이 담당 — 여기선 내 일감/워크로그만)
   const results = await Promise.allSettled([issuesTask, worklogsTask])
   const anyUpdated = results.some(r => r.status === 'fulfilled')
   // 강조 등록은 render 전에 — 렌더가 해당 행에 클래스/지연을 그린다.

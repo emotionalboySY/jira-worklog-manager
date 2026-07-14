@@ -13,6 +13,7 @@ import {
 import { render, resetIssueListScroll } from '../render.js'
 import { openCreateIssueModal } from './create.js'
 import { stopSessionPolling } from '../sessionSync.js'
+import { stopBacklogPolling } from '../backlogPoll.js'
 import { clearTransitionCatalog } from '../transitionCatalog.js'
 import { on } from './_dom.js'
 
@@ -48,6 +49,7 @@ export function bindHeaderEvents() {
       logout()
       // 세션 백엔드 폴링 중단 + 직전 사용자의 in-memory 데이터(이슈/워크로그/캐시) 정리
       try { stopSessionPolling() } catch {}
+      try { stopBacklogPolling() } catch {}
       try { resetInMemoryUserData() } catch {}
       try { clearTransitionCatalog() } catch {}
       render()
