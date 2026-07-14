@@ -16,6 +16,7 @@ import {
   fetchProjects,
   fetchMyWorklogs,
   fetchActiveSprintIssueKeys,
+  fetchBacklogIssues,
   searchIssuesByKey,
 } from './jira.js'
 import { showToast } from './ui.js'
@@ -207,6 +208,37 @@ export async function refreshIssues() {
   }
   state.issuesLoading = false
   render()
+}
+
+// 백로그(배포 예정) 뷰: 선택 프로젝트의 '완료 안 된' 일감을 로드.
+// force=false면 같은 프로젝트를 이미 로드해뒀을 때 재조회를 건너뛴다.
+export async function loadBacklog(projectKey, { force = false } = {}) {
+  if (!projectKey) return
+  if (state.backlogLoading) return
+  if (!force && state.backlogLoaded && state.backlogProject === projectKey) return
+
+  state.backlogProject = projectKey
+  state.backlogLoading = true
+  state.backlogError = null
+  render()
+
+  try {
+    const issues = await fetchBacklogIssues(projectKey)
+    // 로드 도중 사용자가 다른 프로젝트로 바꿨으면 결과 폐기(경쟁 조건 방지)
+    if (state.backlogProject !== projectKey) return
+    state.backlogIssues = issues
+    state.backlogLoaded = true
+  } catch (e) {
+    console.error('백로그 로드 실패:', e)
+    if (state.backlogProject === projectKey) {
+      state.backlogError = '백로그를 불러오지 못했습니다.'
+      state.backlogIssues = []
+      state.backlogLoaded = false
+    }
+  } finally {
+    if (state.backlogProject === projectKey) state.backlogLoading = false
+    render()
+  }
 }
 
 // 자동 새로고침: 토스트/로딩 스피너 없이 조용히 이슈 + 현재 월 작업 로그를 재조회

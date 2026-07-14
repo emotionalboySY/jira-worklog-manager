@@ -14,16 +14,26 @@ import {
   getFilteredIssues,
   getProjectIssues,
   getProjectFromKey,
+  getSelectableProjects,
+  groupBacklogBySprint,
 } from '../utils.js'
 import { renderProjectSelector } from './header.js'
 
 export function renderIssuesTab() {
-  const isSearchMode = state.searchResults !== null
   const sessions = loadSessions()
   const sessionMap = new Map(sessions.map(s => [s.issueKey, s.status]))
+  const viewToggle = renderViewModeToggle()
+
+  // 배포 예정(백로그) 뷰 — 선택 프로젝트의 완료 안 된 일감을 스프린트/백로그로 구분
+  if (state.issueViewMode === 'backlog') {
+    return viewToggle + renderBacklogView(sessionMap)
+  }
+
+  // ----- 내 일감 뷰 -----
+  const isSearchMode = state.searchResults !== null
 
   if (state.issuesLoading && !state.issuesLoaded) {
-    return `<div class="loading-container">
+    return viewToggle + `<div class="loading-container">
       <div class="loading-spinner"></div>
       <span class="loading-text">이슈 목록을 불러오는 중</span>
     </div>`
@@ -52,7 +62,7 @@ export function renderIssuesTab() {
     </div>
   ` : ''
 
-  return `
+  return viewToggle + `
     <div class="search-bar">
       <div class="search-input-wrap">
         <input type="text" class="search-input" id="issue-search" placeholder="이슈 키 또는 요약 검색 (예: DKT-123, 키워드)" value="${escapeHtml(state.searchQuery || '')}" />
@@ -105,18 +115,25 @@ export function renderIssuesTab() {
     <div class="issue-list ${(isSearchMode || state.currentProject === 'ALL') ? 'show-project-bar' : ''} ${hasSelection ? 'has-selection' : ''}">
       ${filtered.length === 0 ? `
         <div class="no-session">해당 조건에 맞는 이슈가 없습니다.</div>
-      ` : (isSearchMode ? filtered : paginateIssues(filtered)).map(issue => {
-        const statusCss = getStatusCss(issue.statusCategory || issue.status)
-        const rawStatus = issue.statusCategory ? issue.status : getStatusInfo(issue.status).label
-        const statusLabel = getShortStatusLabel(rawStatus)
-        const typeIcon = issue.typeIconUrl
-          ? `<img class="issue-type-img" src="${issue.typeIconUrl}" alt="${issue.type}" title="${issue.type}" />`
-          : `<span class="issue-type-icon ${issue.type}" title="${getTypeLabel(issue.type)}">${getTypeIcon(issue.type)}</span>`
-        const typeLabel = issue.typeIconUrl ? issue.type : getTypeLabel(issue.type)
-        const isSelected = state.selectedIssues.has(issue.key)
-        // 외부 변경으로 강조 중인 행: 클래스 + 경과시간(음수 delay)으로 애니메이션 이어붙임
-        const flash = getFlashState(issue.key)
-        return `
+      ` : (isSearchMode ? filtered : paginateIssues(filtered)).map(issue => renderIssueRow(issue, sessionMap)).join('')}
+    </div>
+    ${!isSearchMode ? renderPagination(filtered.length) : ''}
+  `
+}
+
+// 이슈 한 행 렌더링 — 내 일감 뷰와 백로그 뷰가 공유한다.
+function renderIssueRow(issue, sessionMap) {
+  const statusCss = getStatusCss(issue.statusCategory || issue.status)
+  const rawStatus = issue.statusCategory ? issue.status : getStatusInfo(issue.status).label
+  const statusLabel = getShortStatusLabel(rawStatus)
+  const typeIcon = issue.typeIconUrl
+    ? `<img class="issue-type-img" src="${issue.typeIconUrl}" alt="${issue.type}" title="${issue.type}" />`
+    : `<span class="issue-type-icon ${issue.type}" title="${getTypeLabel(issue.type)}">${getTypeIcon(issue.type)}</span>`
+  const typeLabel = issue.typeIconUrl ? issue.type : getTypeLabel(issue.type)
+  const isSelected = state.selectedIssues.has(issue.key)
+  // 외부 변경으로 강조 중인 행: 클래스 + 경과시간(음수 delay)으로 애니메이션 이어붙임
+  const flash = getFlashState(issue.key)
+  return `
         <div class="issue-row ${isSelected ? 'is-selected' : ''}${flash ? ' issue-flash' : ''}" data-issue-key="${issue.key}" data-issue-summary="${escapeHtml(issue.summary || '')}" data-project="${getProjectFromKey(issue.key)}"${flash ? ` style="--flash-delay:-${flash.delayMs}ms"` : ''}>
           <span class="issue-select" data-action="toggle-select" data-key="${issue.key}" title="선택">
             <input type="checkbox" ${isSelected ? 'checked' : ''} tabindex="-1" />
@@ -150,9 +167,120 @@ export function renderIssuesTab() {
           </div>
         </div>
         `
-      }).join('')}
+}
+
+// ===== 뷰 모드 전환 (내 일감 ↔ 배포 예정) =====
+function renderViewModeToggle() {
+  const mode = state.issueViewMode
+  return `
+    <div class="view-mode-toggle" role="tablist" aria-label="이슈 보기 방식">
+      <button class="view-mode-btn ${mode === 'mine' ? 'active' : ''}" data-view-mode="mine" role="tab" aria-selected="${mode === 'mine'}">내 일감</button>
+      <button class="view-mode-btn ${mode === 'backlog' ? 'active' : ''}" data-view-mode="backlog" role="tab" aria-selected="${mode === 'backlog'}">배포 예정 (백로그)</button>
     </div>
-    ${!isSearchMode ? renderPagination(filtered.length) : ''}
+  `
+}
+
+// ===== 배포 예정(백로그) 뷰 =====
+function renderBacklogView(sessionMap) {
+  const projects = getSelectableProjects()
+  const selected = state.backlogProject
+
+  const refreshIcon = state.backlogLoading
+    ? '<span class="btn-spinner"></span>'
+    : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8A5.5 5.5 0 1 1 12 4.5"/><polyline points="13.5 2 13.5 5 10.5 5"/></svg>'
+
+  const projectBar = `
+    <div class="project-selector backlog-project-selector">
+      <span class="project-selector-label">프로젝트</span>
+      ${projects.length === 0
+        ? `<span class="backlog-hint">불러온 프로젝트가 없습니다.</span>`
+        : projects.map(p => `
+          <button class="project-chip backlog-project-chip ${selected === p.key ? 'active' : ''}" data-backlog-project="${escapeHtml(p.key)}">
+            ${escapeHtml(p.name)} (${escapeHtml(p.key)})
+          </button>
+        `).join('')}
+      <button class="btn btn-sm btn-refresh backlog-refresh" data-action="refresh-backlog" ${state.backlogLoading || !selected ? 'disabled' : ''} title="백로그 새로고침">
+        ${refreshIcon}
+      </button>
+    </div>
+  `
+
+  let body
+  if (!selected) {
+    body = `<div class="no-session">배포 일감을 확인할 프로젝트를 선택하세요.</div>`
+  } else if (state.backlogLoading && !state.backlogLoaded) {
+    body = `<div class="loading-container">
+      <div class="loading-spinner"></div>
+      <span class="loading-text">${escapeHtml(selected)} 백로그를 불러오는 중</span>
+    </div>`
+  } else if (state.backlogError) {
+    body = `<div class="no-session">${escapeHtml(state.backlogError)}</div>`
+  } else {
+    body = renderBacklogGroups(sessionMap)
+  }
+
+  const selectedCount = state.selectedIssues.size
+  return `
+    ${projectBar}
+    ${selectedCount > 0 ? renderBulkCopyBar(selectedCount) : ''}
+    ${body}
+  `
+}
+
+// 스프린트 시작/종료일을 'M/D~M/D' 축약으로. 값이 없으면 빈 문자열.
+function formatSprintDates(s) {
+  const fmt = (iso) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return ''
+    return `${d.getMonth() + 1}/${d.getDate()}`
+  }
+  const a = fmt(s.startDate)
+  const b = fmt(s.endDate)
+  if (a && b) return `${a}~${b}`
+  return a || b || ''
+}
+
+function renderBacklogGroups(sessionMap) {
+  const issues = state.backlogIssues
+  if (!issues || issues.length === 0) {
+    return `<div class="no-session">완료되지 않은 일감이 없습니다.</div>`
+  }
+  const { sections, backlog } = groupBacklogBySprint(issues)
+
+  const renderGroup = (titleHtml, badgeHtml, groupIssues, extraClass = '') => `
+    <div class="backlog-group ${extraClass}">
+      <div class="backlog-group-header">
+        <span class="backlog-group-title">${titleHtml}</span>
+        ${badgeHtml || ''}
+        <span class="backlog-group-count">${groupIssues.length}건</span>
+      </div>
+      <div class="issue-list show-project-bar">
+        ${groupIssues.length === 0
+          ? `<div class="backlog-empty">일감 없음</div>`
+          : groupIssues.map(iss => renderIssueRow(iss, sessionMap)).join('')}
+      </div>
+    </div>
+  `
+
+  const sprintSections = sections.map(sec => {
+    const s = sec.sprint
+    const stateBadge = s.state === 'active'
+      ? `<span class="sprint-state-badge active">진행 중</span>`
+      : s.state === 'future'
+        ? `<span class="sprint-state-badge future">예정</span>`
+        : ''
+    const dates = formatSprintDates(s)
+    const title = `${escapeHtml(s.name)}${dates ? ` <span class="sprint-dates">${dates}</span>` : ''}`
+    return renderGroup(title, stateBadge, sec.issues, 'is-sprint')
+  }).join('')
+
+  const backlogBadge = `<span class="sprint-state-badge backlog">스프린트 미포함</span>`
+  return `
+    <div class="backlog-groups">
+      ${sprintSections}
+      ${renderGroup('백로그', backlogBadge, backlog, 'is-backlog')}
+    </div>
   `
 }
 

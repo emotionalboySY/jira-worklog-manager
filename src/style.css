@@ -155,9 +155,11 @@ body.tab-issues .tab-content {
 }
 
 /* 이슈 탭 내부 고정 요소들 */
+body.tab-issues .tab-content > .view-mode-toggle,
 body.tab-issues .tab-content > .search-bar,
 body.tab-issues .tab-content > .project-selector,
 body.tab-issues .tab-content > .filter-row,
+body.tab-issues .tab-content > .bulk-copy-bar,
 body.tab-issues .tab-content > .search-result-info,
 body.tab-issues .tab-content > .pagination {
   flex-shrink: 0;
@@ -168,6 +170,17 @@ body.tab-issues .tab-content > .issue-list {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* 백로그 뷰: 스프린트 섹션들을 감싸는 컨테이너가 스크롤 영역 */
+body.tab-issues .tab-content > .backlog-groups {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* 백로그 뷰의 개별 스프린트 목록은 자연 높이 (독립 스크롤 X) */
+body.tab-issues .tab-content > .backlog-groups .issue-list {
+  overflow: visible;
 }
 
 /* ===== 작업 로그 탭: 페이지 자체 스크롤 제거, log-list만 내부 스크롤 ===== */
@@ -513,6 +526,121 @@ body.tab-logs .log-detail > .no-session {
   color: var(--accent);
   background: var(--accent-bg);
   border-color: var(--accent);
+}
+
+/* ========== 뷰 모드 전환 (내 일감 ↔ 배포 예정) ========== */
+.view-mode-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 16px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.view-mode-btn {
+  padding: 5px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.view-mode-btn:hover {
+  color: var(--text-bright);
+}
+
+.view-mode-btn.active {
+  color: var(--text-bright);
+  background: var(--bg-card);
+  box-shadow: var(--shadow);
+}
+
+/* ========== 백로그(배포 예정) 뷰 ========== */
+.backlog-project-selector {
+  flex-wrap: wrap;
+}
+
+.backlog-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.backlog-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.backlog-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px 8px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.backlog-group-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-bright);
+}
+
+.backlog-group-title .sprint-dates {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+
+.backlog-group-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.sprint-state-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  letter-spacing: 0.02em;
+}
+
+.sprint-state-badge.active {
+  color: var(--green);
+  background: var(--green-bg);
+}
+
+.sprint-state-badge.future {
+  color: var(--blue);
+  background: var(--blue-bg);
+}
+
+.sprint-state-badge.backlog {
+  color: var(--text-dim);
+  background: var(--bg-hover);
+}
+
+.backlog-group.is-backlog .backlog-group-title {
+  color: var(--text);
+}
+
+.backlog-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 10px 2px;
 }
 
 /* ========== 현재 작업 세션 ========== */

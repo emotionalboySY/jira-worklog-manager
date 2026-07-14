@@ -26,13 +26,14 @@ import {
 } from './storage.js'
 import {
   toDateString,
-  getActiveIssues,
   getActiveLogs,
   formatMinutes,
   formatJiraError,
+  getDefaultBacklogProject,
+  findIssueByKey,
 } from './utils.js'
 import { showToast, showContextMenu } from './ui.js'
-import { loadWorklogs, ensureMonthWorklogsLoaded } from './actions.js'
+import { loadWorklogs, ensureMonthWorklogsLoaded, loadBacklog } from './actions.js'
 import { render, resetIssueListScroll } from './render.js'
 import {
   getCatalogTransitionsForIssue,
@@ -299,8 +300,8 @@ function copySelectedIssues(format) {
   const found = new Set(ordered.map(i => i.key))
   for (const key of state.selectedIssues) {
     if (!found.has(key)) {
-      const fromSearch = (state.searchResults || []).find(i => i.key === key)
-      ordered.push(fromSearch || { key, summary: '' })
+      const fromPool = findIssueByKey(key)
+      ordered.push(fromPool || { key, summary: '' })
     }
   }
   let text = ''
@@ -460,8 +461,7 @@ export function installDelegatedHandlers() {
   registerClickAction('toggle-favorite', (e, btn) => {
     e.stopImmediatePropagation()
     const key = btn.dataset.key
-    const pool = [...getActiveIssues(), ...(state.searchResults || [])]
-    const issue = pool.find(i => i.key === key)
+    const issue = findIssueByKey(key)
     toggleFavorite(key, issue?.summary || '')
     render()
   })
@@ -482,12 +482,17 @@ export function installDelegatedHandlers() {
     render()
   })
 
+  // 백로그(배포 예정) 뷰 새로고침
+  registerClickAction('refresh-backlog', (e, btn) => {
+    if (btn.disabled) return
+    if (state.backlogProject) loadBacklog(state.backlogProject, { force: true })
+  })
+
   // 이슈 행 호버 시 표시되는 '수동 기록' 버튼
   registerClickAction('manual-log', (e, btn) => {
     e.stopImmediatePropagation()
     const key = btn.dataset.key
-    const pool = [...getActiveIssues(), ...(state.searchResults || [])]
-    const issue = pool.find(i => i.key === key)
+    const issue = findIssueByKey(key)
     if (!issue) return
     state.showManualLog = { issueKey: key, summary: issue.summary }
     state.manualIssueCheck = { status: 'ok', key, summary: issue.summary }
@@ -651,8 +656,7 @@ export function installDelegatedHandlers() {
   registerClickAction('start', (e, btn) => {
     e.stopImmediatePropagation()
     const key = btn.dataset.key
-    const allIssues = [...getActiveIssues(), ...(state.searchResults || [])]
-    const issue = allIssues.find(i => i.key === key)
+    const issue = findIssueByKey(key)
     if (issue) {
       addSession(key, issue.summary)
       render()
@@ -911,6 +915,32 @@ export function installDelegatedHandlers() {
     state.searchResults = null
     render()
     resetIssueListScroll()
+  })
+
+  // 뷰 모드 전환 (내 일감 ↔ 배포 예정/백로그)
+  // 백로그 진입 시 프로젝트 미선택이면 기본 프로젝트를 지정하고 로드한다.
+  registerClickData('viewMode', (e, btn) => {
+    const mode = btn.dataset.viewMode
+    if (!mode || mode === state.issueViewMode) return
+    state.issueViewMode = mode
+    state.selectedIssues = new Set()
+    if (mode === 'backlog' && !state.backlogProject) {
+      const proj = getDefaultBacklogProject()
+      if (proj) state.backlogProject = proj
+    }
+    render()
+    resetIssueListScroll()
+    if (mode === 'backlog' && state.backlogProject) {
+      loadBacklog(state.backlogProject) // 미로딩이면 내부에서 로드+render
+    }
+  })
+
+  // 백로그 뷰 프로젝트 선택 (data-backlog-project는 selector(.project-chip)보다 먼저 매칭됨)
+  registerClickData('backlogProject', (e, chip) => {
+    const key = chip.dataset.backlogProject
+    if (!key || key === state.backlogProject) return
+    state.selectedIssues = new Set()
+    loadBacklog(key) // 내부에서 render
   })
 
   // 이슈 행 좌클릭 → 상세 모달 (action/링크/버튼 영역은 위에서 처리되어 여기 도달 안 함)

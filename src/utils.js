@@ -1,6 +1,7 @@
 // 순수 유틸 + state 기반 파생 셀렉터
 import {
   state,
+  PROJECTS,
   ISSUE_TYPES,
   ISSUE_STATUSES,
   LUNCH_START,
@@ -347,6 +348,71 @@ export function getProjectIssues() {
   issues = filterSprintIssues(issues)
   if (state.currentProject === 'ALL') return issues
   return issues.filter(i => getProjectFromKey(i.key) === state.currentProject)
+}
+
+// 액션 핸들러가 키로 이슈 객체를 조회할 때 쓰는 통합 풀
+// (내 일감 → 검색 결과 → 백로그 순으로 탐색)
+export function findIssueByKey(key) {
+  if (!key) return null
+  return state.realIssues.find(i => i.key === key)
+    || (state.searchResults || []).find(i => i.key === key)
+    || (state.backlogIssues || []).find(i => i.key === key)
+    || null
+}
+
+// ========== 백로그(배포 예정) 뷰 헬퍼 ==========
+
+// 백로그 뷰에서 선택 가능한 프로젝트 목록.
+// 내 일감에 등장하는 프로젝트를 우선(짧고 관련성 높음), 없으면 접근 가능한 전체 프로젝트.
+export function getSelectableProjects() {
+  const usedKeys = [...new Set(state.realIssues.map(i => getProjectFromKey(i.key)))]
+  if (state.realProjects && state.realProjects.length > 0) {
+    const used = state.realProjects.filter(p => usedKeys.includes(p.key))
+    return used.length > 0 ? used : state.realProjects
+  }
+  return PROJECTS.filter(p => p.key !== 'ALL')
+}
+
+// 백로그 뷰 진입 시 기본 선택 프로젝트.
+// 내 일감 뷰에서 특정 프로젝트를 보고 있었다면 그것을, 아니면 우선순위(DEFAULT_PROJECT_ORDER) 순.
+export function getDefaultBacklogProject() {
+  if (state.currentProject && state.currentProject !== 'ALL') return state.currentProject
+  const projs = getSelectableProjects()
+  if (!projs.length) return null
+  for (const k of DEFAULT_PROJECT_ORDER) {
+    const hit = projs.find(p => p.key === k)
+    if (hit) return hit.key
+  }
+  return projs[0].key
+}
+
+// 백로그 이슈들을 스프린트별 섹션 + 백로그(스프린트 미포함)로 그룹핑.
+// 각 이슈의 대표 스프린트는 active > future 순으로 결정하고, 둘 다 없으면 백로그.
+// 반환: { sections: [{ sprint, issues }], backlog: [...] } — 섹션은 active→future, 시작일 오름차순.
+export function groupBacklogBySprint(issues) {
+  const sprintMap = new Map() // sprintId → { sprint, issues: [] }
+  const backlog = []
+  // 완료 안 된 일감만 유지 (낙관적 상태 변경으로 done이 된 항목은 즉시 제외)
+  for (const iss of issues.filter(i => i.statusCategory !== CLOSED_CATEGORY)) {
+    const sprints = iss.sprints || []
+    const active = sprints.find(s => s.state === 'active')
+    const future = !active ? sprints.find(s => s.state === 'future') : null
+    const target = active || future
+    if (target && target.id != null) {
+      if (!sprintMap.has(target.id)) sprintMap.set(target.id, { sprint: target, issues: [] })
+      sprintMap.get(target.id).issues.push(iss)
+    } else {
+      backlog.push(iss)
+    }
+  }
+  const rank = s => (s.state === 'active' ? 0 : s.state === 'future' ? 1 : 2)
+  const sections = [...sprintMap.values()].sort((a, b) => {
+    const r = rank(a.sprint) - rank(b.sprint)
+    if (r !== 0) return r
+    return (a.sprint.startDate || '').localeCompare(b.sprint.startDate || '')
+  })
+  for (const sec of sections) sec.issues = sortIssues(sec.issues)
+  return { sections, backlog: sortIssues(backlog) }
 }
 
 // ========== 로그 ==========

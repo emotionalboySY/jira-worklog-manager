@@ -113,6 +113,16 @@ export const state = {
   showSprintOnly: false,
   activeSprintKeys: null,  // Set<string> | null (null=아직 로드 안됨)
   sprintLoading: false,
+
+  // ----- 이슈 목록 뷰 모드 -----
+  // 'mine' = 내 일감(담당/보고/워처), 'backlog' = 배포 예정(프로젝트 전체를 스프린트/백로그로 구분)
+  issueViewMode: 'mine',
+  backlogProject: null,    // 백로그 뷰 대상 프로젝트 키 (단일 선택). null이면 미선택
+  backlogIssues: [],       // 백로그 뷰용 이슈 목록 (각 이슈에 sprints 정보 포함)
+  backlogLoading: false,
+  backlogLoaded: false,    // 현재 backlogProject 기준 로드 완료 여부
+  backlogError: null,      // 로드 실패 메시지 (null=정상)
+
   pageSize: 20,
   searchQuery: '',
   searchResults: null, // null=검색모드 아님, []=검색 결과
@@ -220,6 +230,12 @@ export function resetInMemoryUserData() {
   state.worklogsLoading = false
   state.worklogsLoadedMonths = new Set()
   state.activeSprintKeys = null
+  state.issueViewMode = 'mine'
+  state.backlogProject = null
+  state.backlogIssues = []
+  state.backlogLoading = false
+  state.backlogLoaded = false
+  state.backlogError = null
   state.searchQuery = ''
   state.searchResults = null
   state.searchLoading = false

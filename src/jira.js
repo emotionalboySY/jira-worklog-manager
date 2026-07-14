@@ -333,6 +333,98 @@ export async function fetchActiveSprintIssueKeys() {
   return issues.map(i => i.key)
 }
 
+// ========== 백로그(배포 예정) 뷰 ==========
+
+// Jira의 스프린트 필드는 인스턴스마다 id가 다른 커스텀 필드(customfield_XXXXX)다.
+// /field로 한 번 찾아 모듈 메모리 + localStorage에 캐시한다.
+let sprintFieldIdCache = null
+async function getSprintFieldId() {
+  if (sprintFieldIdCache) return sprintFieldIdCache
+  const stored = localStorage.getItem('jira_sprint_field_id')
+  if (stored) {
+    sprintFieldIdCache = stored
+    return stored
+  }
+  try {
+    const fields = await jiraFetch('/field')
+    const f = Array.isArray(fields)
+      ? fields.find(x => x?.schema?.custom === 'com.pyxis.greenhopper.jira:gh-sprint')
+      : null
+    if (f?.id) {
+      sprintFieldIdCache = f.id
+      localStorage.setItem('jira_sprint_field_id', f.id)
+      return f.id
+    }
+  } catch (e) {
+    console.warn('[jira] 스프린트 필드 id 조회 실패:', e)
+  }
+  return null
+}
+
+// 스프린트 필드 값 정규화.
+// 최신 Jira Cloud는 객체 배열({id,name,state,startDate,...})을, 구버전은
+// "...Sprint@..[id=1,state=ACTIVE,name=Sprint 1,...]" 형태의 문자열 배열을 준다.
+function normalizeSprints(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw.map(s => {
+    if (s && typeof s === 'object') {
+      return {
+        id: s.id != null ? String(s.id) : null,
+        name: s.name || '(이름 없는 스프린트)',
+        state: (s.state || 'unknown').toLowerCase(),
+        startDate: s.startDate || null,
+        endDate: s.endDate || null,
+      }
+    }
+    if (typeof s === 'string') {
+      const pick = (k) => {
+        const m = s.match(new RegExp(`${k}=([^,\\]]*)`))
+        const v = m ? m[1] : null
+        return (v === '<null>' || v === '') ? null : v
+      }
+      return {
+        id: pick('id'),
+        name: pick('name') || '(스프린트)',
+        state: (pick('state') || 'unknown').toLowerCase(),
+        startDate: pick('startDate'),
+        endDate: pick('endDate'),
+      }
+    }
+    return null
+  }).filter(Boolean)
+}
+
+// 백로그(배포 예정) 뷰: 한 프로젝트의 '완료 안 된' 일감 전체 + 스프린트 정보.
+// 개인 필터(담당/보고/워처) 없이 프로젝트 범위 전체를 가져온다.
+export async function fetchBacklogIssues(projectKey) {
+  const sprintFieldId = await getSprintFieldId()
+  const fields = sprintFieldId ? `${FIELDS},${sprintFieldId}` : FIELDS
+  const jql = `project = "${projectKey}" AND statusCategory != "Done" ORDER BY updated DESC`
+  const issues = await fetchAllPages(jql, fields)
+
+  // 현재 사용자 정보 (역할 태그 판별용 — 담당/보고/워처면 태그 표시)
+  const userRaw = localStorage.getItem('jira_user')
+  const currentUser = userRaw ? JSON.parse(userRaw) : null
+  const myAccountId = currentUser?.accountId
+
+  return issues.map(issue => {
+    const f = issue.fields
+    return {
+      key: issue.key,
+      summary: f.summary,
+      type: f.issuetype?.name || '',
+      typeIconUrl: f.issuetype?.iconUrl || '',
+      status: f.status?.name || '',
+      statusCategory: f.status?.statusCategory?.key || 'new',
+      parent: extractParent(f),
+      assignee: extractAssignee(f),
+      role: determineRole(f, myAccountId), // 담당/보고/워처면 태그, 아니면 none
+      updated: f.updated || null,
+      sprints: sprintFieldId ? normalizeSprints(f[sprintFieldId]) : [],
+    }
+  })
+}
+
 // 이슈 단일 조회 (요약 미리보기 및 유효성 검사용)
 // 이슈에 대해 현재 가능한 상태 전이 목록 조회 (프로젝트/워크플로우마다 다름)
 // expand=transitions.fields로 각 전이의 필수 필드(resolution 등)까지 함께 가져옴

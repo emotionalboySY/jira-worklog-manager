@@ -70,11 +70,11 @@ export async function applyAssigneeChange(issueKey, accountId, selectedUser) {
           displayName: selectedUser.displayName,
           avatarUrl: selectedUser.avatarUrl,
         } : null)
-    // realIssues에서 해당 이슈의 assignee 갱신
-    for (const issue of state.realIssues) {
-      if (issue.key !== issueKey) continue
-      issue.assignee = newAssignee
-      break
+    // realIssues / 백로그 목록에서 해당 이슈의 assignee 갱신
+    for (const arr of [state.realIssues, state.backlogIssues]) {
+      if (!Array.isArray(arr)) continue
+      const issue = arr.find(i => i.key === issueKey)
+      if (issue) issue.assignee = newAssignee
     }
     // 상세 모달이 같은 이슈를 보고 있으면 거기도 갱신
     if (state.issueDetailModal && state.issueDetailModal.key === issueKey && state.issueDetailModal.data) {
@@ -98,8 +98,8 @@ export async function performTypeChange(issueKey, typeInfo) {
   render({ sections: ['content', 'modals'] })
   try {
     await updateIssueType(issueKey, typeInfo.id)
-    // realIssues 갱신
-    for (const arr of [state.realIssues, state.searchResults]) {
+    // realIssues / 검색결과 / 백로그 갱신
+    for (const arr of [state.realIssues, state.searchResults, state.backlogIssues]) {
       if (!Array.isArray(arr)) continue
       const idx = arr.findIndex(i => i.key === issueKey)
       if (idx >= 0) {
@@ -183,6 +183,7 @@ function updateIssueStatusInState(issueKey, { status, statusCategory }) {
   }
   apply(state.realIssues)
   apply(state.searchResults)
+  apply(state.backlogIssues)
   try { saveIssuesCache(state.realIssues, state.realProjects) } catch {}
   // 상세 모달이 같은 이슈면 즉시 동기화 (상세 모달도 상태 변경 진입점이 됨)
   if (state.issueDetailModal && state.issueDetailModal.key === issueKey && state.issueDetailModal.data) {
