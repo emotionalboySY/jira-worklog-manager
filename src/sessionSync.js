@@ -25,9 +25,11 @@ export function setSessionRenderHook(fn) { if (typeof fn === 'function') _render
 
 // ===== Jira 웹훅 변경 감지 =====
 // 세션 폴 응답에 실려오는 두 카운터로 판단한다:
-//   jiraRev(changes)       — 데이터가 바뀜 → 재로드(본인 변경 포함, 화면 최신 유지)
-//   jiraNotifyRev(notify)  — 타인이 만든 변경이 있었음 → 재로드 시 강조/토스트(flash=true)
-// jiraRev만 오르고 notifyRev는 그대로면 본인 작업이므로 조용히 재로드(flash=false).
+//   jiraRev(changes)       — 데이터가 바뀜 → 재로드(모든 변경 포함, 화면 최신 유지)
+//   jiraNotifyRev(notify)  — "알림 대상" 변경이 있었음 → 재로드 시 강조/토스트(flash=true)
+// 알림 대상 = 남의 변경 + 내가 CC 등 외부 도구로 한 편집. 내가 웹앱/위젯으로 한 작업은
+// 서버(api/webhook.js)가 notify에서 제외하므로, jiraRev만 오르고 notifyRev는 그대로면
+// 조용히 재로드만 한다(flash=false).
 // import 순환을 피하려 실제 재로드는 main.js가 setJiraChangeHook으로 주입한다(flash 인자 전달).
 let _jiraChangeHook = null
 export function setJiraChangeHook(fn) { if (typeof fn === 'function') _jiraChangeHook = fn }
