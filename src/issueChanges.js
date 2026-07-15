@@ -9,10 +9,10 @@ import { josaRo } from './utils.js'
 const LOG_KEY = 'issue_changes_log'
 const READ_KEY = 'issue_changes_read_at'
 const MAX_ENTRIES = 100          // 저장 상한 (초과 시 오래된 것부터 버림)
-const DEDUP_MS = 12 * 1000       // 같은 변경 중복 억제 창(웹훅+폴링, 내 일감+백로그 이중 트리거 방어)
+const DEDUP_MS = 12 * 1000       // updated를 모를 때만 쓰는 폴백 중복 억제 창
 const INDIVIDUAL_TOAST_CAP = 4   // 한 번에 이보다 많이 바뀌면 개별 토스트 대신 요약 1건
 
-// 각 항목: { key, kind: 'status'|'description'|'generic', from, to, at(ms) }
+// 각 항목: { key, kind: 'status'|'description'|'generic', from, to, updated(원본 변경 시각), at(기록 시각 ms) }
 const log = loadLog()
 let lastReadAt = Number(localStorage.getItem(READ_KEY)) || 0
 
@@ -39,16 +39,27 @@ export function buildChangeMessage(e) {
     return `${key} 항목의 상태가 ${e.from || '?'}에서 ${to}${josaRo(to)} 변경되었습니다.`
   }
   if (e.kind === 'description') {
-    return `${key} 항목의 설명이 변경되었습니다.`
+    // 목록에 안 보이는 변경(설명·댓글·워크로그·워처 등)은 정확히 무엇인지 알 수 없어 중립 표현 사용.
+    return `${key} 항목이 업데이트되었습니다.`
   }
   return `${key} 항목에 변경된 요소가 있습니다.`
 }
 
-// 최근 DEDUP_MS 안에 같은 (키·종류·전·후) 변경이 이미 기록됐는지.
+// 이미 기록된 변경인지 판정.
+// updated(원본 변경 시각)가 있으면 (키+updated)로 식별한다 — updated는 이슈가 바뀔 때마다
+// 커지므로 그 조합이 변경의 고유 ID다. 같은 변경을 여러 경로(웹훅/폴링, 내 일감/백로그)나
+// 서로 다른 시각에 감지해도 시간창과 무관하게 1건만 남는다.
 function isRecentDuplicate(c, now) {
+  if (c.updated) {
+    for (const e of log) {
+      if (e.key === c.key && e.updated === c.updated) return true
+    }
+    return false
+  }
+  // updated 미상(구버전 기록 등) 폴백: 최근 DEDUP_MS 안의 (키·종류·전·후) 일치
   for (let i = log.length - 1; i >= 0; i--) {
     const e = log[i]
-    if (now - e.at > DEDUP_MS) break // 시간순 정렬이라 더 과거는 볼 필요 없음
+    if (now - e.at > DEDUP_MS) break
     if (e.key === c.key
       && e.kind === (c.kind || 'generic')
       && (e.from || '') === (c.from || '')
@@ -74,7 +85,7 @@ export function recordIssueChanges(changes) {
   for (const c of changes) {
     if (!c || !c.key) continue
     if (isRecentDuplicate(c, now)) continue
-    const entry = { key: c.key, kind: c.kind || 'generic', from: c.from || '', to: c.to || '', at: now }
+    const entry = { key: c.key, kind: c.kind || 'generic', from: c.from || '', to: c.to || '', updated: c.updated || null, at: now }
     log.push(entry)
     fresh.push(entry)
   }

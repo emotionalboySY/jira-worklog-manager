@@ -45,7 +45,7 @@ function renderChangeItemHtml(e) {
     const to = e.to || '?'
     rest = ` 항목의 상태가 ${escapeHtml(e.from || '?')}에서 ${escapeHtml(to)}${josaRo(to)} 변경되었습니다.`
   } else if (e.kind === 'description') {
-    rest = ` 항목의 설명이 변경되었습니다.`
+    rest = ` 항목이 업데이트되었습니다.`
   } else {
     rest = ` 항목에 변경된 요소가 있습니다.`
   }

@@ -319,7 +319,8 @@ function diffIssues(prevMap, freshIssues) {
     const prev = prevMap.get(iss.key)
     if (prev === undefined) continue // 신규 진입(예: 완료 30일 창 이동)은 알림 대상 아님
     if (issueSig(prev) === issueSig(iss)) continue
-    changes.push({ key: iss.key, ...classifyChange(prev, iss) })
+    // updated(원본 변경 시각) 포함 → 같은 변경을 여러 경로/시각에 감지해도 1건으로 dedup (issueChanges.js)
+    changes.push({ key: iss.key, updated: iss.updated || null, ...classifyChange(prev, iss) })
   }
   return changes
 }

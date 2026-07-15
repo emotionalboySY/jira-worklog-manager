@@ -9,7 +9,7 @@
 // import 순환을 피하려고 state.js 의 키 상수만 import하고, render는 훅으로 주입받는다.
 // (storage.js → sessionSync.js → state.js 로만 흐르고 되돌아가지 않음)
 // utils.js는 state.js/lib만 import하므로 순환 없음.
-import { SESSIONS_KEY } from './state.js'
+import { SESSIONS_KEY, state } from './state.js'
 import { isBusyUI } from './utils.js'
 // auth.js는 leaf 모듈(다른 src 모듈을 import하지 않음)이라 순환 없음.
 import { ensureAccessToken, refreshAccessToken } from './auth.js'
@@ -164,7 +164,17 @@ let pollTimer = null
 function scheduleNext() {
   clearTimeout(pollTimer)
   const hasActive = loadCacheRaw().some(s => s.status === 'active')
-  pollTimer = setTimeout(pollTick, hasActive ? POLL_ACTIVE_MS : POLL_IDLE_MS)
+  // 알림 패널을 열어 변경을 실시간으로 지켜보는 중이면 빠른 주기로 폴링(밀림 방지).
+  const fast = hasActive || state.showChangeLog
+  pollTimer = setTimeout(pollTick, fast ? POLL_ACTIVE_MS : POLL_IDLE_MS)
+}
+
+// 다음 예약 틱을 앞당겨 즉시 1회 폴링한다(예약된 유휴 12초 대기 회피).
+// 알림 패널을 열 때 호출해 최신 변경을 바로 반영한다.
+export function nudgeSessionPoll() {
+  if (!polling) return
+  clearTimeout(pollTimer)
+  pollTimer = setTimeout(pollTick, 0)
 }
 
 async function pollTick() {

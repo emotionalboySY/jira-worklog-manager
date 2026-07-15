@@ -26,6 +26,8 @@ export function getProjectKeysOrFallback() {
 // 사용자가 입력/편집 중일 수 있는 UI(모달/드롭다운)가 떠 있거나 로딩 중인지.
 // 자동 새로고침(autoReload)·원격 세션 반영(sessionSync)이 전체 렌더로 DOM 입력값을
 // 날리지 않도록 양쪽이 공유하는 단일 판정 — 새 모달 추가 시 여기에만 등록하면 된다.
+// 주의: 즐겨찾기/알림 코너 패널(favoritesPanelCollapsed·showChangeLog)은 입력값이 없고
+// 재렌더로 잃을 상태도 없으므로 여기에 넣지 않는다 → 패널이 열려 있어도 재조회가 밀리지 않는다.
 export function isBusyUI() {
   return !!(
     state.showModal ||

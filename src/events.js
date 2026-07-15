@@ -34,6 +34,7 @@ import {
 } from './utils.js'
 import { showToast, showContextMenu } from './ui.js'
 import { markChangesRead, clearChangeLog } from './issueChanges.js'
+import { nudgeSessionPoll } from './sessionSync.js'
 import { loadWorklogs, ensureMonthWorklogsLoaded, loadBacklog } from './actions.js'
 import { render, resetIssueListScroll } from './render.js'
 import {
@@ -505,6 +506,7 @@ export function installDelegatedHandlers() {
     localStorage.setItem('favorites_collapsed', '1')
     markChangesRead() // 열면 안 읽음 배지 초기화
     render({ sections: ['favorites', 'changelog-fab'] })
+    nudgeSessionPoll() // 열자마자 즉시 폴링해 밀려 있던 변경을 바로 반영
   })
 
   // 변경 알림 패널 닫기(×)
