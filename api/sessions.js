@@ -77,16 +77,22 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      // jiraRev: 웹훅 수신 카운터(changes:{accountId}). 클라가 이 값의 증가를 감지하면
-      // 다른 곳에서 내 이슈가 바뀐 것 → 이슈/워크로그를 재로드한다(근실시간). 폴 응답에
-      // 얹어 보내므로 추가 폴링 요청이 없다.
-      const [state, rawJiraRev] = await Promise.all([
+      // jiraRev(changes): 데이터 변경 카운터 — 증가 시 이슈/워크로그 재로드(근실시간).
+      // jiraNotifyRev(notify): 타인이 만든 변경 카운터 — 증가 시에만 강조/토스트.
+      // 폴 응답에 얹어 보내므로 추가 폴링 요청이 없다.
+      const [state, rawJiraRev, rawNotifyRev] = await Promise.all([
         readState(redis, key),
         redis.get(`changes:${accountId}`),
+        redis.get(`notify:${accountId}`),
       ])
       // INCR 값은 정수지만, 저장/역직렬화 편차에 대비해 안전하게 숫자로 보정(없으면 0).
       const n = Number(rawJiraRev)
-      return res.status(200).json({ ...state, jiraRev: Number.isFinite(n) ? n : 0 })
+      const nn = Number(rawNotifyRev)
+      return res.status(200).json({
+        ...state,
+        jiraRev: Number.isFinite(n) ? n : 0,
+        jiraNotifyRev: Number.isFinite(nn) ? nn : 0,
+      })
     }
 
     if (req.method === 'POST') {

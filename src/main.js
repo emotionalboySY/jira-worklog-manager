@@ -47,8 +47,8 @@ async function init() {
     registerPostRender(startTimerUpdate)
     setSessionRenderHook(render)
     // 웹훅 변경 감지 시 이슈/워크로그 재로드 (sessionSync 폴 응답의 jiraRev 증가로 트리거)
-    // flash: 변경된 이슈 행을 잠깐 강조
-    setJiraChangeHook(() => autoReloadIssuesAndWorklogs({ flash: true }))
+    // flash: 타인이 만든 변경일 때만 true → 강조/토스트. 본인 변경은 조용히 재로드만.
+    setJiraChangeHook((flash) => autoReloadIssuesAndWorklogs({ flash: !!flash }))
 
     applyTheme()
     applyPreferences(loadPreferences())

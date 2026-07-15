@@ -24,22 +24,28 @@ let _render = () => {}
 export function setSessionRenderHook(fn) { if (typeof fn === 'function') _render = fn }
 
 // ===== Jira 웹훅 변경 감지 =====
-// 웹훅 수신 시 서버가 changes 카운터를 올리고, 세션 폴 응답에 jiraRev로 실어 보낸다.
-// jiraRev가 증가하면(다른 곳에서 내 이슈가 바뀜) 이슈/워크로그 재로드 훅을 호출한다.
-// import 순환을 피하려 실제 재로드는 main.js가 setJiraChangeHook으로 주입한다.
+// 세션 폴 응답에 실려오는 두 카운터로 판단한다:
+//   jiraRev(changes)       — 데이터가 바뀜 → 재로드(본인 변경 포함, 화면 최신 유지)
+//   jiraNotifyRev(notify)  — 타인이 만든 변경이 있었음 → 재로드 시 강조/토스트(flash=true)
+// jiraRev만 오르고 notifyRev는 그대로면 본인 작업이므로 조용히 재로드(flash=false).
+// import 순환을 피하려 실제 재로드는 main.js가 setJiraChangeHook으로 주입한다(flash 인자 전달).
 let _jiraChangeHook = null
 export function setJiraChangeHook(fn) { if (typeof fn === 'function') _jiraChangeHook = fn }
-let lastJiraRev = -1 // -1: 기준값 미설정(첫 관측은 기준선으로만 삼고 재로드하지 않음)
+let lastJiraRev = -1     // -1: 기준값 미설정(첫 관측은 기준선으로만)
+let lastNotifyRev = -1
 
 function handleJiraRev(data) {
   if (!data || typeof data.jiraRev !== 'number') return
   const rev = data.jiraRev
-  if (lastJiraRev === -1) { lastJiraRev = rev; return } // 최초 관측 = 기준선
+  const notifyRev = typeof data.jiraNotifyRev === 'number' ? data.jiraNotifyRev : 0
+  if (lastJiraRev === -1) { lastJiraRev = rev; lastNotifyRev = notifyRev; return } // 최초 관측 = 기준선
   if (rev <= lastJiraRev) return
   // 입력 중(모달/드롭다운 등)이면 기준값을 올리지 않고 다음 틱으로 미룬다 → 입력값 보존.
   if (isBusyUI()) return
+  const shouldFlash = notifyRev > lastNotifyRev // 타인 변경이 섞여 있었는지
   lastJiraRev = rev
-  try { if (_jiraChangeHook) _jiraChangeHook() } catch (e) { console.error('Jira 변경 재로드 실패:', e) }
+  lastNotifyRev = notifyRev
+  try { if (_jiraChangeHook) _jiraChangeHook(shouldFlash) } catch (e) { console.error('Jira 변경 재로드 실패:', e) }
 }
 
 function authToken() { return localStorage.getItem('jira_access_token') }
@@ -232,4 +238,5 @@ export function stopSessionPolling() {
   queue = []
   localRev = 0
   lastJiraRev = -1 // 재로그인 시 다시 기준선부터
+  lastNotifyRev = -1
 }
