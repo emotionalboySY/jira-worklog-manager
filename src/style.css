@@ -2009,6 +2009,10 @@ span.flatpickr-weekday {
 }
 
 .search-result-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   font-size: 12px;
   color: var(--text-dim);
   margin-bottom: 12px;

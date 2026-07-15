@@ -31,6 +31,7 @@ function clearIssueSearch() {
   state.searchQuery = ''
   state.searchResults = null
   state.searchLoading = false
+  state.currentPage = 1 // 이슈 목록으로 복귀 시 페이지 초기화
   render()
   resetIssueListScroll()
 }

@@ -456,6 +456,7 @@ export async function performSearch() {
 
   state.searchResults = results
   state.searchLoading = false
+  state.currentPage = 1 // 새 검색 결과는 항상 1페이지부터 (이슈 목록과 동일한 페이지네이션)
   render()
   resetIssueListScroll()
   document.getElementById('issue-search')?.focus()

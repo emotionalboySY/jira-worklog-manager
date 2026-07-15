@@ -110,14 +110,21 @@ export function renderIssuesTab() {
         </div>
       </div>
     `}
-    ${isSearchMode ? `<div class="search-result-info">검색 결과 ${filtered.length}건</div>` : ''}
+    ${isSearchMode ? `
+      <div class="search-result-info">
+        <span>검색 결과 ${filtered.length}건</span>
+        <select class="page-size-select" id="page-size">
+          ${[10, 20, 30, 50].map(n => `<option value="${n}" ${state.pageSize === n ? 'selected' : ''}>${n}개씩</option>`).join('')}
+        </select>
+      </div>
+    ` : ''}
     ${hasSelection ? renderBulkCopyBar(selectedCount) : ''}
     <div class="issue-list ${(isSearchMode || state.currentProject === 'ALL') ? 'show-project-bar' : ''} ${hasSelection ? 'has-selection' : ''}">
       ${filtered.length === 0 ? `
         <div class="no-session">해당 조건에 맞는 이슈가 없습니다.</div>
-      ` : (isSearchMode ? filtered : paginateIssues(filtered)).map(issue => renderIssueRow(issue, sessionMap)).join('')}
+      ` : paginateIssues(filtered).map(issue => renderIssueRow(issue, sessionMap)).join('')}
     </div>
-    ${!isSearchMode ? renderPagination(filtered.length) : ''}
+    ${renderPagination(filtered.length)}
   `
 }
 
