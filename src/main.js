@@ -13,6 +13,7 @@ import { installDelegatedHandlers, bindEvents, startTimerUpdate } from './events
 import { initSessionSync, stopSessionPolling, setSessionRenderHook, setJiraChangeHook } from './sessionSync.js'
 import { startWebhookEnsure, stopWebhookEnsure } from './jiraWebhook.js'
 import { clearIssueFlash } from './issueFlash.js'
+import { clearChangeLog } from './issueChanges.js'
 import { clearTransitionCatalog } from './transitionCatalog.js'
 import { isDemoMode, setupDemoState } from './demo.js'
 
@@ -25,6 +26,7 @@ window.addEventListener('jira-auth-cleared', () => {
   try { stopSessionPolling() } catch {}
   try { stopWebhookEnsure() } catch {}
   try { clearIssueFlash() } catch {}
+  try { clearChangeLog() } catch {}
   try { stopTokenAutoRefresh() } catch {}
   try { resetInMemoryUserData() } catch {}
   try { clearTransitionCatalog() } catch {}

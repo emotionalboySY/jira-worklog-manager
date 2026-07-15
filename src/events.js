@@ -33,6 +33,7 @@ import {
   findIssueByKey,
 } from './utils.js'
 import { showToast, showContextMenu } from './ui.js'
+import { markChangesRead, clearChangeLog } from './issueChanges.js'
 import { loadWorklogs, ensureMonthWorklogsLoaded, loadBacklog } from './actions.js'
 import { render, resetIssueListScroll } from './render.js'
 import {
@@ -210,6 +211,7 @@ function handleGlobalKeydown(e) {
     return
   }
   if (state.showSettings) { closeSettings(); return }
+  if (state.showChangeLog) { state.showChangeLog = false; render(modalsOnly); return }
   if (state.deletingWorklog) { state.deletingWorklog = null; render(modalsOnly); return }
   if (state.editingWorklog) { state.editingWorklog = null; render(modalsOnly); return }
   if (state.showManualLog) {
@@ -480,6 +482,34 @@ export function installDelegatedHandlers() {
     e.stopImmediatePropagation()
     toggleFavorite(btn.dataset.key, '')
     render()
+  })
+
+  // 이슈 변경 알림: FAB로 기록 모달 열기 (열면 안 읽음 배지 초기화)
+  registerClickAction('open-changelog', (e, btn) => {
+    e.stopImmediatePropagation()
+    markChangesRead()
+    state.showChangeLog = true
+    render({ sections: ['modals', 'changelog-fab'] }) // 모달 + FAB 배지(안 읽음 0) 갱신
+  })
+
+  // 변경 알림 모달 닫기
+  registerClickAction('close-changelog', (e, btn) => {
+    state.showChangeLog = false
+    render({ sections: ['modals'] })
+  })
+
+  // 변경 알림 기록 전체 삭제
+  registerClickAction('clear-changelog', (e, btn) => {
+    e.stopImmediatePropagation()
+    clearChangeLog()
+    render({ sections: ['modals', 'changelog-fab'] })
+  })
+
+  // 오버레이 배경(카드 바깥) 클릭 시 모달 닫기 — 카드 내부 클릭은 무시
+  registerClickAction('changelog-overlay', (e, el) => {
+    if (e.target !== el) return
+    state.showChangeLog = false
+    render({ sections: ['modals'] })
   })
 
   // 백로그(배포 예정) 뷰 새로고침

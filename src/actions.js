@@ -24,6 +24,7 @@ import { render, resetIssueListScroll } from './render.js'
 import { getProjectKeysOrFallback } from './utils.js'
 import { prewarmTransitionCatalog } from './transitionCatalog.js'
 import { markIssuesFlashing } from './issueFlash.js'
+import { recordIssueChanges } from './issueChanges.js'
 
 export async function loadIssues() {
   if (state.issuesLoading) return
@@ -252,14 +253,18 @@ export async function refreshBacklogSilently({ flash = true } = {}) {
   if (!proj || !state.backlogLoaded || state.backlogLoading) return
   if (backlogRefreshInFlight) { backlogRefreshPending = true; return }
   backlogRefreshInFlight = true
-  const prevSig = flash ? issueSigMap(state.backlogIssues) : null
+  const prevMap = flash ? issueSnapshotMap(state.backlogIssues) : null
   try {
     const fresh = await fetchBacklogIssues(proj)
     if (state.backlogProject !== proj) return // 도중에 프로젝트 전환됨
-    let changed = []
-    if (prevSig && prevSig.size) changed = changedIssueKeys(prevSig, fresh)
+    let changes = []
+    if (prevMap && prevMap.size) changes = diffIssues(prevMap, fresh)
     state.backlogIssues = fresh
-    if (flash && changed.length && changed.length <= 12) markIssuesFlashing(changed)
+    // 강조와 알림은 같은 조건(한 번에 12건 이하)에서만 — 대량 변동(스키마 변화 등)은 폭주 방지 위해 생략.
+    if (flash && changes.length && changes.length <= 12) {
+      markIssuesFlashing(changes.map(c => c.key))
+      recordIssueChanges(changes)
+    }
     render()
   } catch (e) {
     console.error('백로그 재조회 실패:', e)
@@ -281,22 +286,42 @@ function issueSig(iss) {
   // updated(최종수정시각)를 포함 → 설명·댓글·워크로그 등 목록에 안 보이는 변경도 감지.
   return JSON.stringify([iss.updated, iss.summary, iss.status, iss.statusCategory, iss.type, iss.assignee, iss.parent, iss.role])
 }
-function issueSigMap(issues) {
+// 변경 감지 + 종류 분류에 필요한 필드만 담은 이전 스냅샷 맵(key → issue).
+function issueSnapshotMap(issues) {
   const m = new Map()
-  if (Array.isArray(issues)) for (const iss of issues) if (iss?.key) m.set(iss.key, issueSig(iss))
+  if (Array.isArray(issues)) for (const iss of issues) if (iss?.key) m.set(iss.key, iss)
   return m
 }
-// prev(서명맵) 대비 "기존에 있던 이슈인데 내용이 바뀐" 키만 반환.
-// 신규 진입/목록 이탈은 제외해 노이즈(예: 완료 30일 창 이동)를 막는다.
-function changedIssueKeys(prevSig, freshIssues) {
-  const changed = []
-  if (!Array.isArray(freshIssues)) return changed
+// 이전/현재 이슈를 비교해 변경 종류를 분류한다.
+//   status      : 상태명이 바뀜 (from/to 포함)
+//   description : 목록에 보이는 필드는 그대로인데 updated만 바뀜 → 본문(설명) 등 변경으로 간주
+//   generic     : 그 외(요약/담당/상위/유형 변경 등)
+function classifyChange(prev, cur) {
+  const ps = prev.status || '', cs = cur.status || ''
+  if (ps !== cs) return { kind: 'status', from: ps, to: cs }
+  const eq = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+  const onlyContent =
+    eq(prev.summary, cur.summary)
+    && eq(prev.type, cur.type)
+    && eq(prev.statusCategory, cur.statusCategory)
+    && eq(prev.assignee, cur.assignee)
+    && eq(prev.parent, cur.parent)
+    && eq(prev.role, cur.role)
+  return onlyContent ? { kind: 'description' } : { kind: 'generic' }
+}
+// prev(스냅샷맵) 대비 "기존에 있던 이슈인데 내용이 바뀐" 변경 목록을 반환.
+// 각 원소: { key, kind, from, to }. 신규 진입/목록 이탈은 제외해 노이즈를 막는다.
+function diffIssues(prevMap, freshIssues) {
+  const changes = []
+  if (!Array.isArray(freshIssues)) return changes
   for (const iss of freshIssues) {
     if (!iss?.key) continue
-    const before = prevSig.get(iss.key)
-    if (before !== undefined && before !== issueSig(iss)) changed.push(iss.key)
+    const prev = prevMap.get(iss.key)
+    if (prev === undefined) continue // 신규 진입(예: 완료 30일 창 이동)은 알림 대상 아님
+    if (issueSig(prev) === issueSig(iss)) continue
+    changes.push({ key: iss.key, ...classifyChange(prev, iss) })
   }
-  return changed
+  return changes
 }
 
 // options.flash: true면 갱신 전/후를 비교해 변경된 이슈 행을 잠깐 강조한다.
@@ -321,16 +346,16 @@ export async function autoReloadIssuesAndWorklogs(options = {}) {
   const lastDay = new Date(year, month + 1, 0).getDate()
   const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-  // 갱신 전 이슈 서명 스냅샷(강조 대상 판별용)
-  const prevSig = flash ? issueSigMap(state.realIssues) : null
-  let changedKeys = []
+  // 갱신 전 이슈 스냅샷(강조·알림 대상 판별용)
+  const prevMap = flash ? issueSnapshotMap(state.realIssues) : null
+  let changes = []
 
   const issuesTask = (async () => {
     const promises = [fetchMyIssues(), fetchProjects()]
     if (state.showSprintOnly) promises.push(fetchActiveSprintIssueKeys())
     const [freshIssues, freshProjects, sprintKeys] = await Promise.all(promises)
     if (state.showSprintOnly) state.activeSprintKeys = new Set(sprintKeys || [])
-    if (prevSig && prevSig.size) changedKeys = changedIssueKeys(prevSig, freshIssues)
+    if (prevMap && prevMap.size) changes = diffIssues(prevMap, freshIssues)
     state.realIssues = freshIssues
     state.realProjects = freshProjects
     state.issuesLoaded = true
@@ -353,9 +378,12 @@ export async function autoReloadIssuesAndWorklogs(options = {}) {
   // (백로그 뷰 최신화는 backlogPoll.js의 주기 폴링이 담당 — 여기선 내 일감/워크로그만)
   const results = await Promise.allSettled([issuesTask, worklogsTask])
   const anyUpdated = results.some(r => r.status === 'fulfilled')
-  // 강조 등록은 render 전에 — 렌더가 해당 행에 클래스/지연을 그린다.
-  // 한 번에 너무 많이 바뀌면(캐시 스키마 변화 등 체계적 변동) 폭주 방지 위해 강조 생략.
-  if (flash && changedKeys.length && changedKeys.length <= 12) markIssuesFlashing(changedKeys)
+  // 강조/알림 등록은 render 전에 — 렌더가 해당 행에 클래스/지연을 그리고 FAB 배지를 갱신한다.
+  // 한 번에 너무 많이 바뀌면(캐시 스키마 변화 등 체계적 변동) 폭주 방지 위해 강조/알림 생략.
+  if (flash && changes.length && changes.length <= 12) {
+    markIssuesFlashing(changes.map(c => c.key))
+    recordIssueChanges(changes)
+  }
   if (anyUpdated) render()
 }
 

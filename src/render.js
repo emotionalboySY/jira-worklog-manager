@@ -24,6 +24,7 @@ import {
   renderCreateIssueModal,
 } from './views/modals.js'
 import { renderSettingsFab, renderSettingsModal } from './views/settings.js'
+import { renderChangeLogFab, renderChangeLogModal } from './views/changelog.js'
 
 // 모듈 그래프에서 render.js → events.js 직접 import를 제거하기 위한 post-render hook.
 // 외부(main.js)가 init 단계에서 bindEvents / startTimerUpdate 등을 등록해두면 매 render 끝에 호출됨.
@@ -47,6 +48,7 @@ function renderModalsHtml() {
     ${state.transitionFieldsModal ? renderTransitionFieldsModal() : ''}
     ${state.showCreateIssue ? renderCreateIssueModal() : ''}
     ${state.issueDetailModal ? renderIssueDetailModal() : ''}
+    ${state.showChangeLog ? renderChangeLogModal() : ''}
   `
 }
 
@@ -68,6 +70,7 @@ const SECTIONS = {
   tabs:          { id: 'sec-tabs',         render: renderTabs },
   content:       { id: 'sec-content',      render: renderContent },
   favorites:     { id: 'sec-favorites',    render: renderFavoritesPanel },
+  'changelog-fab':{ id: 'sec-changelog-fab', render: renderChangeLogFab },
   'settings-fab':{ id: 'sec-settings-fab', render: renderSettingsFab },
   modals:        { id: 'sec-modals',       render: renderModalsHtml },
   dropdowns:     { id: 'sec-dropdowns',    render: renderDropdownsHtml },
@@ -82,6 +85,7 @@ function ensureShell(app) {
     <div id="sec-tabs"></div>
     <div id="sec-content" class="tab-content"></div>
     <div id="sec-favorites"></div>
+    <div id="sec-changelog-fab"></div>
     <div id="sec-settings-fab"></div>
     <div id="sec-modals"></div>
     <div id="sec-dropdowns"></div>
@@ -145,6 +149,7 @@ export function render(options = {}) {
     'transition-fields-overlay',
     'create-issue-overlay',
     'issue-detail-overlay',
+    'changelog-overlay',
   ]
 
   for (const name of sections) {

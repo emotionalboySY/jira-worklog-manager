@@ -195,6 +195,19 @@ export function formatLunchRange(lunch = getDefaultLunch()) {
   return `${formatHHMM(lunch.start)}~${formatHHMM(lunch.end)}`
 }
 
+// 받침에 따라 '로/으로' 조사를 선택 (예: 검토→"검토로", 진행중→"진행중으로").
+// 한글 음절이 아니면 기본 '로'.
+export function josaRo(word) {
+  const s = String(word || '')
+  if (!s) return '로'
+  const last = s.charCodeAt(s.length - 1)
+  if (last >= 0xAC00 && last <= 0xD7A3) {
+    const jong = (last - 0xAC00) % 28 // 종성 인덱스 (0=없음, 8=ㄹ)
+    return (jong === 0 || jong === 8) ? '로' : '으로'
+  }
+  return '로'
+}
+
 // ========== HTML ==========
 // HTML 속성 이스케이프
 export function escapeHtml(str) {

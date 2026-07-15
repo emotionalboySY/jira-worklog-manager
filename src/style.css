@@ -109,6 +109,7 @@ textarea,
 #sec-sessions,
 #sec-tabs,
 #sec-favorites,
+#sec-changelog-fab,
 #sec-settings-fab,
 #sec-modals,
 #sec-dropdowns {
@@ -1593,6 +1594,148 @@ body:has(#settings-overlay) .favorites-panel {
     width: 240px;
     max-height: 60vh;
   }
+}
+
+/* ========== 이슈 변경 알림 플로팅 버튼 (즐겨찾기 버튼 위) ========== */
+.changelog-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 76px; /* 즐겨찾기 버튼(bottom:20 + 44) 위로 12px 간격 */
+  z-index: 149; /* 즐겨찾기 패널(150)보다 낮게 — 패널 펼치면 그 뒤로 가려짐 */
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s, transform 0.15s;
+}
+
+.changelog-fab:hover {
+  color: var(--accent);
+  background: var(--bg-hover);
+  transform: translateY(-2px);
+}
+
+/* 즐겨찾기 패널이 펼쳐지면 이 버튼 위를 덮으므로 그동안 숨김.
+   (패널은 바깥 클릭 시 자동으로 접히고, 접히면 이 버튼이 다시 나타난다) */
+body:has(.favorites-panel.expanded) .changelog-fab {
+  display: none;
+}
+
+/* 설정 모달이 열리면 즐겨찾기 패널과 동일하게 뒤로 물러남 (모달 위로 뜨지 않게) */
+body:has(#settings-overlay) .changelog-fab {
+  z-index: 90;
+  pointer-events: none;
+}
+
+.changelog-fab-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  border: 2px solid var(--bg-card);
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 900px) {
+  .changelog-fab {
+    right: 12px;
+    bottom: 72px; /* 모바일: 즐겨찾기 bottom:16 + 44 + 12 */
+  }
+}
+
+/* ========== 이슈 변경 알림 모달 ========== */
+.modal-changelog {
+  width: 480px;
+  max-width: 92vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.changelog-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.changelog-clear {
+  font-weight: 500;
+}
+
+.changelog-list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+
+.changelog-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.7;
+  text-align: center;
+  padding: 32px 8px;
+}
+
+.changelog-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.changelog-item:last-child {
+  border-bottom: none;
+}
+
+.changelog-item-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.changelog-kind-status { background: var(--accent); }
+.changelog-kind-description { background: #eab308; }
+.changelog-kind-generic { background: var(--text-dim); }
+
+.changelog-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.changelog-item-text {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.changelog-item-time {
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
 /* 이슈 행 호버 시 나타나는 수동 기록 버튼 */
