@@ -24,7 +24,7 @@ import {
   renderCreateIssueModal,
 } from './views/modals.js'
 import { renderSettingsFab, renderSettingsModal } from './views/settings.js'
-import { renderChangeLogFab, renderChangeLogModal } from './views/changelog.js'
+import { renderChangeLogFab } from './views/changelog.js'
 
 // 모듈 그래프에서 render.js → events.js 직접 import를 제거하기 위한 post-render hook.
 // 외부(main.js)가 init 단계에서 bindEvents / startTimerUpdate 등을 등록해두면 매 render 끝에 호출됨.
@@ -48,7 +48,6 @@ function renderModalsHtml() {
     ${state.transitionFieldsModal ? renderTransitionFieldsModal() : ''}
     ${state.showCreateIssue ? renderCreateIssueModal() : ''}
     ${state.issueDetailModal ? renderIssueDetailModal() : ''}
-    ${state.showChangeLog ? renderChangeLogModal() : ''}
   `
 }
 
@@ -149,7 +148,6 @@ export function render(options = {}) {
     'transition-fields-overlay',
     'create-issue-overlay',
     'issue-detail-overlay',
-    'changelog-overlay',
   ]
 
   for (const name of sections) {
@@ -171,14 +169,14 @@ export function render(options = {}) {
 
     // 재렌더 전 오픈 상태 캡처 (애니메이션 재생 방지용)
     const wasMountedOverlays = new Set()
-    let prevFavState = null
+    // 코너 플로팅 패널(즐겨찾기/알림)이 이미 열려 있었는지 — 재렌더 시 열림 애니메이션 재생 방지용
+    let hadFloatingPanel = false
     if (name === 'modals') {
       for (const id of MODAL_OVERLAY_IDS) {
         if (container.querySelector('#' + id)) wasMountedOverlays.add(id)
       }
-    } else if (name === 'favorites') {
-      const panel = container.querySelector('.favorites-panel')
-      if (panel) prevFavState = panel.classList.contains('expanded') ? 'expanded' : 'collapsed'
+    } else if (name === 'favorites' || name === 'changelog-fab') {
+      hadFloatingPanel = !!container.querySelector('.floating-panel')
     }
 
     container.innerHTML = spec.render()
@@ -201,12 +199,10 @@ export function render(options = {}) {
         const card = overlay.querySelector('.modal')
         if (card) card.style.animation = 'none'
       }
-    } else if (name === 'favorites' && prevFavState) {
-      const panel = container.querySelector('.favorites-panel')
-      if (panel) {
-        const newState = panel.classList.contains('expanded') ? 'expanded' : 'collapsed'
-        if (newState === prevFavState) panel.style.animation = 'none'
-      }
+    } else if ((name === 'favorites' || name === 'changelog-fab') && hadFloatingPanel) {
+      // 이미 열려 있던 패널을 그대로 다시 그린 경우 — 열림 애니메이션 재생 억제
+      const panel = container.querySelector('.floating-panel')
+      if (panel) panel.style.animation = 'none'
     }
   }
 

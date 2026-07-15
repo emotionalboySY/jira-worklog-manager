@@ -1,26 +1,31 @@
-// 플로팅 즐겨찾기 패널 (우측 고정)
+// 코너 플로팅 즐겨찾기 위젯 (우측 하단)
+// 항상 보이는 둥근 버튼(별) + 열렸을 때 버튼 왼쪽에 뜨는 패널.
+// 알림 위젯(changelog.js)과 동일한 방식(.corner-fab / .floating-panel)이며 상호 배타 토글.
 import { state } from '../state.js'
 import { loadFavorites, loadSessions } from '../storage.js'
 import { escapeHtml, renderIssueKeyLink, getProjectFromKey } from '../utils.js'
 
+const STAR_SVG = '<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>'
+const CLOSE_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>'
+
 export function renderFavoritesPanel() {
   const favorites = loadFavorites()
+  const open = !state.favoritesPanelCollapsed
+
+  // 항상 보이는 플로팅 버튼 (별). 열림 상태면 is-open 강조.
+  const button = `
+    <button class="corner-fab favorites-fab ${open ? 'is-open' : ''}" data-action="toggle-favorites" aria-expanded="${open}" title="${open ? '즐겨찾기 닫기' : '즐겨찾는 이슈'}">
+      ${STAR_SVG}
+      ${favorites.length > 0 ? `<span class="corner-fab-badge">${favorites.length}</span>` : ''}
+    </button>
+  `
+  if (!open) return button
+
   const sessions = loadSessions()
   const sessionMap = new Map(sessions.map(s => [s.issueKey, s.status]))
 
-  if (state.favoritesPanelCollapsed) {
-    return `
-      <div class="favorites-panel collapsed">
-        <button class="favorites-toggle" id="favorites-toggle" title="즐겨찾는 이슈 펼치기">
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>
-          ${favorites.length > 0 ? `<span class="favorites-count">${favorites.length}</span>` : ''}
-        </button>
-      </div>
-    `
-  }
-
   const body = favorites.length === 0
-    ? `<div class="favorites-empty">별표를 눌러 자주 작업하는 이슈를<br>즐겨찾기에 추가하세요.</div>`
+    ? `<div class="floating-panel-empty">별표를 눌러 자주 작업하는 이슈를<br>즐겨찾기에 추가하세요.</div>`
     : favorites.map(fav => {
         const status = sessionMap.get(fav.issueKey)
         const btn = status === 'active'
@@ -44,19 +49,18 @@ export function renderFavoritesPanel() {
         `
       }).join('')
 
-  return `
-    <div class="favorites-panel expanded">
-      <div class="favorites-header">
-        <div class="favorites-title">
-          <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>
+  const panel = `
+    <div class="floating-panel favorites-panel">
+      <div class="floating-panel-header">
+        <div class="floating-panel-title">
+          ${STAR_SVG.replace('width="18" height="18"', 'width="15" height="15"')}
           <span>즐겨찾는 이슈</span>
-          ${favorites.length > 0 ? `<span class="favorites-count-inline">${favorites.length}</span>` : ''}
+          ${favorites.length > 0 ? `<span class="floating-panel-count">${favorites.length}</span>` : ''}
         </div>
-        <button class="favorites-collapse-btn" id="favorites-toggle" title="닫기" aria-label="닫기">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>
-        </button>
+        <button class="floating-panel-close" data-action="close-favorites" title="닫기" aria-label="닫기">${CLOSE_SVG}</button>
       </div>
-      <div class="favorites-body">${body}</div>
+      <div class="floating-panel-body">${body}</div>
     </div>
   `
+  return button + panel
 }

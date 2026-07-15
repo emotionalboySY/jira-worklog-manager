@@ -1,22 +1,28 @@
-// 이슈 변경 알림: 플로팅 버튼(즐겨찾기 버튼 위) + 기록 모달
+// 코너 플로팅 이슈 변경 알림 위젯 (즐겨찾기 버튼 위)
+// 항상 보이는 종 버튼 + 열렸을 때 종 버튼 왼쪽에 뜨는 패널.
+// 즐겨찾기 위젯(favorites.js)과 동일 방식(.corner-fab / .floating-panel), dim 없음, 상호 배타 토글.
+import { state } from '../state.js'
 import { getChangeLog, getUnreadChangeCount } from '../issueChanges.js'
 import { escapeHtml, renderIssueKeyLink, getProjectFromKey, josaRo } from '../utils.js'
 
-// 즐겨찾기 플로팅 버튼 바로 위에 뜨는 종 모양 버튼 (안 읽은 변경 수 배지 포함)
+const BELL_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>'
+const CLOSE_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>'
+
+// 섹션 전체 = 종 버튼 + (열렸을 때) 패널
 export function renderChangeLogFab() {
   const unread = getUnreadChangeCount()
-  const badge = unread > 0
-    ? `<span class="changelog-fab-badge">${unread > 99 ? '99+' : unread}</span>`
+  const open = state.showChangeLog
+  const badge = (!open && unread > 0)
+    ? `<span class="corner-fab-badge">${unread > 99 ? '99+' : unread}</span>`
     : ''
-  return `
-    <button class="changelog-fab" data-action="open-changelog" title="이슈 변경 알림 기록" aria-label="이슈 변경 알림 기록">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-      </svg>
+  const button = `
+    <button class="corner-fab changelog-fab ${open ? 'is-open' : ''}" data-action="toggle-changelog" aria-expanded="${open}" title="이슈 변경 알림 기록">
+      ${BELL_SVG}
       ${badge}
     </button>
   `
+  if (!open) return button
+  return button + renderChangeLogPanel()
 }
 
 // 오늘이면 "오늘 HH:MM", 아니면 "M월 D일 HH:MM"
@@ -46,10 +52,10 @@ function renderChangeItemHtml(e) {
   return link + rest
 }
 
-export function renderChangeLogModal() {
+function renderChangeLogPanel() {
   const entries = getChangeLog()
   const body = entries.length === 0
-    ? `<div class="changelog-empty">아직 기록된 변경 알림이 없습니다.<br>워치·담당·보고 중인 이슈가 바뀌면 여기에 쌓입니다.</div>`
+    ? `<div class="floating-panel-empty">아직 기록된 변경 알림이 없습니다.<br>워치·담당·보고 중인 이슈가 바뀌면 여기에 쌓입니다.</div>`
     : entries.map(e => `
         <div class="changelog-item" data-project="${escapeHtml(getProjectFromKey(e.key))}">
           <span class="changelog-item-dot changelog-kind-${e.kind}"></span>
@@ -61,17 +67,18 @@ export function renderChangeLogModal() {
       `).join('')
 
   return `
-    <div class="modal-overlay" id="changelog-overlay" data-action="changelog-overlay">
-      <div class="modal modal-changelog">
-        <div class="modal-title changelog-title-row">
+    <div class="floating-panel changelog-panel">
+      <div class="floating-panel-header">
+        <div class="floating-panel-title">
+          ${BELL_SVG.replace('width="20" height="20"', 'width="15" height="15"')}
           <span>이슈 변경 알림</span>
-          ${entries.length ? `<button class="btn btn-sm changelog-clear" data-action="clear-changelog">기록 지우기</button>` : ''}
         </div>
-        <div class="changelog-list">${body}</div>
-        <div class="modal-actions">
-          <button class="btn" data-action="close-changelog">닫기</button>
+        <div class="floating-panel-header-actions">
+          ${entries.length ? `<button class="floating-panel-textbtn" data-action="clear-changelog">기록 지우기</button>` : ''}
+          <button class="floating-panel-close" data-action="close-changelog" title="닫기" aria-label="닫기">${CLOSE_SVG}</button>
         </div>
       </div>
+      <div class="floating-panel-body">${body}</div>
     </div>
   `
 }

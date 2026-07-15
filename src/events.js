@@ -94,29 +94,19 @@ let globalClickListenerRegistered = false
 
 // bindKeyDropdownNav는 events/_keynav.js로 분리됨
 
-// 즐겨찾기 패널을 닫힘 애니메이션과 함께 접기.
-// .is-closing 클래스로 역방향 애니메이션을 재생한 뒤 animationend에서 재렌더.
+// 즐겨찾기 패널 닫기 (버튼은 그대로 두고 패널만 제거).
 function closeFavoritesPanel() {
   if (state.favoritesPanelCollapsed) return
-  const panel = document.querySelector('.favorites-panel.expanded')
-  if (!panel || panel.classList.contains('is-closing')) {
-    state.favoritesPanelCollapsed = true
-    localStorage.setItem('favorites_collapsed', '1')
-    render({ sections: ['favorites'] })
-    return
-  }
-  panel.classList.add('is-closing')
-  let finished = false
-  const finish = () => {
-    if (finished) return
-    finished = true
-    state.favoritesPanelCollapsed = true
-    localStorage.setItem('favorites_collapsed', '1')
-    render({ sections: ['favorites'] })
-  }
-  panel.addEventListener('animationend', finish, { once: true })
-  // 안전장치: animationend가 발화하지 못하더라도 반드시 상태 전환
-  setTimeout(finish, 220)
+  state.favoritesPanelCollapsed = true
+  localStorage.setItem('favorites_collapsed', '1')
+  render({ sections: ['favorites'] })
+}
+
+// 알림 패널 닫기 (버튼은 그대로 두고 패널만 제거).
+function closeChangeLogPanel() {
+  if (!state.showChangeLog) return
+  state.showChangeLog = false
+  render({ sections: ['changelog-fab'] })
 }
 
 // 즐겨찾기 패널이 펼쳐져 있을 때 패널 바깥을 클릭하면 접기 (애니메이션 포함).
@@ -152,11 +142,22 @@ function handleGlobalClick(e) {
     }
   }
 
-  if (state.favoritesPanelCollapsed) return
-  const panel = document.querySelector('.favorites-panel.expanded')
-  if (!panel) return
-  if (panel.contains(e.target)) return
-  closeFavoritesPanel()
+  // 코너 플로팅 패널(즐겨찾기/알림): 패널과 해당 토글 버튼 바깥을 클릭하면 닫는다.
+  // (토글 버튼 자체 클릭은 각 핸들러가 stopImmediatePropagation으로 처리하므로 여기 도달 안 함)
+  if (!state.favoritesPanelCollapsed) {
+    const panel = document.querySelector('.favorites-panel')
+    const btn = document.querySelector('[data-action="toggle-favorites"]')
+    if (panel && !panel.contains(e.target) && !(btn && btn.contains(e.target))) {
+      closeFavoritesPanel()
+    }
+  }
+  if (state.showChangeLog) {
+    const panel = document.querySelector('.changelog-panel')
+    const btn = document.querySelector('[data-action="toggle-changelog"]')
+    if (panel && !panel.contains(e.target) && !(btn && btn.contains(e.target))) {
+      closeChangeLogPanel()
+    }
+  }
 }
 
 function handleGlobalKeydown(e) {
@@ -211,7 +212,6 @@ function handleGlobalKeydown(e) {
     return
   }
   if (state.showSettings) { closeSettings(); return }
-  if (state.showChangeLog) { state.showChangeLog = false; render(modalsOnly); return }
   if (state.deletingWorklog) { state.deletingWorklog = null; render(modalsOnly); return }
   if (state.editingWorklog) { state.editingWorklog = null; render(modalsOnly); return }
   if (state.showManualLog) {
@@ -252,7 +252,10 @@ function handleGlobalKeydown(e) {
     }
     return
   }
-  // 모달이 모두 닫혀 있을 때 ESC: 다중 선택 해제
+  // 코너 플로팅 패널(알림/즐겨찾기): 모달이 모두 닫혀 있을 때 ESC로 닫기
+  if (state.showChangeLog) { closeChangeLogPanel(); return }
+  if (!state.favoritesPanelCollapsed) { closeFavoritesPanel(); return }
+  // 그 외 ESC: 다중 선택 해제
   if (state.selectedIssues.size > 0) {
     clearIssueSelection()
     render({ sections: ['content'] })
@@ -355,23 +358,7 @@ export function bindEvents() {
   bindSummaryNavEvents()
 
   // ===== 잔여 element 핸들러 — 단일 element + 특수 처리 =====
-
-  // 플로팅 즐겨찾기 패널 토글.
-  // e.stopPropagation으로 element 단계에서 bubble을 막아 handleGlobalClick의
-  // 자동 닫힘(panel.contains(e.target) 검사 실패로 인한)을 차단한다.
-  const favToggle = document.getElementById('favorites-toggle')
-  if (favToggle) {
-    on(favToggle, 'click', (e) => {
-      e.stopPropagation()
-      if (state.favoritesPanelCollapsed) {
-        state.favoritesPanelCollapsed = false
-        localStorage.setItem('favorites_collapsed', '0')
-        render({ sections: ['favorites'] })
-      } else {
-        closeFavoritesPanel()
-      }
-    })
-  }
+  // (즐겨찾기/알림 코너 위젯 토글은 data-action 위임으로 처리 — installDelegatedHandlers 참고)
 
   // 담당자 드롭다운: 검색 input + 리스트 항목 클릭 위임 (드롭다운 DOM 내부, 부분 갱신 보존)
   const assigneeSearchInput = document.getElementById('assignee-search-input')
@@ -484,32 +471,54 @@ export function installDelegatedHandlers() {
     render()
   })
 
-  // 이슈 변경 알림: FAB로 기록 모달 열기 (열면 안 읽음 배지 초기화)
-  registerClickAction('open-changelog', (e, btn) => {
+  // 즐겨찾기 패널 토글 (버튼 재클릭 시 닫기, 열 때 알림 패널은 닫음 — 상호 배타)
+  registerClickAction('toggle-favorites', (e, btn) => {
     e.stopImmediatePropagation()
-    markChangesRead()
-    state.showChangeLog = true
-    render({ sections: ['modals', 'changelog-fab'] }) // 모달 + FAB 배지(안 읽음 0) 갱신
+    if (!state.favoritesPanelCollapsed) {
+      state.favoritesPanelCollapsed = true
+      localStorage.setItem('favorites_collapsed', '1')
+      render({ sections: ['favorites'] })
+      return
+    }
+    state.favoritesPanelCollapsed = false
+    localStorage.setItem('favorites_collapsed', '0')
+    state.showChangeLog = false // 알림 패널 닫기
+    render({ sections: ['favorites', 'changelog-fab'] })
   })
 
-  // 변경 알림 모달 닫기
+  // 즐겨찾기 패널 헤더의 닫기(×)
+  registerClickAction('close-favorites', (e, btn) => {
+    e.stopImmediatePropagation()
+    closeFavoritesPanel()
+  })
+
+  // 이슈 변경 알림 패널 토글 (버튼 재클릭 시 닫기, 열 때 즐겨찾기 닫음 + 읽음 처리 — 상호 배타)
+  registerClickAction('toggle-changelog', (e, btn) => {
+    e.stopImmediatePropagation()
+    if (state.showChangeLog) {
+      state.showChangeLog = false
+      render({ sections: ['changelog-fab'] })
+      return
+    }
+    state.showChangeLog = true
+    state.favoritesPanelCollapsed = true // 즐겨찾기 패널 닫기
+    localStorage.setItem('favorites_collapsed', '1')
+    markChangesRead() // 열면 안 읽음 배지 초기화
+    render({ sections: ['favorites', 'changelog-fab'] })
+  })
+
+  // 변경 알림 패널 닫기(×)
   registerClickAction('close-changelog', (e, btn) => {
+    e.stopImmediatePropagation()
     state.showChangeLog = false
-    render({ sections: ['modals'] })
+    render({ sections: ['changelog-fab'] })
   })
 
   // 변경 알림 기록 전체 삭제
   registerClickAction('clear-changelog', (e, btn) => {
     e.stopImmediatePropagation()
     clearChangeLog()
-    render({ sections: ['modals', 'changelog-fab'] })
-  })
-
-  // 오버레이 배경(카드 바깥) 클릭 시 모달 닫기 — 카드 내부 클릭은 무시
-  registerClickAction('changelog-overlay', (e, el) => {
-    if (e.target !== el) return
-    state.showChangeLog = false
-    render({ sections: ['modals'] })
+    render({ sections: ['changelog-fab'] })
   })
 
   // 백로그(배포 예정) 뷰 새로고침
