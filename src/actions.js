@@ -325,6 +325,31 @@ function diffIssues(prevMap, freshIssues) {
   return changes
 }
 
+// worklogsByDate({ 날짜: [엔트리] })에서 모든 worklogId 집합을 뽑는다(재로드 전 스냅샷용).
+function collectWorklogIds(byDate) {
+  const ids = new Set()
+  for (const date in byDate) {
+    const list = byDate[date]
+    if (Array.isArray(list)) for (const w of list) if (w?.worklogId != null) ids.add(w.worklogId)
+  }
+  return ids
+}
+// 재조회한 워크로그 중 prevIds에 없던(=이번에 새로 생긴) 내 워크로그의 이슈 키 집합.
+// fetchMyWorklogs는 worklogAuthor=currentUser라 전부 내 워크로그 → 여기 담긴 이슈는
+// "내가 방금 웹앱/위젯으로 시간 기록한" 이슈. 이 이슈의 updated-only(description) 변경은
+// 워크로그 기록이 원인이므로 강조/알림에서 제외한다(위젯 워크로그 무임승차 방지).
+function newlyLoggedIssueKeys(freshLogs, prevIds) {
+  const keys = new Set()
+  for (const date in freshLogs) {
+    const list = freshLogs[date]
+    if (!Array.isArray(list)) continue
+    for (const w of list) {
+      if (w?.worklogId != null && !prevIds.has(w.worklogId) && w.issueKey) keys.add(w.issueKey)
+    }
+  }
+  return keys
+}
+
 // options.flash: true면 갱신 전/후를 비교해 변경된 이슈 행을 잠깐 강조한다.
 // (웹훅 트리거·유휴 5분 폴링 등 백그라운드 갱신에서만 사용; 최초 로드/수동 새로고침은 미강조)
 export async function autoReloadIssuesAndWorklogs(options = {}) {
@@ -349,7 +374,11 @@ export async function autoReloadIssuesAndWorklogs(options = {}) {
 
   // 갱신 전 이슈 스냅샷(강조·알림 대상 판별용)
   const prevMap = flash ? issueSnapshotMap(state.realIssues) : null
+  // 갱신 전 내 워크로그 id 스냅샷 — 재조회 후 새로 생긴 워크로그의 이슈를 알아내
+  // "내가 방금 남긴 워크로그"로 인한 변경을 강조/알림에서 뺀다(loggedKeys).
+  const prevWorklogIds = flash ? collectWorklogIds(state.worklogsByDate) : null
   let changes = []
+  let loggedKeys = null
 
   const issuesTask = (async () => {
     const promises = [fetchMyIssues(), fetchProjects()]
@@ -367,6 +396,7 @@ export async function autoReloadIssuesAndWorklogs(options = {}) {
 
   const worklogsTask = (async () => {
     const freshLogs = await fetchMyWorklogs(startDate, endDate)
+    if (prevWorklogIds) loggedKeys = newlyLoggedIssueKeys(freshLogs, prevWorklogIds)
     for (const key of Object.keys(state.worklogsByDate)) {
       if (key.startsWith(monthKey)) delete state.worklogsByDate[key]
     }
@@ -379,6 +409,12 @@ export async function autoReloadIssuesAndWorklogs(options = {}) {
   // (백로그 뷰 최신화는 backlogPoll.js의 주기 폴링이 담당 — 여기선 내 일감/워크로그만)
   const results = await Promise.allSettled([issuesTask, worklogsTask])
   const anyUpdated = results.some(r => r.status === 'fulfilled')
+  // 내가 방금 웹앱/위젯으로 남긴 워크로그로 인한 updated-only(description) 변경은 제외한다.
+  // (같은 폴링 배치에 남의 변경이 섞여 flash=true가 돼도 위젯 워크로그가 딸려 강조/알림되지 않게)
+  // status/generic 등 목록에 보이는 실제 변경은 워크로그와 무관하므로 그대로 둔다.
+  if (loggedKeys && loggedKeys.size) {
+    changes = changes.filter(c => !(c.kind === 'description' && loggedKeys.has(c.key)))
+  }
   // 강조/알림 등록은 render 전에 — 렌더가 해당 행에 클래스/지연을 그리고 FAB 배지를 갱신한다.
   // 한 번에 너무 많이 바뀌면(캐시 스키마 변화 등 체계적 변동) 폭주 방지 위해 강조/알림 생략.
   if (flash && changes.length && changes.length <= 12) {
