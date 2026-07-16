@@ -5,6 +5,7 @@
 // 저장소는 localStorage에 영속화되어(사용자별) 새로고침 후에도 기록이 유지된다.
 import { showToast } from './ui.js'
 import { josaRo } from './utils.js'
+import { showDesktopNotification } from './browserNotify.js'
 
 const LOG_KEY = 'issue_changes_log'
 const READ_KEY = 'issue_changes_read_at'
@@ -74,6 +75,10 @@ function showChangeToasts(entries) {
   } else {
     showToast(`${entries.length}개 항목이 변경되었습니다.`, '🔔')
   }
+  // 화면 밖(다른 탭·다른 앱)을 보고 있을 때를 위한 OS 알림 — 배치당 1건으로 합쳐 소음 최소화.
+  // 여러 건이면 개별 나열 대신 요약 1건, 1건이면 그 메시지 그대로.
+  const body = entries.length === 1 ? buildChangeMessage(entries[0]) : `${entries.length}개 항목이 변경되었습니다.`
+  showDesktopNotification('이슈 변경 알림', body)
 }
 
 // 변경 목록을 기록 + 토스트. changes: [{ key, kind, from, to }]

@@ -34,6 +34,7 @@ import {
 } from './utils.js'
 import { showToast, showContextMenu } from './ui.js'
 import { markChangesRead, clearChangeLog } from './issueChanges.js'
+import { enableBrowserNotify, disableBrowserNotify, isBrowserNotifyOn } from './browserNotify.js'
 import { nudgeSessionPoll } from './sessionSync.js'
 import { loadWorklogs, ensureMonthWorklogsLoaded, loadBacklog } from './actions.js'
 import { render, resetIssueListScroll } from './render.js'
@@ -520,6 +521,25 @@ export function installDelegatedHandlers() {
   registerClickAction('clear-changelog', (e, btn) => {
     e.stopImmediatePropagation()
     clearChangeLog()
+    render({ sections: ['changelog-fab'] })
+  })
+
+  // 데스크톱(브라우저) 알림 토글 — 켤 때 권한 프롬프트(사용자 제스처 필요)를 띄운다.
+  registerClickAction('toggle-browser-notify', async (e, btn) => {
+    e.stopImmediatePropagation()
+    if (isBrowserNotifyOn()) {
+      disableBrowserNotify()
+      showToast('데스크톱 알림을 껐습니다.', 'ℹ')
+    } else {
+      const status = await enableBrowserNotify()
+      if (status.on) {
+        showToast('데스크톱 알림을 켰습니다. 다른 창을 볼 때 알림이 표시됩니다.', '🔔')
+      } else if (status.permission === 'denied') {
+        showToast('브라우저에서 알림이 차단되어 있습니다. 주소창 왼쪽 자물쇠 → 알림 허용 후 다시 시도하세요.', '⚠')
+      } else {
+        showToast('알림 권한이 허용되지 않았습니다.', '⚠')
+      }
+    }
     render({ sections: ['changelog-fab'] })
   })
 

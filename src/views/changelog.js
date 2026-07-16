@@ -4,6 +4,7 @@
 import { state } from '../state.js'
 import { getChangeLog, getUnreadChangeCount } from '../issueChanges.js'
 import { escapeHtml, renderIssueKeyLink, getProjectFromKey, josaRo } from '../utils.js'
+import { getNotifyStatus } from '../browserNotify.js'
 
 const BELL_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>'
 const CLOSE_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>'
@@ -52,6 +53,29 @@ function renderChangeItemHtml(e) {
   return link + rest
 }
 
+// 데스크톱(브라우저) 알림 켜기/끄기 토글 행. 브라우저가 알림을 지원하지 않으면 숨김.
+function renderNotifyPrefRow() {
+  const { supported, permission, on } = getNotifyStatus()
+  if (!supported) return ''
+  const denied = permission === 'denied'
+  const sub = denied
+    ? '브라우저에서 차단됨 · 사이트 설정에서 허용하세요'
+    : (on ? '켜짐 · 다른 창을 보고 있을 때 알림' : '꺼짐 · 화면 안 토스트만 표시')
+  return `
+    <div class="notify-pref-row">
+      <div class="notify-pref-label">
+        <span class="notify-pref-title">데스크톱 알림</span>
+        <span class="notify-pref-sub">${sub}</span>
+      </div>
+      <button class="notify-switch ${on ? 'is-on' : ''}" data-action="toggle-browser-notify"
+        role="switch" aria-checked="${on}" ${denied ? 'disabled' : ''}
+        title="${denied ? '브라우저에서 알림이 차단되어 있습니다' : (on ? '데스크톱 알림 끄기' : '데스크톱 알림 켜기')}">
+        <span class="notify-switch-knob"></span>
+      </button>
+    </div>
+  `
+}
+
 function renderChangeLogPanel() {
   const entries = getChangeLog()
   const body = entries.length === 0
@@ -78,7 +102,7 @@ function renderChangeLogPanel() {
           <button class="floating-panel-close" data-action="close-changelog" title="닫기" aria-label="닫기">${CLOSE_SVG}</button>
         </div>
       </div>
-      <div class="floating-panel-body">${body}</div>
+      <div class="floating-panel-body">${renderNotifyPrefRow()}${body}</div>
     </div>
   `
 }

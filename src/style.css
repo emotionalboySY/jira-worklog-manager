@@ -1565,6 +1565,73 @@ body:has(#settings-overlay) .floating-panel {
   line-height: 1.6;
 }
 
+/* ========== 데스크톱 알림 토글 (알림 패널 상단) ========== */
+.notify-pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  margin: 0 2px 6px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+}
+
+.notify-pref-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.notify-pref-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.notify-pref-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.notify-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--border);
+  cursor: pointer;
+  transition: background 0.18s;
+}
+
+.notify-switch.is-on {
+  background: var(--accent);
+}
+
+.notify-switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.notify-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.18s;
+}
+
+.notify-switch.is-on .notify-switch-knob {
+  transform: translateX(18px);
+}
+
 .favorite-item {
   display: flex;
   align-items: center;
