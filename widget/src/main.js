@@ -542,13 +542,30 @@ async function loadAll() {
 }
 
 function pollDelay() {
-  return activeSession() ? 3000 : 10000
+  return activeSession() ? 3000 : 30000
 }
 let pollFailures = 0
+// 숨김 중 폴링을 건너뛴 적이 있으면 true — 다시 보일 때 즉시 1회 갱신하는 데 쓴다.
+let skippedWhileHidden = false
+
+// 위젯이 트레이로 숨겨져 있고 활성 세션도 없으면 이번 틱을 건너뛴다.
+// 위젯은 상주 앱이라 숨긴 채 방치되는 시간이 길고, 그 시간의 폴링이
+// Redis 커맨드 사용량 대부분을 차지한다(웹앱의 document.hidden 스킵과 같은 정책).
+// 조회 실패 시에는 폴링을 유지한다 — 스킵 쪽으로 잘못 판단해 멈추는 편이 더 위험.
+async function shouldSkipPoll() {
+  if (activeSession()) return false
+  try { return !(await appWindow.isVisible()) } catch { return false }
+}
+
 function startPolling() {
   stopPolling()
   pollFailures = 0
   const tick = async () => {
+    if (await shouldSkipPoll()) {
+      skippedWhileHidden = true
+      pollTimer = setTimeout(tick, pollDelay())
+      return
+    }
     try {
       const data = await getSessions()
       pollFailures = 0
@@ -614,6 +631,15 @@ async function boot() {
 
 // 종료 다이얼로그가 세션을 제거하면 본체를 즉시 갱신
 listen('sessions-changed', () => { loadAll().catch(() => {}) })
+
+// 숨김 중 폴링을 건너뛴 뒤 위젯이 다시 보이면 즉시 갱신.
+// 트레이 '위젯 보이기'와 단일 인스턴스 재실행 모두 show + set_focus를 호출하므로
+// 포커스 획득으로 감지된다. 스킵이 없었으면 호출하지 않아 불필요한 요청이 늘지 않는다.
+appWindow.onFocusChanged(({ payload: focused }) => {
+  if (!focused || !skippedWhileHidden) return
+  skippedWhileHidden = false
+  loadAll().catch(() => {})
+})
 
 // 마그넷 스냅 + 비율 고정 리사이즈는 Rust(Windows 창 메시지 후킹)에서 실시간 처리
 

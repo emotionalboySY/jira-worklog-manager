@@ -29,12 +29,24 @@ redis.call('SET', KEYS[1], ARGV[2])
 return 'OK'
 `
 
-async function readState(redis, key) {
-  const raw = await redis.get(key) // 자동 역직렬화 → 객체 또는 null
-  if (raw && typeof raw === 'object' && Array.isArray(raw.sessions)) {
-    return { sessions: raw.sessions, rev: typeof raw.rev === 'number' ? raw.rev : 0 }
+// 저장된 값(자동 역직렬화된 객체 또는 null) → { sessions, rev } 정규화.
+// GET/MGET 모두 이 함수를 거친다. @upstash 자동 역직렬화는 보통 객체를 주지만
+// 명령·버전에 따라 원문 문자열이 올 수 있어 양쪽을 모두 받는다 — 여기서 파싱에
+// 실패해 빈 상태를 반환하면 클라가 세션이 사라진 것으로 오인한다.
+function parseState(raw) {
+  let v = raw
+  if (typeof v === 'string') {
+    try { v = JSON.parse(v) } catch { return { sessions: [], rev: 0 } }
+  }
+  if (v && typeof v === 'object' && Array.isArray(v.sessions)) {
+    return { sessions: v.sessions, rev: typeof v.rev === 'number' ? v.rev : 0 }
   }
   return { sessions: [], rev: 0 }
+}
+
+async function readState(redis, key) {
+  const raw = await redis.get(key) // 자동 역직렬화 → 객체 또는 null
+  return parseState(raw)
 }
 
 // baseRev 기준 CAS 저장. { ok, state } 반환.
@@ -80,11 +92,15 @@ export default async function handler(req, res) {
       // jiraRev(changes): 데이터 변경 카운터 — 증가 시 이슈/워크로그 재로드(근실시간).
       // jiraNotifyRev(notify): 타인이 만든 변경 카운터 — 증가 시에만 강조/토스트.
       // 폴 응답에 얹어 보내므로 추가 폴링 요청이 없다.
-      const [state, rawJiraRev, rawNotifyRev] = await Promise.all([
-        readState(redis, key),
-        redis.get(`changes:${accountId}`),
-        redis.get(`notify:${accountId}`),
-      ])
+      //
+      // 세 값을 MGET 한 번으로 읽는다 — GET 3회면 Redis 커맨드도 3개로 계산되어
+      // 폴링 주기와 곱해지면 무료 한도(월 50만)를 빠르게 먹는다. MGET은 1개로 계산.
+      const [rawState, rawJiraRev, rawNotifyRev] = await redis.mget(
+        key,
+        `changes:${accountId}`,
+        `notify:${accountId}`,
+      )
+      const state = parseState(rawState)
       // INCR 값은 정수지만, 저장/역직렬화 편차에 대비해 안전하게 숫자로 보정(없으면 0).
       const n = Number(rawJiraRev)
       const nn = Number(rawNotifyRev)
