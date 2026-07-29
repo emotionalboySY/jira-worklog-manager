@@ -18,6 +18,7 @@ import {
   getDefaultLunch,
   formatHHMM,
   parseHHMM,
+  closeIconSvg,
 } from '../utils.js'
 import { loadWorklogs } from '../actions.js'
 import { renderAdf, isVideoAttachment, renderVideoPlayer } from '../adf.js'
@@ -690,7 +691,7 @@ export function renderCreateIssueModal() {
     const chipsHtml = (link.targetKeys || []).map(key => `
       <span class="link-target-chip">
         <span>${escapeHtml(key)}</span>
-        <button type="button" class="link-target-chip-x" data-action="remove-link-target" data-link-idx="${idx}" data-target-key="${escapeHtml(key)}" aria-label="제거">✕</button>
+        <button type="button" class="link-target-chip-x" data-action="remove-link-target" data-link-idx="${idx}" data-target-key="${escapeHtml(key)}" aria-label="제거" title="제거">${closeIconSvg(10)}</button>
       </span>
     `).join('')
     const placeholder = (link.targetKeys || []).length === 0
@@ -709,7 +710,7 @@ export function renderCreateIssueModal() {
           </div>
           <div class="create-issue-link-suggestions" id="create-issue-link-suggestions-${idx}"></div>
         </div>
-        <button type="button" class="btn btn-sm create-issue-link-remove" data-action="remove-create-link" data-link-idx="${idx}" aria-label="이 링크 제거">✕</button>
+        <button type="button" class="btn btn-sm create-issue-link-remove" data-action="remove-create-link" data-link-idx="${idx}" aria-label="이 링크 제거" title="이 링크 제거">${closeIconSvg(12)}</button>
         ${targetErr ? `<div class="input-hint error">${escapeHtml(targetErr)}</div>` : ''}
       </div>
     `
@@ -1382,7 +1383,7 @@ export function renderIssueDetailModal() {
           <div class="detail-video-panel-head">
             <span class="detail-video-panel-name">🎬 ${escapeHtml(playingVideo.filename || '')}</span>
             <button type="button" class="detail-video-panel-btn" data-action="download-attachment" data-attachment-url="${escapeHtml(playingVideo.contentUrl || '')}" data-filename="${escapeHtml(playingVideo.filename || '')}" title="다운로드">⬇ 다운로드</button>
-            <button type="button" class="detail-video-panel-btn" data-action="close-attachment-video" aria-label="플레이어 닫기" title="닫기">✕</button>
+            <button type="button" class="detail-video-panel-btn" data-action="close-attachment-video" aria-label="플레이어 닫기" title="닫기">${closeIconSvg(11)}</button>
           </div>
           ${renderVideoPlayer({ url: playingVideo.contentUrl, filename: playingVideo.filename, autoplay: true })}
         </div>
@@ -1479,7 +1480,7 @@ export function renderIssueDetailModal() {
             <span class="detail-type-label">${escapeHtml(type)}</span>
             <a class="issue-key issue-key-link" href="${jiraUrl || '#'}" target="_blank" rel="noopener noreferrer">${escapeHtml(key)}</a>
           </div>
-          <button class="detail-close" id="issue-detail-close" aria-label="닫기">✕</button>
+          <button class="detail-close" id="issue-detail-close" aria-label="닫기" title="닫기">${closeIconSvg(16)}</button>
         </div>
         ${renderDetailSummary(m, summary)}
         <div class="detail-meta-grid">
@@ -1578,7 +1579,7 @@ function renderLinkedIssueRow(l, m) {
   const isRemoving = m.linkRemoving?.has?.(l.id)
   const removeBtnHtml = isRemoving
     ? `<button type="button" class="detail-link-remove is-loading" disabled aria-label="해제 중"><span class="btn-spinner"></span></button>`
-    : `<button type="button" class="detail-link-remove" data-action="remove-issue-link" data-link-id="${escapeHtml(l.id)}" aria-label="연결 해제" title="연결 해제">✕</button>`
+    : `<button type="button" class="detail-link-remove" data-action="remove-issue-link" data-link-id="${escapeHtml(l.id)}" aria-label="연결 해제" title="연결 해제">${closeIconSvg(12)}</button>`
 
   // 행은 클릭 가능 영역과 우측 컨트롤로 분리. 좌측 영역에 data-action=open-linked-issue
   return `
@@ -2044,7 +2045,7 @@ function renderAttachmentTile(a, opts = {}) {
   const isRemoving = !!opts.removing
   const removeBtnHtml = isRemoving
     ? `<button type="button" class="detail-attachment-remove is-loading" disabled aria-label="삭제 중"><span class="btn-spinner"></span></button>`
-    : `<button type="button" class="detail-attachment-remove" data-action="remove-attachment" data-attachment-id="${id}" data-filename="${fn}" aria-label="첨부 삭제" title="첨부 삭제">✕</button>`
+    : `<button type="button" class="detail-attachment-remove" data-action="remove-attachment" data-attachment-id="${id}" data-filename="${fn}" aria-label="첨부 삭제" title="첨부 삭제">${closeIconSvg(12)}</button>`
   // 동영상 타일은 클릭 시 다운로드 대신 첨부 목록 아래 플레이어를 연다 (data-video)
   if (isVideoAttachment(a)) {
     const playingCls = opts.playing ? ' is-playing' : ''

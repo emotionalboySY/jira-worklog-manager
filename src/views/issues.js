@@ -16,6 +16,7 @@ import {
   getProjectFromKey,
   getSelectableProjects,
   groupBacklogBySprint,
+  closeIconSvg,
 } from '../utils.js'
 import { renderProjectSelector } from './header.js'
 
@@ -300,7 +301,7 @@ function renderBulkCopyBar(count) {
         <button class="btn btn-sm" data-bulk="key" title="이슈 키만 콤마로 구분해 복사">키만</button>
         <button class="btn btn-sm" data-bulk="both" title="이슈 키와 요약을 한 줄씩 복사">키 + 요약</button>
         <button class="btn btn-sm" data-bulk="summary" title="이슈 요약만 한 줄씩 복사">요약만</button>
-        <button class="btn btn-sm bulk-copy-clear" data-bulk="clear" title="선택 해제 (Esc)" aria-label="선택 해제">✕</button>
+        <button class="btn btn-sm bulk-copy-clear" data-bulk="clear" title="선택 해제 (Esc)" aria-label="선택 해제">${closeIconSvg(12)}</button>
       </div>
     </div>
   `

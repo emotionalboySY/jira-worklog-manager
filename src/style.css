@@ -389,6 +389,25 @@ body.tab-logs .log-detail > .no-session {
   font-size: 12px;
 }
 
+/* 닫기/제거 X 아이콘 (utils.js의 closeIconSvg) — 문자 글리프 ✕를 대체한다.
+   어떤 버튼에 들어가도 baseline이 흔들리지 않게 block으로 띄우고,
+   클릭 타깃은 항상 버튼이 되도록 아이콘 자체는 이벤트를 받지 않는다. */
+.icon-close {
+  display: block;
+  flex: none;
+  pointer-events: none;
+}
+
+/* X 아이콘만 담는 btn 계열 버튼은 글자 기준 padding 대신 정사각 정렬.
+   글자 대신 12px 아이콘이 들어가 높이가 줄어들므로, 옆 버튼들과 키를 맞춘다. */
+.bulk-copy-clear,
+.create-issue-link-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+}
+
 .btn-icon {
   padding: 5px 8px;
   font-size: 16px;
@@ -4341,19 +4360,28 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 }
 
 .detail-close {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 16px;
-  padding: 4px 8px;
-  line-height: 1;
   border-radius: var(--radius);
+  transition: background 0.15s, color 0.15s, transform 0.12s;
 }
 
 .detail-close:hover {
-  background: var(--bg);
+  background: var(--bg-hover);
   color: var(--text-bright);
+}
+
+.detail-close:active {
+  transform: scale(0.92);
 }
 
 .detail-summary {

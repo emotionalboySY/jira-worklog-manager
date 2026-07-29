@@ -3,10 +3,10 @@
 // 알림 위젯(changelog.js)과 동일한 방식(.corner-fab / .floating-panel)이며 상호 배타 토글.
 import { state } from '../state.js'
 import { loadFavorites, loadSessions } from '../storage.js'
-import { escapeHtml, renderIssueKeyLink, getProjectFromKey } from '../utils.js'
+import { escapeHtml, renderIssueKeyLink, getProjectFromKey, closeIconSvg } from '../utils.js'
 
 const STAR_SVG = '<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><polygon points="8 1.5 10 6 15 6.6 11.3 10 12.3 14.5 8 12.3 3.7 14.5 4.7 10 1 6.6 6 6"/></svg>'
-const CLOSE_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>'
+const CLOSE_SVG = closeIconSvg(12)
 
 export function renderFavoritesPanel() {
   const favorites = loadFavorites()

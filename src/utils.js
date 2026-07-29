@@ -221,6 +221,14 @@ export function escapeHtml(str) {
     .replace(/'/g, '&#39;')
 }
 
+// 닫기/제거 버튼용 X 아이콘. 문자 글리프(✕)는 폰트마다 굵기·정렬이 제각각이라
+// 앱 전체가 이 SVG 하나를 공유한다. 색은 currentColor로 버튼 스타일을 따라간다.
+// size는 px, 굵기는 크기에 비례(작은 아이콘이 흐려지지 않도록).
+export function closeIconSvg(size = 12) {
+  const stroke = size >= 16 ? 1.7 : size >= 12 ? 1.8 : 2
+  return `<svg class="icon-close" width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" aria-hidden="true" focusable="false"><line x1="3.5" y1="3.5" x2="12.5" y2="12.5"/><line x1="12.5" y1="3.5" x2="3.5" y2="12.5"/></svg>`
+}
+
 // ========== 이슈 타입/상태 ==========
 export function getTypeIcon(type) {
   return ISSUE_TYPES[type]?.icon || '•'

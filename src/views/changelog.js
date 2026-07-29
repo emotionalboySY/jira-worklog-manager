@@ -3,11 +3,11 @@
 // 즐겨찾기 위젯(favorites.js)과 동일 방식(.corner-fab / .floating-panel), dim 없음, 상호 배타 토글.
 import { state } from '../state.js'
 import { getChangeLog, getUnreadChangeCount } from '../issueChanges.js'
-import { escapeHtml, renderIssueKeyLink, getProjectFromKey, josaRo } from '../utils.js'
+import { escapeHtml, renderIssueKeyLink, getProjectFromKey, josaRo, closeIconSvg } from '../utils.js'
 import { getNotifyStatus } from '../browserNotify.js'
 
 const BELL_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>'
-const CLOSE_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>'
+const CLOSE_SVG = closeIconSvg(12)
 
 // 섹션 전체 = 종 버튼 + (열렸을 때) 패널
 export function renderChangeLogFab() {
