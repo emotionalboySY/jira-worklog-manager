@@ -121,6 +121,17 @@ function renderNode(node, ctx) {
         (altAttr ? ctx.attachmentsByFilename?.[altAttr] : null)
       const contentUrl = att?.contentUrl || ''
       const alt = escapeHtml(att?.filename || altAttr)
+
+      // 동영상은 <img>로 그리면 파일명(alt)과 빈 영역만 남는다 — 인라인 플레이어로 렌더.
+      // src는 비워두고, 표지를 누른 시점에 detail.js가 Blob URL을 물린다.
+      if (isVideoAttachment(att, altAttr)) {
+        return renderVideoPlayer({
+          url: contentUrl,
+          filename: att?.filename || altAttr,
+          width: attrs?.width,
+          height: attrs?.height,
+        })
+      }
       // attrs.width/height(px)가 있으면 속성으로 출력 — blob 로딩 전에도 브라우저가
       // aspect-ratio로 공간을 예약해, 재렌더 시 높이 붕괴로 스크롤 복원이 깨지지 않게 함
       const mw = Number(attrs?.width)
@@ -178,6 +189,42 @@ function renderNode(node, ctx) {
       // 모르는 노드는 children만 렌더 (빈 래퍼로 통과)
       return children()
   }
+}
+
+// 브라우저 <video>로 열어볼 만한 확장자. mimeType이 비어 있거나
+// application/octet-stream으로 올라온 첨부를 위한 폴백 판별용.
+const VIDEO_EXT_RE = /\.(mp4|m4v|mov|webm|ogv|ogg|avi|mkv|wmv|flv|mpe?g|3gp)$/i
+
+// 첨부(또는 파일명)가 동영상인지. mimeType이 명확하면 그걸 우선 신뢰한다.
+export function isVideoAttachment(att, filenameFallback = '') {
+  const mime = (att?.mimeType || '').toLowerCase()
+  if (mime.startsWith('video/')) return true
+  if (mime.startsWith('image/') || mime.startsWith('audio/')) return false
+  return VIDEO_EXT_RE.test(att?.filename || filenameFallback || '')
+}
+
+// 동영상 인라인 플레이어 마크업. 본문 ADF media와 첨부 목록 플레이어가 함께 쓴다.
+// video[src]는 비워둔 채 표지 버튼만 올려두고, 실제 로드는 detail.js가 담당한다
+// (영상은 수십 MB라 상세를 열자마자 통째로 받으면 낭비).
+export function renderVideoPlayer({ url, filename, width, height, autoplay = false } = {}) {
+  const name = escapeHtml(filename || '동영상')
+  if (!url) {
+    return `<div class="adf-video adf-video-missing">🎬 ${name} <span>(원본을 찾지 못했습니다)</span></div>`
+  }
+  // ADF media의 width/height(px)가 있으면 그 비율로 자리를 잡아 로드 후 높이가 튀지 않게 함.
+  // max-width는 높이 상한(60vh)에서 역산 — 세로 영상이 가로로 넓은 검은 박스가 되지 않도록.
+  const w = Number(width)
+  const h = Number(height)
+  const ratioStyle = (Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0)
+    ? ` style="aspect-ratio:${Math.round(w)}/${Math.round(h)};max-width:min(100%, calc(60vh * ${Math.round(w)} / ${Math.round(h)}))"`
+    : ''
+  return `<div class="adf-video" data-adf-video-url="${escapeHtml(url)}" data-filename="${name}"${autoplay ? ' data-autoplay="1"' : ''}${ratioStyle}>` +
+    `<video class="adf-video-el" controls preload="none" playsinline></video>` +
+    `<button type="button" class="adf-video-cover" aria-label="${name} 재생">` +
+      `<span class="adf-video-cover-icon">▶</span>` +
+      `<span class="adf-video-cover-name">${name}</span>` +
+    `</button>` +
+  `</div>`
 }
 
 function applyMark(html, mark) {

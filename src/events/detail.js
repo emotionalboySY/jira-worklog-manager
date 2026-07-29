@@ -344,6 +344,9 @@ export async function openIssueDetailModal(issueKey) {
     // 이미지 로더 캐시 — 재렌더로 img가 교체돼도 동일 URL은 즉시 src 세팅
     blobUrlCache: new Map(),       // sourceUrl → blobUrl
     blobUrlInFlight: new Map(),    // sourceUrl → Promise<blobUrl|null>
+    // 동영상 — 첨부 목록에서 재생 중인 첨부 id, 재렌더 후 이어재생용 재생 위치
+    videoAttachmentId: null,
+    videoState: new Map(),         // sourceUrl → { time, playing }
     linkTypes: null, addLink: null, linkRemoving: new Set(),
     // 댓글/기록 탭 — 'comments' | 'history'. 기록 탭 진입 시 lazy-load.
     activeTab: 'comments',
@@ -621,8 +624,102 @@ export function loadIssueDetailImages() {
     })
   })
 
+  // 동영상 플레이어 (본문 ADF media + 첨부 플레이어 패널)
+  bindIssueDetailVideos()
+
   // 본문/댓글의 스마트 링크(같은 사이트 이슈)를 리치 카드로 교체
   resolveIssueDetailCards()
+}
+
+// 동영상 플레이어 바인딩. 이미지와 달리 자동으로 받지 않는다 — 영상은 수십 MB라
+// 상세를 열자마자 통째로 내려받으면 느리고 프록시 트래픽도 낭비된다.
+// 표지를 누른 시점에만 Blob URL을 받아 <video>에 물린다.
+function bindIssueDetailVideos() {
+  const m = state.issueDetailModal
+  if (!m) return
+  const modal = document.getElementById('issue-detail-overlay')
+  if (!modal) return
+  // 모달은 댓글 로드/폴링 등으로 자주 재렌더되어 <video>가 새 엘리먼트로 교체된다.
+  // 재생 위치를 url별로 남겨 두었다가 새 엘리먼트에서 이어 재생한다.
+  if (!m.videoState) m.videoState = new Map()  // url → { time, playing }
+
+  modal.querySelectorAll('.adf-video[data-adf-video-url]').forEach(wrap => {
+    const url = wrap.dataset.adfVideoUrl
+    const video = wrap.querySelector('video')
+    if (!url || !video) return
+
+    on(video, 'timeupdate', () => {
+      const st = m.videoState.get(url) || {}
+      st.time = video.currentTime
+      m.videoState.set(url, st)
+    })
+    on(video, 'play', () => {
+      const st = m.videoState.get(url) || {}
+      st.playing = true
+      m.videoState.set(url, st)
+    })
+    on(video, 'pause', () => {
+      const st = m.videoState.get(url) || {}
+      st.playing = false
+      m.videoState.set(url, st)
+    })
+    // mkv/avi/wmv 등 브라우저가 디코드 못 하는 코덱 — 다운로드로 안내
+    on(video, 'error', () => {
+      wrap.classList.remove('is-loading')
+      wrap.classList.add('is-error')
+      if (!wrap.querySelector('.adf-video-error')) {
+        const msg = document.createElement('div')
+        msg.className = 'adf-video-error'
+        msg.textContent = '이 형식은 브라우저에서 재생할 수 없습니다. 첨부파일을 내려받아 확인하세요.'
+        wrap.appendChild(msg)
+      }
+    })
+
+    const prev = m.videoState.get(url)
+    // 이미 한 번 재생을 시작했거나(재렌더 복원) 첨부 패널로 막 열린 경우엔 바로 로드
+    if (prev || wrap.dataset.autoplay === '1') {
+      startIssueDetailVideo(wrap, url, prev)
+      return
+    }
+    const cover = wrap.querySelector('.adf-video-cover')
+    if (cover) on(cover, 'click', () => startIssueDetailVideo(wrap, url, null))
+  })
+}
+
+// 표지 클릭/복원 시점에 Blob URL을 받아 <video>에 물리고 재생을 시작한다.
+async function startIssueDetailVideo(wrap, url, prev) {
+  const m = state.issueDetailModal
+  if (!m) return
+  const video = wrap.querySelector('video')
+  if (!video || video.src || wrap.dataset.loading === '1') return
+
+  const modalKey = m.key
+  wrap.dataset.loading = '1'
+  wrap.classList.add('is-loading')
+
+  const blobUrl = await ensureBlobUrl(m, url)
+  delete wrap.dataset.loading
+  // 로딩 중 모달이 닫혔거나 다른 이슈로 바뀌었으면 버린다
+  if (!state.issueDetailModal || state.issueDetailModal.key !== modalKey) return
+  if (!document.body.contains(wrap)) return
+
+  wrap.classList.remove('is-loading')
+  if (!blobUrl) {
+    wrap.classList.add('is-error')
+    showToast('동영상을 불러오지 못했습니다.', '⚠')
+    return
+  }
+
+  wrap.classList.add('is-loaded')
+  // 메타데이터가 올라온 뒤에야 currentTime을 옮길 수 있다 — src보다 먼저 걸어둔다
+  if (prev?.time > 0) {
+    on(video, 'loadedmetadata', () => { try { video.currentTime = prev.time } catch {} })
+  }
+  video.src = blobUrl
+  // 첫 재생(prev 없음)이거나 재렌더 전 재생 중이었으면 이어서 재생
+  if (!prev || prev.playing) {
+    video.play().catch(() => {})  // 자동재생 차단 시엔 컨트롤로 직접 재생
+  }
 }
 
 // 설명/댓글 본문의 스마트 링크 앵커(a.adf-card[data-adf-card-url])를 검사해
@@ -760,6 +857,51 @@ async function loadIssueHistory({ append = false } = {}) {
   }
 }
 
+// 첨부를 인증 프록시로 받아 브라우저 다운로드 트리거 (새 탭을 열지 않음).
+// el은 진행 상태 표시용 — 없어도 동작한다.
+async function downloadAttachment(el, url, filename) {
+  if (!url) return
+  if (el?.dataset.downloading === '1') return  // 받는 중 중복 클릭 방지
+  if (el) {
+    el.dataset.downloading = '1'
+    el.classList.add('is-downloading')
+  }
+  try {
+    const blobUrl = await fetchAttachmentBlobUrl(url)
+    if (!blobUrl) { showToast('첨부파일을 불러오지 못했습니다.', '⚠'); return }
+    // 임시 <a download>으로 브라우저 다운로드를 트리거 (탭 전환 없음)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = filename || 'download'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    // 다운로드가 시작될 시간을 준 뒤 blob URL 해제 (메모리 누수 방지)
+    setTimeout(() => { try { URL.revokeObjectURL(blobUrl) } catch {} }, 60000)
+  } finally {
+    if (el) {
+      delete el.dataset.downloading
+      el.classList.remove('is-downloading')
+    }
+  }
+}
+
+// 첨부 목록 아래 동영상 플레이어 패널 열기/닫기
+function openAttachmentVideo(attachmentId) {
+  const m = state.issueDetailModal
+  if (!m || !attachmentId) return
+  if (String(m.videoAttachmentId) === String(attachmentId)) return
+  m.videoAttachmentId = String(attachmentId)
+  render({ sections: ['modals'] })
+}
+
+function closeAttachmentVideo() {
+  const m = state.issueDetailModal
+  if (!m || !m.videoAttachmentId) return
+  m.videoAttachmentId = null
+  render({ sections: ['modals'] })
+}
+
 // 댓글/기록 탭 전환. history 탭 처음 진입 시 lazy-load.
 function switchActivityTab(tab) {
   const m = state.issueDetailModal
@@ -782,31 +924,15 @@ export function bindDetailModalEvents() {
   if (detailCloseFooterBtn) on(detailCloseFooterBtn, 'click', closeIssueDetailModal)
 
   // 첨부 클릭 → 인증 프록시로 받아 바로 다운로드 (새 탭을 열지 않음)
+  // 단, 동영상 첨부는 다운로드 대신 목록 아래 플레이어 패널을 연다.
   document.querySelectorAll('#issue-detail-overlay .detail-attachment').forEach(el => {
     on(el, 'click', async (e) => {
       e.preventDefault()
-      if (el.dataset.downloading === '1') return  // 받는 중 중복 클릭 방지
-      const url = el.dataset.attachmentUrl
-      if (!url) return
-      const filename = el.dataset.filename || 'download'
-      el.dataset.downloading = '1'
-      el.classList.add('is-downloading')
-      try {
-        const blobUrl = await fetchAttachmentBlobUrl(url)
-        if (!blobUrl) { showToast('첨부파일을 불러오지 못했습니다.', '⚠'); return }
-        // 임시 <a download>으로 브라우저 다운로드를 트리거 (탭 전환 없음)
-        const a = document.createElement('a')
-        a.href = blobUrl
-        a.download = filename
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
-        // 다운로드가 시작될 시간을 준 뒤 blob URL 해제 (메모리 누수 방지)
-        setTimeout(() => { try { URL.revokeObjectURL(blobUrl) } catch {} }, 60000)
-      } finally {
-        delete el.dataset.downloading
-        el.classList.remove('is-downloading')
+      if (el.dataset.video === '1') {
+        openAttachmentVideo(el.dataset.attachmentId)
+        return
       }
+      await downloadAttachment(el, el.dataset.attachmentUrl, el.dataset.filename)
     })
   })
 
@@ -814,8 +940,8 @@ export function bindDetailModalEvents() {
   const detailDescEl = document.getElementById('issue-detail-description')
   if (detailDescEl) {
     bindClickWithoutDrag(detailDescEl, (e) => {
-      // 설명 내부 링크/이미지 클릭은 기본 동작 유지
-      if (e.target.closest('a, img')) return
+      // 설명 내부 링크/이미지/동영상 클릭은 기본 동작 유지 (재생 중 편집 진입 방지)
+      if (e.target.closest('a, img, .adf-video')) return
       enterIssueDetailEditMode()
     })
   }
@@ -931,6 +1057,16 @@ export const detailLinkActions = {
     e.preventDefault()
     e.stopImmediatePropagation()
     triggerAttachmentUpload()
+  },
+  'download-attachment': async (e, el) => {
+    e.preventDefault()
+    e.stopImmediatePropagation()
+    await downloadAttachment(el, el.dataset.attachmentUrl, el.dataset.filename)
+  },
+  'close-attachment-video': (e) => {
+    e.preventDefault()
+    e.stopImmediatePropagation()
+    closeAttachmentVideo()
   },
 }
 

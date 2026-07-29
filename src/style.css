@@ -4678,6 +4678,126 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 .detail-description .adf-media-single[data-layout="wide"],
 .detail-description .adf-media-single[data-layout="full-width"] { width: 100%; }
 
+/* 동영상 인라인 플레이어 — 본문 ADF media와 첨부 플레이어 패널이 공유.
+   너비는 항상 컨테이너(모달 본문)에 맞추고, 세로 영상이 모달을 세로로
+   밀어내지 않도록 높이는 뷰포트 기준으로 제한한다. */
+.adf-video {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  max-height: 60vh;
+  aspect-ratio: 16 / 9;
+  margin: 8px 0;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.adf-video-el {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+/* 표지 — 누르기 전까지는 파일을 받지 않는다 (영상은 용량이 커서 자동 로드 안 함) */
+.adf-video-cover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  background: linear-gradient(180deg, rgba(30, 32, 38, 0.9), rgba(12, 13, 16, 0.95));
+  border: none;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.adf-video-cover:hover {
+  background: linear-gradient(180deg, rgba(40, 43, 52, 0.9), rgba(18, 19, 24, 0.95));
+}
+
+.adf-video-cover-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  padding-left: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.adf-video-cover-name {
+  max-width: 100%;
+  color: rgba(255, 255, 255, 0.85);
+  word-break: break-all;
+  text-align: center;
+}
+
+/* 로드 중: 표지를 눌러 파일을 받는 동안 표지를 잠그고 진행 표시 */
+.adf-video.is-loading .adf-video-cover {
+  cursor: progress;
+  pointer-events: none;
+}
+
+.adf-video.is-loading .adf-video-cover-icon {
+  animation: adf-video-pulse 1s ease-in-out infinite;
+}
+
+@keyframes adf-video-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+/* 로드 완료 후에는 표지를 걷어내고 네이티브 컨트롤에 맡긴다 */
+.adf-video.is-loaded .adf-video-cover {
+  display: none;
+}
+
+.adf-video-error {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
+}
+
+/* 첨부를 못 찾은 media 노드 */
+.adf-video-missing {
+  display: block;
+  aspect-ratio: auto;
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.adf-video-missing span {
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+/* mediaSingle 안에서는 바깥 래퍼가 이미 여백/정렬을 잡는다 */
+.detail-description .adf-media-single .adf-video {
+  margin: 0;
+}
+
 .detail-description img.detail-img-loading {
   min-height: 80px;
   min-width: 80px;
@@ -4932,6 +5052,51 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   font-size: 24px;
   text-align: center;
   padding: 14px 0;
+}
+
+/* 재생 중인 동영상 첨부 타일 강조 */
+.detail-attachment-video.is-playing {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* 첨부 목록 아래로 펼쳐지는 동영상 플레이어 패널.
+   첨부 그리드(120px 칸)를 벗어나 모달 본문 전체 너비를 쓴다. */
+.detail-video-panel {
+  margin-top: 12px;
+  max-width: 100%;
+}
+
+.detail-video-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.detail-video-panel-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-bright);
+  word-break: break-all;
+}
+
+.detail-video-panel-btn {
+  flex: none;
+  padding: 3px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.detail-video-panel-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-bright);
 }
 
 .detail-attachment-name {

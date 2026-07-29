@@ -20,7 +20,7 @@ import {
   parseHHMM,
 } from '../utils.js'
 import { loadWorklogs } from '../actions.js'
-import { renderAdf } from '../adf.js'
+import { renderAdf, isVideoAttachment, renderVideoPlayer } from '../adf.js'
 import { getCachedMyself } from '../jira.js'
 import { computeMinutesFromTimes } from '../../lib/worklogLogic.js'
 
@@ -1371,6 +1371,24 @@ export function renderIssueDetailModal() {
     const uploadingHtml = (m.attachmentUploading > 0)
       ? `<span class="detail-attachment-uploading"><span class="btn-spinner"></span> 업로드 중… (${m.attachmentUploading})</span>`
       : ''
+    // 첨부 목록에서 동영상 타일을 누르면 목록 바로 아래에 플레이어 패널이 열린다
+    // (첨부 그리드는 120px 칸이라 타일 자리에서 재생하면 화면이 너무 좁다)
+    const playingVideo = m.videoAttachmentId
+      ? (d.attachments || []).find(a => String(a.id) === String(m.videoAttachmentId))
+      : null
+    const videoPanelHtml = playingVideo
+      ? `
+        <div class="detail-video-panel">
+          <div class="detail-video-panel-head">
+            <span class="detail-video-panel-name">🎬 ${escapeHtml(playingVideo.filename || '')}</span>
+            <button type="button" class="detail-video-panel-btn" data-action="download-attachment" data-attachment-url="${escapeHtml(playingVideo.contentUrl || '')}" data-filename="${escapeHtml(playingVideo.filename || '')}" title="다운로드">⬇ 다운로드</button>
+            <button type="button" class="detail-video-panel-btn" data-action="close-attachment-video" aria-label="플레이어 닫기" title="닫기">✕</button>
+          </div>
+          ${renderVideoPlayer({ url: playingVideo.contentUrl, filename: playingVideo.filename, autoplay: true })}
+        </div>
+      `
+      : ''
+
     const attachmentsHtml = (d.attachments && d.attachments.length > 0)
       ? `
         <div class="detail-section-label">
@@ -1379,8 +1397,12 @@ export function renderIssueDetailModal() {
           <button type="button" class="detail-attachment-add-btn" data-action="add-attachment" title="첨부 추가">＋ 추가</button>
         </div>
         <div class="detail-attachments">
-          ${d.attachments.map(a => renderAttachmentTile(a, { removing: m.attachmentRemoving?.has?.(String(a.id)) })).join('')}
+          ${d.attachments.map(a => renderAttachmentTile(a, {
+            removing: m.attachmentRemoving?.has?.(String(a.id)),
+            playing: String(a.id) === String(m.videoAttachmentId),
+          })).join('')}
         </div>
+        ${videoPanelHtml}
       `
       : (m.attachmentUploading > 0 || !m.loading)
         ? `
@@ -2023,6 +2045,20 @@ function renderAttachmentTile(a, opts = {}) {
   const removeBtnHtml = isRemoving
     ? `<button type="button" class="detail-attachment-remove is-loading" disabled aria-label="삭제 중"><span class="btn-spinner"></span></button>`
     : `<button type="button" class="detail-attachment-remove" data-action="remove-attachment" data-attachment-id="${id}" data-filename="${fn}" aria-label="첨부 삭제" title="첨부 삭제">✕</button>`
+  // 동영상 타일은 클릭 시 다운로드 대신 첨부 목록 아래 플레이어를 연다 (data-video)
+  if (isVideoAttachment(a)) {
+    const playingCls = opts.playing ? ' is-playing' : ''
+    return `
+      <div class="detail-attachment-wrap">
+        <a class="detail-attachment detail-attachment-video${playingCls}" data-video="1" data-attachment-url="${dataUrl}" data-attachment-id="${id}" data-filename="${fn}" href="#" title="${fn} — 클릭하여 재생">
+          <span class="detail-attachment-icon">🎬</span>
+          <span class="detail-attachment-name">${fn}</span>
+          ${sizeKb ? `<span class="detail-attachment-size">${sizeKb}</span>` : ''}
+        </a>
+        ${removeBtnHtml}
+      </div>
+    `
+  }
   if (isImage) {
     return `
       <div class="detail-attachment-wrap">
