@@ -6126,6 +6126,87 @@ body.tt-media-resizing {
   background: rgba(0, 0, 0, 0.55);
 }
 
+/* ========== tiptap 동영상 노드 ========== */
+/* 드롭 직후엔 로컬 blob으로 즉시 재생, 기존 첨부는 표지 클릭 시에만 로드 */
+.tt-media-video-box {
+  position: relative;
+  min-width: 260px;
+  min-height: 80px;
+  background: #000;
+  line-height: normal;
+}
+
+.tt-media-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 60vh;
+  object-fit: contain;
+}
+
+.tt-media-video-cover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.tt-media-video-cover:hover {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.tt-media-video-cover:disabled {
+  cursor: default;
+}
+
+.tt-media-video-cover-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 13px;
+}
+
+/* 로딩 중엔 재생 아이콘을 스피너로 교체 */
+.tt-media-video-cover.is-loading {
+  pointer-events: none;
+}
+
+.tt-media-video-cover.is-loading .tt-media-video-cover-icon {
+  color: transparent;
+  background: transparent;
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: tt-media-spin 0.9s linear infinite;
+}
+
+.tt-media-video-cover-name {
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.tt-media-video-error {
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--red);
+  background: var(--red-bg);
+}
+
 /* ========== 스마트 링크 카드(inlineCard/blockCard) ========== */
 /* 편집기(.tt-card)와 읽기 모드(.adf-card) 공통 룩 — 링크 칩 또는 이슈 리치 카드 */
 .tt-card,

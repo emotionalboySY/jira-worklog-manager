@@ -213,7 +213,7 @@ export function ensureCreateIssueEditor() {
       // submit 시 createIssue → uploadAttachment → updateIssueDescription 순으로 처리
       onImagePaste: async (file) => registerPendingImage(file),
       onUploadError: (err) => {
-        showToast(`이미지 처리 실패: ${err?.message || '알 수 없는 오류'}`, '⚠')
+        showToast(`첨부 처리 실패: ${err?.message || '알 수 없는 오류'}`, '⚠')
       },
       pendingPreviews,
     }).then(editor => {

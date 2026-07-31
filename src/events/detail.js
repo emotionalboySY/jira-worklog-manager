@@ -314,7 +314,7 @@ export async function ensureIssueDetailEditor() {
         return result
       },
       onUploadError: (err) => {
-        showToast(`이미지 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠')
+        showToast(`첨부 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠')
       },
     })
   } catch (err) {

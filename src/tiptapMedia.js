@@ -1,13 +1,15 @@
 // 이슈 설명/댓글 에디터에서 사용할 커스텀 미디어 노드.
-// - 클립보드 이미지 paste(또는 drop) 시 Jira에 첨부 업로드 후 mediaSingle > media 노드 삽입
+// - 클립보드/드롭 이미지·동영상을 Jira에 첨부 업로드 후 mediaSingle > media 노드 삽입
 // - NodeView에서 인증 프록시로 이미지를 받아 표시 + 우측 드래그 핸들로 크기 조절
+// - 동영상은 드롭 직후엔 로컬 blob으로 즉시 재생, 기존 첨부는 표지 클릭 시에만 로드
+//   (상세 보기와 같은 정책 — 영상은 수십 MB라 마운트 즉시 내려받으면 낭비)
 //
 // ADF 스키마(원본)를 그대로 PM 스키마로도 사용한다:
 //   mediaSingle { layout, width(%) } > media { id, type, collection, width(px), height(px), alt }
 //
 // 마운트 엘리먼트에 다음 프로퍼티를 부착해 NodeView/플러그인과 통신한다:
 //   __tt_on_image_paste(file) → Promise<{ id, contentUrl, filename, ... }>
-//   __tt_attachments_by_id[id] → { contentUrl, filename } (저장된 첨부 메타)
+//   __tt_attachments_by_id[id] → { contentUrl, filename, mimeType } (저장된 첨부 메타)
 //   __tt_temp_blob_urls[id]   → string (paste 직후 임시 표시용 blob URL)
 //   __tt_owned_blob_urls      → string[] (에디터 파괴 시 일괄 revoke)
 //   __tt_on_upload_error(err) → toast 표시 등 호출자 후크
@@ -15,6 +17,20 @@
 import { Node, Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { fetchAttachmentBlobUrl } from './jira.js'
+import { isVideoAttachment } from './adf.js'
+
+// 드롭/paste된 파일이 동영상인지 (mime 우선, 없으면 확장자 폴백)
+function isVideoFile(file) {
+  const type = file?.type || ''
+  if (type.startsWith('image/')) return false
+  return isVideoAttachment({ mimeType: type, filename: file?.name || '' })
+}
+
+// 에디터가 첨부로 받아줄 파일인지 — 이미지 또는 동영상
+function isAcceptedMediaFile(file) {
+  if ((file?.type || '').startsWith('image/')) return true
+  return isVideoFile(file)
+}
 
 // ---------- mediaSingle: 이미지 컨테이너 (블록) ----------
 export const MediaSingle = Node.create({
@@ -93,6 +109,7 @@ export const MediaPlaceholder = Node.create({
       uploadId: { default: null },
       previewUrl: { default: null },
       filename: { default: null },
+      isVideo: { default: false },
     }
   },
 
@@ -116,13 +133,23 @@ class MediaPlaceholderView {
     wrap.className = 'tt-media-placeholder'
     wrap.contentEditable = 'false'
 
-    // 미리보기(반투명) — 로컬 blob URL이 있으면 표시
+    // 미리보기(반투명) — 로컬 blob URL이 있으면 표시. 동영상은 첫 프레임을 보여줌.
     if (node.attrs.previewUrl) {
-      const img = document.createElement('img')
-      img.src = node.attrs.previewUrl
-      img.draggable = false
-      img.className = 'tt-media-placeholder-preview'
-      wrap.appendChild(img)
+      if (node.attrs.isVideo) {
+        const vid = document.createElement('video')
+        vid.src = node.attrs.previewUrl
+        vid.muted = true
+        vid.playsInline = true
+        vid.preload = 'metadata'
+        vid.className = 'tt-media-placeholder-preview'
+        wrap.appendChild(vid)
+      } else {
+        const img = document.createElement('img')
+        img.src = node.attrs.previewUrl
+        img.draggable = false
+        img.className = 'tt-media-placeholder-preview'
+        wrap.appendChild(img)
+      }
     }
 
     // 스켈레톤 shimmer + 스피너 + 라벨 오버레이
@@ -136,7 +163,7 @@ class MediaPlaceholderView {
     spinner.className = 'tt-media-placeholder-spinner'
     const label = document.createElement('div')
     label.className = 'tt-media-placeholder-label'
-    label.textContent = '이미지 업로드 중…'
+    label.textContent = node.attrs.isVideo ? '동영상 업로드 중…' : '이미지 업로드 중…'
     overlay.appendChild(spinner)
     overlay.appendChild(label)
     wrap.appendChild(overlay)
@@ -161,12 +188,6 @@ class MediaSingleView {
     wrap.contentEditable = 'false'
     this._applyWidth(wrap, node.attrs.width)
 
-    const img = document.createElement('img')
-    img.className = 'tt-media-img'
-    img.draggable = false
-    wrap.appendChild(img)
-    this.img = img
-
     const handle = document.createElement('span')
     handle.className = 'tt-media-handle'
     handle.contentEditable = 'false'
@@ -185,7 +206,8 @@ class MediaSingleView {
 
     this.dom = wrap
     this._alive = true
-    this._loadImage()
+    this.mediaEl = null   // 현재 표시 중인 <img> 또는 동영상 박스 <div>
+    this._loadMedia()
   }
 
   _applyWidth(el, width) {
@@ -242,7 +264,7 @@ class MediaSingleView {
     document.addEventListener('mouseup', onUp)
   }
 
-  _loadImage() {
+  _loadMedia() {
     const media = this._getMediaAttrs()
     if (!media) return
     const id = media.id
@@ -252,42 +274,144 @@ class MediaSingleView {
     const att =
       (id ? mountEl?.__tt_attachments_by_id?.[id] : null) ||
       (altFilename ? mountEl?.__tt_attachments_by_filename?.[altFilename] : null)
-    this.img.alt = altFilename || att?.filename || ''
-
-    // 1) paste 직후엔 로컬 파일의 임시 blob URL이 있을 수 있음 — 즉시 표시
+    // paste/drop 직후엔 로컬 파일의 임시 blob URL이 있을 수 있음 — 즉시 표시
     const tempUrl = id ? mountEl?.__tt_temp_blob_urls?.[id] : null
-    if (tempUrl) {
-      this.img.src = tempUrl
-    }
 
-    // 2) 서버 첨부의 contentUrl을 인증 프록시로 받아 교체
+    if (this.mediaEl) { this.mediaEl.remove(); this.mediaEl = null }
+
+    if (isVideoAttachment({ mimeType: att?.mimeType || '', filename: att?.filename || '' }, altFilename)) {
+      this._buildVideo(att, tempUrl, altFilename)
+    } else {
+      this._buildImage(att, tempUrl, altFilename)
+    }
+  }
+
+  _buildImage(att, tempUrl, altFilename) {
+    const mountEl = this.editor.options.element
+    const img = document.createElement('img')
+    img.className = 'tt-media-img'
+    img.draggable = false
+    img.alt = altFilename || att?.filename || ''
+    this.dom.insertBefore(img, this.handle)
+    this.mediaEl = img
+
+    if (tempUrl) img.src = tempUrl
+
+    // 서버 첨부의 contentUrl을 인증 프록시로 받아 교체
     const contentUrl = att?.contentUrl
     if (!contentUrl) return
 
-    this.img.classList.add('tt-media-loading')
+    img.classList.add('tt-media-loading')
     fetchAttachmentBlobUrl(contentUrl).then(blobUrl => {
-      if (!this._alive) {
-        // NodeView가 파괴된 뒤 도착 — owned 목록에 등록할 곳이 없으므로 즉시 해제
+      if (!this._alive || this.mediaEl !== img) {
+        // NodeView 파괴/미디어 교체 뒤 도착 — owned 목록에 등록할 곳이 없으므로 즉시 해제
         if (blobUrl) { try { URL.revokeObjectURL(blobUrl) } catch {} }
         return
       }
       if (blobUrl) {
-        this.img.src = blobUrl
+        img.src = blobUrl
         if (mountEl) {
           if (!mountEl.__tt_owned_blob_urls) mountEl.__tt_owned_blob_urls = []
           mountEl.__tt_owned_blob_urls.push(blobUrl)
         }
       } else {
-        this.img.classList.add('tt-media-error')
-        this.img.alt = '(이미지 로드 실패)'
+        img.classList.add('tt-media-error')
+        img.alt = '(이미지 로드 실패)'
       }
-      this.img.classList.remove('tt-media-loading')
+      img.classList.remove('tt-media-loading')
     }).catch(err => {
       console.warn('[tt-media] 이미지 로드 실패:', err)
       if (!this._alive) return
-      this.img.classList.add('tt-media-error')
-      this.img.classList.remove('tt-media-loading')
+      img.classList.add('tt-media-error')
+      img.classList.remove('tt-media-loading')
     })
+  }
+
+  // 동영상 — 드롭 직후엔 tempUrl(로컬 blob)로 즉시 재생 가능.
+  // 기존 첨부는 표지를 눌렀을 때만 Blob URL을 받아 재생 (상세 보기와 동일 정책).
+  _buildVideo(att, tempUrl, altFilename) {
+    const box = document.createElement('div')
+    box.className = 'tt-media-video-box'
+    this.dom.insertBefore(box, this.handle)
+    this.mediaEl = box
+
+    const video = document.createElement('video')
+    video.className = 'tt-media-video'
+    video.controls = true
+    video.playsInline = true
+    video.preload = 'metadata'
+    // 업로드 시 기록된 원본 크기로 자리를 잡아 로드 후 높이가 튀지 않게
+    const mAttrs = this._getMediaAttrs()
+    const w = Number(mAttrs?.width)
+    const h = Number(mAttrs?.height)
+    if (Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0) {
+      video.style.aspectRatio = `${Math.round(w)}/${Math.round(h)}`
+    }
+    // mkv/avi 등 브라우저가 디코드 못 하는 코덱 — 다운로드 안내로 폴백
+    video.addEventListener('error', () => {
+      if (!video.src) return
+      this._showVideoError(box, '이 형식은 브라우저에서 재생할 수 없습니다. 첨부파일을 내려받아 확인하세요.')
+    })
+    box.appendChild(video)
+
+    if (tempUrl) {
+      video.src = tempUrl
+      return
+    }
+
+    const name = att?.filename || altFilename || '동영상'
+    const cover = document.createElement('button')
+    cover.type = 'button'
+    cover.className = 'tt-media-video-cover'
+    cover.title = `${name} 재생`
+    const icon = document.createElement('span')
+    icon.className = 'tt-media-video-cover-icon'
+    icon.textContent = '▶'
+    const nameEl = document.createElement('span')
+    nameEl.className = 'tt-media-video-cover-name'
+    nameEl.textContent = name
+    cover.appendChild(icon)
+    cover.appendChild(nameEl)
+    box.appendChild(cover)
+
+    const contentUrl = att?.contentUrl
+    if (!contentUrl) { cover.disabled = true; return }
+
+    cover.addEventListener('click', () => {
+      if (video.src || cover.classList.contains('is-loading')) return
+      cover.classList.add('is-loading')
+      const mountEl = this.editor.options.element
+      fetchAttachmentBlobUrl(contentUrl).then(blobUrl => {
+        if (!this._alive || this.mediaEl !== box) {
+          if (blobUrl) { try { URL.revokeObjectURL(blobUrl) } catch {} }
+          return
+        }
+        cover.remove()
+        if (!blobUrl) {
+          this._showVideoError(box, '동영상을 불러오지 못했습니다.')
+          return
+        }
+        if (mountEl) {
+          if (!mountEl.__tt_owned_blob_urls) mountEl.__tt_owned_blob_urls = []
+          mountEl.__tt_owned_blob_urls.push(blobUrl)
+        }
+        video.src = blobUrl
+        video.play().catch(() => {})  // 자동재생 차단 시엔 컨트롤로 직접 재생
+      }).catch(err => {
+        console.warn('[tt-media] 동영상 로드 실패:', err)
+        if (!this._alive || this.mediaEl !== box) return
+        cover.remove()
+        this._showVideoError(box, '동영상을 불러오지 못했습니다.')
+      })
+    })
+  }
+
+  _showVideoError(box, message) {
+    if (box.querySelector('.tt-media-video-error')) return
+    const msg = document.createElement('div')
+    msg.className = 'tt-media-video-error'
+    msg.textContent = message
+    box.appendChild(msg)
   }
 
   // ---- NodeView 필수 메서드 ----
@@ -297,7 +421,7 @@ class MediaSingleView {
     const mediaChanged = node.firstChild?.attrs?.id !== this.node.firstChild?.attrs?.id
     this.node = node
     if (widthChanged) this._applyWidth(this.dom, node.attrs.width)
-    if (mediaChanged) this._loadImage()
+    if (mediaChanged) this._loadMedia()
     return true
   }
 
@@ -305,7 +429,10 @@ class MediaSingleView {
   deselectNode() { this.dom.classList.remove('tt-media-selected') }
   stopEvent(event) {
     // 리사이즈 핸들 위의 mousedown은 NodeView가 직접 처리
-    return event.target === this.handle
+    if (event.target === this.handle) return true
+    // 동영상 컨트롤/표지 버튼 조작이 에디터 selection으로 새지 않도록
+    if (this.mediaEl && this.mediaEl.tagName !== 'IMG' && this.mediaEl.contains(event.target)) return true
+    return false
   }
   ignoreMutation() { return true }
 
@@ -316,8 +443,8 @@ class MediaSingleView {
 }
 
 // ---------- Paste/Drop 플러그인 ----------
-// 클립보드/드롭 이미지를 가로채 onImagePaste 후크로 위임.
-// onImagePaste 미설정이면 이미지를 무시한다 (예: 새 이슈 모달).
+// 클립보드/드롭 이미지·동영상을 가로채 onImagePaste 후크로 위임.
+// onImagePaste 미설정이면 무시한다 (예: 새 이슈 모달).
 export const MediaPaste = Extension.create({
   name: 'mediaPaste',
   addProseMirrorPlugins() {
@@ -330,16 +457,15 @@ export const MediaPaste = Extension.create({
             const items = event.clipboardData?.items || []
             const files = []
             for (const it of items) {
-              if (it.kind === 'file' && (it.type || '').startsWith('image/')) {
-                const f = it.getAsFile()
-                if (f) files.push(f)
-              }
+              if (it.kind !== 'file') continue
+              const f = it.getAsFile()
+              if (f && isAcceptedMediaFile(f)) files.push(f)
             }
             if (files.length === 0) return false
             // 핸들러가 없으면 기본 paste 동작에 맡김 (텍스트 등)
             if (typeof editor.options.element?.__tt_on_image_paste !== 'function') return false
             event.preventDefault()
-            handleImageFiles(editor, view, files)
+            handleMediaFiles(editor, view, files)
             return true
           },
           handleDOMEvents: {
@@ -348,12 +474,12 @@ export const MediaPaste = Extension.create({
               if (!dt || !dt.files || dt.files.length === 0) return false
               const files = []
               for (const f of dt.files) {
-                if ((f.type || '').startsWith('image/')) files.push(f)
+                if (isAcceptedMediaFile(f)) files.push(f)
               }
               if (files.length === 0) return false
               if (typeof editor.options.element?.__tt_on_image_paste !== 'function') return false
               event.preventDefault()
-              handleImageFiles(editor, view, files)
+              handleMediaFiles(editor, view, files)
               return true
             },
           },
@@ -363,18 +489,18 @@ export const MediaPaste = Extension.create({
   },
 })
 
-async function handleImageFiles(editor, view, files) {
+async function handleMediaFiles(editor, view, files) {
   const mountEl = editor.options.element
   const onImagePaste = mountEl?.__tt_on_image_paste
   const onError = mountEl?.__tt_on_upload_error
   if (typeof onImagePaste !== 'function') {
     if (typeof onError === 'function') {
-      onError(new Error('이미지를 붙여넣을 수 없는 상태입니다.'))
+      onError(new Error('파일을 붙여넣을 수 없는 상태입니다.'))
     }
     return
   }
 
-  // 여러 이미지를 동시에 paste하면 병렬로 업로드. 자리표시자는 paste 즉시 순서대로 삽입.
+  // 여러 파일을 동시에 paste하면 병렬로 업로드. 자리표시자는 paste 즉시 순서대로 삽입.
   for (const file of files) {
     // 1) 임시 blob URL — 자리표시자에 흐릿한 미리보기로 표시
     let tempUrl = null
@@ -390,7 +516,7 @@ async function handleImageFiles(editor, view, files) {
     try {
       editor.chain().focus().insertContent({
         type: 'mediaPlaceholder',
-        attrs: { uploadId, previewUrl: tempUrl, filename: file.name || '' },
+        attrs: { uploadId, previewUrl: tempUrl, filename: file.name || '', isVideo: isVideoFile(file) },
       }).run()
     } catch (err) {
       console.warn('[tt-media] 자리표시자 삽입 실패:', err)
@@ -440,6 +566,7 @@ async function finalizeUpload(editor, uploadId, file, tempUrl, onImagePaste, onE
   const entry = {
     contentUrl: uploaded.contentUrl || '',
     filename: uploaded.filename || '',
+    mimeType: uploaded.mimeType || file.type || '',
   }
   mountEl.__tt_attachments_by_id[id] = entry
   if (numericId && numericId !== id) mountEl.__tt_attachments_by_id[numericId] = entry
@@ -450,7 +577,11 @@ async function finalizeUpload(editor, uploadId, file, tempUrl, onImagePaste, onE
     if (numericId && numericId !== id) mountEl.__tt_temp_blob_urls[numericId] = tempUrl
   }
 
-  const dims = await loadImageDims(tempUrl || uploaded.contentUrl).catch(() => ({ w: null, h: null }))
+  // 원본 크기 기록 — 상세 보기/에디터가 aspect-ratio로 자리를 잡는 데 쓴다
+  const dims = await (isVideoFile(file)
+    ? loadVideoDims(tempUrl)
+    : loadImageDims(tempUrl || uploaded.contentUrl)
+  ).catch(() => ({ w: null, h: null }))
 
   // 자리표시자를 mediaSingle > media로 교체
   const replaced = replacePlaceholder(editor, uploadId, {
@@ -531,6 +662,19 @@ function loadImageDims(url) {
     img.onload = () => resolve({ w: img.naturalWidth || null, h: img.naturalHeight || null })
     img.onerror = () => resolve({ w: null, h: null })
     img.src = url
+  })
+}
+
+// 동영상 원본 크기 — 메타데이터만 읽는다 (로컬 blob URL이라 네트워크 비용 없음)
+function loadVideoDims(url) {
+  return new Promise(resolve => {
+    if (!url) return resolve({ w: null, h: null })
+    const v = document.createElement('video')
+    v.preload = 'metadata'
+    v.muted = true
+    v.onloadedmetadata = () => resolve({ w: v.videoWidth || null, h: v.videoHeight || null })
+    v.onerror = () => resolve({ w: null, h: null })
+    v.src = url
   })
 }
 

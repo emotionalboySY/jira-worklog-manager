@@ -93,6 +93,7 @@ import { ensureSummaryWorklogs } from './views/summary.js'
 // 취소/X 버튼과 ESC로만 닫는다.
 let globalKeyListenerRegistered = false
 let globalClickListenerRegistered = false
+let globalDropGuardRegistered = false
 
 // bindKeyDropdownNav는 events/_keynav.js로 분리됨
 
@@ -339,6 +340,18 @@ export function bindEvents() {
   if (!globalClickListenerRegistered) {
     on(document, 'click', handleGlobalClick)
     globalClickListenerRegistered = true
+  }
+  if (!globalDropGuardRegistered) {
+    // 파일을 에디터 밖에 떨어뜨렸을 때 브라우저가 파일(동영상 등)을 새 탭으로
+    // 열어버리는 기본 동작 차단. 에디터(ProseMirror)가 처리한 drop은 이미
+    // defaultPrevented라 영향받지 않는다.
+    window.addEventListener('dragover', (e) => {
+      if (e.dataTransfer?.types?.includes('Files')) e.preventDefault()
+    })
+    window.addEventListener('drop', (e) => {
+      if (!e.defaultPrevented && e.dataTransfer?.types?.includes('Files')) e.preventDefault()
+    })
+    globalDropGuardRegistered = true
   }
 
   // ===== 도메인별 sub-binder =====

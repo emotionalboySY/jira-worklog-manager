@@ -131,7 +131,7 @@ export function ensureCommentEditors() {
         },
         attachments: m.data?.attachments || [],
         onImagePaste: makeCommentImagePaste(m.key),
-        onUploadError: (err) => showToast(`이미지 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠'),
+        onUploadError: (err) => showToast(`첨부 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠'),
       }).then(editor => {
         newMount.__tt_mounting = false
         if (!editor) return
@@ -173,7 +173,7 @@ export function ensureCommentEditors() {
         },
         attachments: m.data?.attachments || [],
         onImagePaste: makeCommentImagePaste(m.key),
-        onUploadError: (err) => showToast(`이미지 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠'),
+        onUploadError: (err) => showToast(`첨부 업로드 실패: ${err?.message || '알 수 없는 오류'}`, '⚠'),
       }).then(editor => {
         newMount.__tt_mounting = false
         if (!editor) return

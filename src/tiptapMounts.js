@@ -11,7 +11,7 @@ export function setMountAttachments(mountEl, attachments) {
   const byName = {}
   for (const a of attachments || []) {
     if (!a?.id && !a?.mediaId) continue
-    const entry = { contentUrl: a.contentUrl || '', filename: a.filename || '' }
+    const entry = { contentUrl: a.contentUrl || '', filename: a.filename || '', mimeType: a.mimeType || '' }
     if (a.id) map[String(a.id)] = entry
     // ADF media.attrs.id에는 보통 Media Services UUID가 들어가므로 mediaId 키로도 인덱싱
     if (a.mediaId) map[String(a.mediaId)] = entry
