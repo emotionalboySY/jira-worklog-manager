@@ -48,7 +48,7 @@ export function renderIssuesTab() {
     { id: 'watcher', label: '워칭', count: projectIssues.filter(i => i.role === 'watcher').length },
   ]
 
-  const filtered = isSearchMode ? state.searchResults : getFilteredIssues()
+  const filtered = isSearchMode ? state.searchResults : pinFavoriteIssues(getFilteredIssues())
   const selectedCount = state.selectedIssues.size
   const hasSelection = selectedCount > 0
 
@@ -127,6 +127,15 @@ export function renderIssuesTab() {
     </div>
     ${renderPagination(filtered.length)}
   `
+}
+
+// 즐겨찾기 일감을 목록 상단에 고정. 고정 그룹/나머지 각각의 내부 순서는
+// 기존 정렬 규칙(sortIssues: 상태 → 프로젝트 → 일감 번호)을 그대로 유지한다.
+function pinFavoriteIssues(issues) {
+  const fav = []
+  const rest = []
+  for (const iss of issues) (isFavorite(iss.key) ? fav : rest).push(iss)
+  return fav.concat(rest)
 }
 
 // 이슈 한 행 렌더링 — 내 일감 뷰와 백로그 뷰가 공유한다.
