@@ -209,7 +209,12 @@ export function render(options = {}) {
   // 이슈 목록 스크롤 복원 (캡처된 경우에만)
   if (savedIssueListScrollTop !== null) {
     const newList = document.querySelector('.issue-list')
-    if (newList) newList.scrollTop = savedIssueListScrollTop
+    if (newList) {
+      newList.scrollTop = savedIssueListScrollTop
+      // 복원이 비동기로 발생시키는 scroll 이벤트가 "스크롤 → 상태 드롭다운 닫기"
+      // 핸들러를 오작동시키지 않도록 복원 시각 기록 (events.js에서 참조)
+      state.issueListScrollRestoredAt = Date.now()
+    }
   }
 
   // 이벤트 재바인딩 + 타이머 — main.js에서 registerPostRender로 등록된 hook들 실행.

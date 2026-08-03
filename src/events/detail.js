@@ -64,11 +64,86 @@ export function closeIssueDetailModal() {
   render({ sections: ['modals'] })
 }
 
+// ----- 설명 클릭 지점 → 에디터 커서 위치 매핑 -----
+// 읽기 뷰와 에디터는 같은 ADF를 렌더하므로, 클릭 지점까지의 텍스트 문자 수를 세어
+// 에디터 DOM에서 같은 문자 수 위치를 찾으면 클릭한 곳에 커서를 놓을 수 있다.
+// 좌표 매핑(posAtCoords)은 양쪽의 여백/줄간격/내부 스크롤 차이로 어긋나서 쓰지 않는다.
+// 에디터에서 다르게 렌더/제거되는 노드(스마트 링크·동영상·멘션·상태 라벨)는 양쪽 모두 계수에서 제외.
+const CARET_SKIP_READ = '.adf-card, .adf-video, .adf-mention, .adf-status'
+const CARET_SKIP_EDITOR = '[contenteditable="false"]'
+
+// root 안의 텍스트 노드를 문서 순서로 순회. 공백뿐인 노드와 skipSelector 조상을 가진 노드는 제외.
+function* countedTextNodes(root, skipSelector) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let node
+  while ((node = walker.nextNode())) {
+    if (!node.nodeValue || !node.nodeValue.trim()) continue
+    if (node.parentElement?.closest(skipSelector)) continue
+    yield node
+  }
+}
+
+// 클릭 좌표가 가리키는 읽기 뷰 안의 caret 위치를 "앞선 텍스트 문자 수"로 환산.
+// 캡처 불가(빈 설명, 지원 안 되는 브라우저, 영역 밖)면 null → 기존처럼 끝으로 포커스.
+function captureDescriptionCaretIndex(point) {
+  const descEl = document.getElementById('issue-detail-description')
+  if (!descEl || descEl.classList.contains('detail-description-empty')) return null
+  let container = null
+  let offset = 0
+  if (document.caretRangeFromPoint) {
+    const r = document.caretRangeFromPoint(point.x, point.y)
+    if (r) { container = r.startContainer; offset = r.startOffset }
+  } else if (document.caretPositionFromPoint) {
+    const p = document.caretPositionFromPoint(point.x, point.y)
+    if (p) { container = p.offsetNode; offset = p.offset }
+  }
+  if (!container || !descEl.contains(container)) return null
+  // caret을 collapsed Range로 만들어 각 텍스트 노드가 caret 앞인지 뒤인지 판별
+  const caret = document.createRange()
+  try { caret.setStart(container, offset); caret.collapse(true) } catch { return null }
+  let index = 0
+  for (const node of countedTextNodes(descEl, CARET_SKIP_READ)) {
+    if (node === container) return index + offset
+    let cmp = 1
+    try { cmp = caret.comparePoint(node, 0) } catch {}
+    // 노드 시작이 caret 뒤 — 빈 문단/블록 사이를 클릭한 경우 여기서 확정
+    if (cmp >= 0) return index
+    index += node.nodeValue.length
+  }
+  return index // 마지막 텍스트 뒤를 클릭 → 본문 끝
+}
+
+// 에디터 텍스트의 index번째 문자 위치에 커서를 놓고 포커스. 실패하면 끝으로.
+function focusEditorAtTextIndex(editor, index) {
+  if (!editor || editor.isDestroyed) return
+  let pos = null
+  if (typeof index === 'number' && index >= 0) {
+    let acc = 0
+    for (const node of countedTextNodes(editor.view.dom, CARET_SKIP_EDITOR)) {
+      const len = node.nodeValue.length
+      if (acc + len >= index) {
+        try { pos = editor.view.posAtDOM(node, index - acc) } catch { pos = null }
+        break
+      }
+      acc += len
+    }
+  }
+  try {
+    if (typeof pos === 'number' && pos >= 0) editor.commands.focus(pos)
+    else editor.commands.focus('end')
+  } catch {
+    try { editor.commands.focus('end') } catch {}
+  }
+}
+
 // 편집 진입: editAdf에 현재 본문 복사 후 render → ensureTiptap이 마운트
-export function enterIssueDetailEditMode() {
+// clickPoint({x, y})가 주어지면 읽기 뷰가 사라지기 전에 클릭 지점의 텍스트 오프셋을
+// 캡처해 두고, 에디터 마운트 후 그 위치로 커서를 옮긴다.
+export function enterIssueDetailEditMode(clickPoint) {
   const m = state.issueDetailModal
   if (!m || m.editing || m.loading) return
   const adf = m.data?.descriptionAdf
+  m.editCaretIndex = clickPoint ? captureDescriptionCaretIndex(clickPoint) : null
   m.editing = true
   m.editAdf = adf ? JSON.parse(JSON.stringify(adf)) : null
   m.lossyFeatures = adf ? detectLossyFeatures(adf) : []
@@ -288,6 +363,8 @@ export async function ensureIssueDetailEditor() {
   let editor = null
   try {
     editor = await createEditor(mount, m.editAdf, {
+      // 기본 autofocus('end') 대신 아래에서 클릭 지점(editCaretIndex)으로 직접 포커스
+      autofocus: false,
       attachments: m.data?.attachments || [],
       // 모달 부분 재렌더로 mount가 다시 만들어질 때 입력 내용/이미지가 사라지지 않도록
       // editAdf를 지속 동기화 → 다음 마운트가 이 값을 그대로 복원
@@ -335,6 +412,14 @@ export async function ensureIssueDetailEditor() {
   if (m.initialEditorAdf === undefined) {
     m.initialEditorAdf = getCurrentAdf()
   }
+  // 편집 진입 클릭 지점으로 커서 이동 (1회성 — 재렌더로 인한 재마운트 시엔 기존처럼 끝으로).
+  // 기존 autofocus와 같은 50ms 지연: 레이아웃/스크롤 복원이 끝난 뒤 포커스해야 안정적.
+  const caretIndex = m.editCaretIndex
+  m.editCaretIndex = null
+  setTimeout(() => {
+    if (state.issueDetailModal !== m || !m.editing) return
+    focusEditorAtTextIndex(editor, caretIndex ?? -1)
+  }, 50)
 }
 
 // 이슈 상세 모달 열기 + 상세 데이터 비동기 로드
@@ -942,7 +1027,8 @@ export function bindDetailModalEvents() {
     bindClickWithoutDrag(detailDescEl, (e) => {
       // 설명 내부 링크/이미지/동영상 클릭은 기본 동작 유지 (재생 중 편집 진입 방지)
       if (e.target.closest('a, img, .adf-video')) return
-      enterIssueDetailEditMode()
+      // 클릭 좌표를 넘겨 편집 진입 시 그 지점에 커서가 놓이게 한다
+      enterIssueDetailEditMode({ x: e.clientX, y: e.clientY })
     })
   }
 

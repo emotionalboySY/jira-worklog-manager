@@ -180,6 +180,9 @@ export const state = {
   statusTransitioning: new Set(),
   // 상태 드롭다운: { issueKey, rect, transitions, loading } | null
   statusDropdown: null,
+  // 이슈 목록 재렌더 후 scrollTop 복원 시각(ms). 복원이 만드는 scroll 이벤트를
+  // 사용자 스크롤로 오인해 상태 드롭다운을 닫지 않도록 events.js가 참조한다.
+  issueListScrollRestoredAt: 0,
   // 추가 필드(resolution 등)를 요구하는 전이용 2차 모달:
   // { issueKey, transition, values, submitting } | null
   transitionFieldsModal: null,

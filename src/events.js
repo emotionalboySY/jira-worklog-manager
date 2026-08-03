@@ -410,10 +410,12 @@ export function bindEvents() {
   const issueListEl = document.querySelector('.issue-list')
   if (issueListEl) {
     on(issueListEl, 'scroll', () => {
-      if (state.statusDropdown) {
-        state.statusDropdown = null
-        render({ sections: ['dropdowns'] })
-      }
+      if (!state.statusDropdown) return
+      // content 재렌더 직후 scrollTop 복원으로 발생한 이벤트는 사용자 스크롤이 아니므로 무시
+      // — 다른 이슈의 상태 변경 완료로 목록이 다시 그려져도 열어 둔 드롭다운은 제자리에 유지
+      if (state.issueListScrollRestoredAt && Date.now() - state.issueListScrollRestoredAt < 200) return
+      state.statusDropdown = null
+      render({ sections: ['dropdowns'] })
     })
   }
 
