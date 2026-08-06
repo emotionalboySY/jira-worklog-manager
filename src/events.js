@@ -145,6 +145,16 @@ function handleGlobalClick(e) {
     }
   }
 
+  // 설정 FAB 서브메뉴: 메뉴 바깥을 클릭하면 닫는다.
+  // (FAB·메뉴 버튼 자체 클릭은 각 핸들러가 stopPropagation 하므로 여기 도달 안 함)
+  if (state.showSettingsMenu) {
+    const menu = document.getElementById('settings-fab-menu')
+    if (menu && !menu.contains(e.target)) {
+      state.showSettingsMenu = false
+      render({ sections: ['settings-fab'] })
+    }
+  }
+
   // 코너 플로팅 패널(즐겨찾기/알림): 패널과 해당 토글 버튼 바깥을 클릭하면 닫는다.
   // (토글 버튼 자체 클릭은 각 핸들러가 stopImmediatePropagation으로 처리하므로 여기 도달 안 함)
   if (!state.favoritesPanelCollapsed) {
@@ -253,6 +263,12 @@ function handleGlobalKeydown(e) {
     } else {
       closeIssueDetailModal()
     }
+    return
+  }
+  // 설정 FAB 서브메뉴: 모달이 모두 닫혀 있을 때 ESC로 닫기
+  if (state.showSettingsMenu) {
+    state.showSettingsMenu = false
+    render({ sections: ['settings-fab'] })
     return
   }
   // 코너 플로팅 패널(알림/즐겨찾기): 모달이 모두 닫혀 있을 때 ESC로 닫기

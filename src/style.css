@@ -3952,6 +3952,81 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
   transform: rotate(90deg);
 }
 
+/* ========== 설정 FAB 서브메뉴 ========== */
+/* FAB 클릭 시 위로 펼쳐지는 원형 버튼 목록. 각 버튼은 마우스 호버 시
+   오른쪽에 반투명 라벨 텍스트박스를 띄운다. */
+.settings-fab-menu {
+  position: fixed;
+  left: 22px; /* FAB(48px) 중심에 서브 버튼(44px) 중심 정렬 */
+  bottom: 78px;
+  z-index: 140;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@keyframes settings-sub-fab-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.8); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.settings-sub-fab {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  animation: settings-sub-fab-in 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+/* FAB에 가까운 아래쪽 버튼부터 순서대로 떠오르는 스태거 */
+.settings-sub-fab:nth-last-child(1) { animation-delay: 0s; }
+.settings-sub-fab:nth-last-child(2) { animation-delay: 0.04s; }
+.settings-sub-fab:nth-last-child(3) { animation-delay: 0.08s; }
+.settings-sub-fab:nth-last-child(4) { animation-delay: 0.12s; }
+
+.settings-sub-fab:hover,
+.settings-sub-fab:focus-visible {
+  color: var(--accent);
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.settings-sub-fab-label {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(17, 24, 39, 0.72);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s, visibility 0.12s;
+  pointer-events: none;
+}
+
+.settings-sub-fab:hover .settings-sub-fab-label,
+.settings-sub-fab:focus-visible .settings-sub-fab-label {
+  opacity: 1;
+  visibility: visible;
+}
+
 /* ========== 설정 모달 ========== */
 .modal-settings {
   width: 560px;
@@ -4102,6 +4177,89 @@ a.issue-key-link[data-project="RM"]:hover  { background: var(--project-RM-bar); 
 .settings-segmented-btn.active {
   background: var(--accent);
   color: #ffffff;
+}
+
+/* ========== 공휴일 설정 모달 ========== */
+.modal-holidays {
+  width: 480px;
+}
+
+.holiday-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.holiday-add-row .modal-input {
+  margin: 0;
+}
+
+.holiday-add-date {
+  width: 150px;
+  flex: none;
+}
+
+.holiday-add-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.holiday-year-label {
+  margin-top: 16px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-bright);
+}
+
+.holiday-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.holiday-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.holiday-date {
+  width: 92px;
+  flex: none;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.holiday-item .holiday-name-input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.holiday-remove {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.holiday-remove:hover {
+  color: var(--red);
+  background: var(--bg-hover);
 }
 
 /* ========== 이슈 상태 전이 드롭다운 ========== */

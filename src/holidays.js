@@ -4,6 +4,8 @@
 // - 그 외(3.1, 광복절, 개천절, 한글날, 부처님오신날, 성탄절): 일요일만 적용
 // - 신정·현충일: 대체공휴일 미적용
 // 매년 12월쯤 다음 해 데이터를 추가해야 함.
+// 사용자가 공휴일 설정 모달에서 추가/수정/삭제한 내용은 localStorage 오버라이드로
+// 이 기본 목록 위에 병합된다 (아래 '사용자 오버라이드' 섹션).
 const HOLIDAYS = {
   // 2025년
   '2025-01-01': '신정',
@@ -69,11 +71,71 @@ const HOLIDAYS = {
   '2027-12-25': '성탄절',
 }
 
+// ========== 사용자 오버라이드 (공휴일 설정 모달) ==========
+// localStorage에 기본 목록과의 "차이"만 저장한다:
+//   { 'YYYY-MM-DD': '이름' }  → 추가 또는 이름 변경
+//   { 'YYYY-MM-DD': null }    → 기본 공휴일 삭제
+const HOLIDAY_OVERRIDES_KEY = 'holiday_overrides'
+
+let _overrides = null // localStorage 파싱 캐시
+let _merged = null    // 기본 + 오버라이드 병합 캐시
+
+function loadOverrides() {
+  if (_overrides) return _overrides
+  try {
+    const raw = localStorage.getItem(HOLIDAY_OVERRIDES_KEY)
+    const obj = raw ? JSON.parse(raw) : {}
+    _overrides = obj && typeof obj === 'object' ? obj : {}
+  } catch { _overrides = {} }
+  return _overrides
+}
+
+function mergedHolidays() {
+  if (_merged) return _merged
+  const m = { ...HOLIDAYS }
+  for (const [date, name] of Object.entries(loadOverrides())) {
+    if (name === null || name === '') delete m[date]
+    else m[date] = name
+  }
+  _merged = m
+  return m
+}
+
+// 편집 UI용: 오버라이드가 반영된 전체 공휴일 맵 { 'YYYY-MM-DD': 이름 }
+export function getEffectiveHolidays() {
+  return { ...mergedHolidays() }
+}
+
+// 편집 UI의 재설정용: 기본 제공 목록
+export function getBaseHolidays() {
+  return { ...HOLIDAYS }
+}
+
+// 편집 결과([{ date, name }])를 기본 목록과 diff해 오버라이드로 저장.
+// 이름이 빈 항목은 무시(= 해당 날짜 공휴일 없음으로 처리).
+export function saveHolidaysFromList(list) {
+  const effective = {}
+  for (const { date, name } of list) {
+    const n = (name || '').trim()
+    if (date && n) effective[date] = n
+  }
+  const overrides = {}
+  for (const [date, name] of Object.entries(effective)) {
+    if (HOLIDAYS[date] !== name) overrides[date] = name
+  }
+  for (const date of Object.keys(HOLIDAYS)) {
+    if (!(date in effective)) overrides[date] = null
+  }
+  try { localStorage.setItem(HOLIDAY_OVERRIDES_KEY, JSON.stringify(overrides)) } catch {}
+  _overrides = null
+  _merged = null
+}
+
 // 'YYYY-MM-DD' → 공휴일 이름 또는 null
 export function getHoliday(dateStr) {
-  return HOLIDAYS[dateStr] || null
+  return mergedHolidays()[dateStr] || null
 }
 
 export function isHoliday(dateStr) {
-  return !!HOLIDAYS[dateStr]
+  return !!mergedHolidays()[dateStr]
 }

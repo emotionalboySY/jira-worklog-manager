@@ -140,8 +140,10 @@ export const state = {
   editingWorklog: null,    // 수정 중인 워크로그
   deletingWorklog: null,   // 삭제 확인 중인 워크로그
   showManualLog: null,     // 수동 작업 기록 모달 state: null | { issueKey, summary }
-  showSettings: false,     // 설정 모달 표시 여부
-  settingsDraft: null,     // 설정 모달에서 편집 중인 임시 값 (저장 전)
+  showSettings: null,      // 열린 설정 모달: null | 'issues'(이슈 목록) | 'global'(전역) | 'holidays'(공휴일)
+  settingsDraft: null,     // 이슈 목록/전역 설정 모달에서 편집 중인 임시 값 (저장 전)
+  showSettingsMenu: false, // 설정 FAB 서브메뉴(플로팅 버튼 목록) 열림 여부
+  holidaysDraft: null,     // 공휴일 설정 모달 편집 목록: null | [{ date, name }] (날짜 오름차순 유지)
   showChangeLog: false,    // 이슈 변경 알림 기록 모달 표시 여부
   // 이슈 상세 모달: null | { key, loading, data, error, blobUrlCache, blobUrlInFlight, editing, editBuffer, editInitial, saving, saveError, lossyFeatures }
   // editing=true면 설명 편집 모드, editBuffer에 markdown 문자열
