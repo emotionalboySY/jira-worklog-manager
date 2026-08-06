@@ -14,9 +14,9 @@ export function renderHeader() {
         <span class="storage-info" tabindex="0" aria-label="저장소 안내">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7" x2="8" y2="11.5"/><circle cx="8" cy="4.8" r="0.6" fill="currentColor" stroke="none"/></svg>
           <span class="storage-info-tooltip">
-            이 앱은 <strong>브라우저 localStorage에만</strong> 데이터를 저장합니다.<br>
-            진행 중 세션 · 즐겨찾기 · 연차/반차 설정은 브라우저 데이터를 삭제하면 <strong>복구할 수 없어요</strong>.<br>
-            시크릿 모드, 쿠키/사이트 데이터 삭제, "Clear Cache"류 확장 사용 시 주의하세요.
+            진행 중 세션은 <strong>서버에 저장</strong>되어 위젯 · 다른 기기와 실시간 동기화됩니다.<br>
+            브라우저 데이터를 삭제해도 다시 로그인하면 세션은 복구돼요.<br>
+            단, 즐겨찾기 · 연차/반차 · 정렬/색상 설정은 <strong>이 브라우저에만</strong> 저장되므로 삭제 시 복구할 수 없어요.
           </span>
         </span>
       </div>

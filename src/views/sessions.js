@@ -65,8 +65,8 @@ export function renderActiveSessions() {
       <div class="section-title-row"><span class="section-title">현재 작업</span><button class="btn btn-sm" id="btn-manual-log">+ 수동 기록</button></div>
       ${cards}
       <div class="session-storage-notice">
-        ⚠️ <strong>종료</strong>를 눌러 Jira에 기록하기 전까지 세션은 이 브라우저에만 저장됩니다.
-        브라우저 데이터를 삭제하면 진행 중 세션이 사라질 수 있어요.
+        ⚠️ <strong>종료</strong>를 누르기 전까지는 Jira에 워크로그로 기록되지 않습니다.
+        세션 자체는 계정에 동기화되어 위젯 · 다른 기기에서도 이어서 작업할 수 있어요.
       </div>
     </div>
   `
