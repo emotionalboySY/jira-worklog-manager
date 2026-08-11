@@ -8,12 +8,9 @@ import { invoke } from '@tauri-apps/api/core'
 import { CONFIG } from './config.js'
 import { isLoggedIn, login } from './auth.js'
 import { getSessions, postSessionAction, getLatestWorklogEnd } from './api.js'
-import { escapeHtml, fmtHHMM, parseHHMM, NO_ISSUE_KEY } from './shared.js'
-import { DEFAULT_LUNCH } from '../../lib/worklogLogic.js'
+import { escapeHtml, NO_ISSUE_KEY } from './shared.js'
 import { load } from '@tauri-apps/plugin-store'
-import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart'
-import { check as checkUpdate } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/plugin-process'
+import { autoCheckUpdateOnce } from './update.js'
 
 const appWindow = getCurrentWindow()
 let alwaysOnTop = true
@@ -171,7 +168,10 @@ function bindCommon() {
     try { await invoke('open_in_chrome', { url: CONFIG.apiBase }) }
     catch (e) { console.error('웹 열기 실패:', e); showNotice('Chrome으로 열지 못했습니다.') }
   })
-  document.getElementById('btn-settings')?.addEventListener('click', toggleSettingsPanel)
+  // 설정은 별도 창(settings.html) — 생성/포커스는 Rust가 담당(트레이 메뉴와 같은 경로)
+  document.getElementById('btn-settings')?.addEventListener('click', () => {
+    invoke('open_settings').catch(e => console.error('설정 창 열기 실패:', e))
+  })
   document.getElementById('btn-pin')?.addEventListener('click', async () => {
     alwaysOnTop = !alwaysOnTop
     try { await appWindow.setAlwaysOnTop(alwaysOnTop) } catch (e) { console.error(e) }
@@ -181,7 +181,8 @@ function bindCommon() {
   document.getElementById('btn-close')?.addEventListener('click', () => appWindow.close().catch(console.error))
 }
 
-// ===== 투명도(--widget-opacity) — 슬라이더로 조절, settings.json에 영속 =====
+// ===== 설정값(settings.json) =====
+// 편집 UI는 설정 창(settings.js)에 있고, 본체는 시작 시 복원 + 변경 이벤트 반영만 한다.
 let _settings = null
 async function settingsStore() {
   if (!_settings) _settings = await load('settings.json', { autoSave: true })
@@ -196,190 +197,18 @@ async function loadOpacity() {
     if (typeof v === 'number') { opacity = v; applyOpacity(v) }
   } catch (e) { console.error(e) }
 }
-async function saveOpacity(v) {
-  try { const s = await settingsStore(); await s.set('opacity', v); await s.save() } catch (e) { console.error(e) }
-}
 
-// ===== 기본 점심시간(settings.json) — 종료 다이얼로그가 같은 파일에서 읽어 기본값으로 사용 =====
-async function loadLunchSetting() {
+// 클릭 통과 — 상태는 Rust가 소유하고, 영속 저장/복원은 상주 창인 본체가 맡는다
+// (트레이 메뉴로 토글할 때 설정 창이 떠 있지 않을 수 있다).
+async function restoreClickThrough() {
   try {
-    const s = await settingsStore()
-    const ls = await s.get('lunchStart')
-    const le = await s.get('lunchEnd')
-    if (typeof ls === 'number' && typeof le === 'number') return { start: ls, end: le }
-  } catch (e) { console.error(e) }
-  return { ...DEFAULT_LUNCH }
+    const on = await (await settingsStore()).get('clickThrough')
+    if (on === true) await invoke('set_click_through', { enabled: true })
+  } catch (e) { console.error('클릭 통과 복원 실패:', e) }
 }
-async function saveLunchSetting(start, end) {
-  try { const s = await settingsStore(); await s.set('lunchStart', start); await s.set('lunchEnd', end); await s.save() }
-  catch (e) { console.error(e) }
-}
-
-// 설정 패널(투명도 + 자동시작)은 render() 밖의 독립 DOM — 폴링 재렌더가 드래그를 끊지 않도록 한다.
-let settingsPanel = null
-function closeSettingsPanel() {
-  if (!settingsPanel) return
-  settingsPanel.remove()
-  settingsPanel = null
-  document.removeEventListener('mousedown', onOutsideSettingsClick, true)
-}
-// 패널/설정 버튼 바깥을 누르면 닫는다. capture 단계에서 판정해 다른 핸들러보다 먼저 동작.
-// (설정 버튼 자체 클릭은 toggle이 처리하므로 여기선 무시)
-function onOutsideSettingsClick(e) {
-  if (!settingsPanel) return
-  if (settingsPanel.contains(e.target)) return
-  if (e.target.closest?.('#btn-settings')) return
-  closeSettingsPanel()
-}
-// 설정 버튼 바로 아래에 패널을 배치한다(우측 정렬, 창 경계 안으로 보정).
-function positionSettingsPanel(panel) {
-  const btn = document.getElementById('btn-settings')
-  if (!btn) return
-  const r = btn.getBoundingClientRect()
-  const margin = 6
-  const pw = panel.offsetWidth
-  let left = r.right - pw   // 패널 우측을 설정 버튼 우측에 맞춤
-  left = Math.max(margin, Math.min(left, window.innerWidth - pw - margin))
-  panel.style.left = `${Math.round(left)}px`
-  panel.style.top = `${Math.round(r.bottom + 4)}px`
-}
-function toggleSettingsPanel() {
-  if (settingsPanel) { closeSettingsPanel(); return }
-  const panel = document.createElement('div')
-  panel.className = 'settings-panel'
-  panel.innerHTML = `
-    <div class="set-row">
-      <span class="set-label">투명도</span>
-      <input type="range" id="op-range" min="0.3" max="1" step="0.01" value="${opacity}">
-    </div>
-    <label class="set-row set-toggle">
-      <input type="checkbox" id="autostart-chk">
-      <span class="set-label">시작 시 자동 실행</span>
-    </label>
-    <div class="set-row set-lunch">
-      <span class="set-label">기본 점심시간</span>
-      <input type="time" id="lunch-start-set" class="set-time">
-      <span class="set-tilde">~</span>
-      <input type="time" id="lunch-end-set" class="set-time">
-    </div>
-    <div class="set-row set-update">
-      <button class="set-update-btn" id="btn-check-update">업데이트 확인</button>
-    </div>`
-  document.body.appendChild(panel)
-  // 투명도 슬라이더
-  const range = panel.querySelector('#op-range')
-  range.addEventListener('input', () => { opacity = parseFloat(range.value); applyOpacity(opacity) })
-  range.addEventListener('change', () => saveOpacity(opacity))
-  // 자동시작 토글 — 현재 등록 상태 조회 후 반영, 변경 시 enable/disable
-  const chk = panel.querySelector('#autostart-chk')
-  isAutostartEnabled().then(on => { chk.checked = on }).catch(e => console.error(e))
-  chk.addEventListener('change', async () => {
-    const want = chk.checked
-    try { want ? await enableAutostart() : await disableAutostart() }
-    catch (e) { console.error(e); chk.checked = !want }   // 실패 시 체크 상태 되돌림
-  })
-  // 기본 점심시간 — 저장값 복원 후, 변경 시 settings.json에 저장(종료 다이얼로그 기본값)
-  const lsEl = panel.querySelector('#lunch-start-set')
-  const leEl = panel.querySelector('#lunch-end-set')
-  loadLunchSetting().then(l => { lsEl.value = fmtHHMM(l.start); leEl.value = fmtHHMM(l.end) }).catch(e => console.error(e))
-  const onLunchChange = () => {
-    const s = parseHHMM(lsEl.value)
-    const e = parseHHMM(leEl.value)
-    if (s != null && e != null) saveLunchSetting(s, e)
-  }
-  lsEl.addEventListener('change', onLunchChange)
-  leEl.addEventListener('change', onLunchChange)
-  // 업데이트 확인
-  const upBtn = panel.querySelector('#btn-check-update')
-  upBtn.addEventListener('click', () => checkForUpdate(upBtn))
-  settingsPanel = panel
-  positionSettingsPanel(panel)
-  document.addEventListener('mousedown', onOutsideSettingsClick, true)
-}
-
-// ===== 자동 업데이트 =====
-async function checkForUpdate(btn) {
-  btn.disabled = true
-  btn.classList.remove('is-latest', 'is-error')
-  btn.textContent = '업데이트 확인 중…'
-  try {
-    const update = await checkUpdate()
-    if (update) {
-      // 업데이트 있음 → 버튼 원복 후 설치 모달
-      btn.textContent = '업데이트 확인'
-      btn.disabled = false
-      showUpdateModal(update)
-    } else {
-      // 최신 → 초록 버튼 + 메시지, 3초 후 원래대로 fade 회귀
-      btn.textContent = '최신 버전입니다!'
-      btn.classList.add('is-latest')
-      setTimeout(() => {
-        btn.classList.remove('is-latest')
-        btn.textContent = '업데이트 확인'
-        btn.disabled = false
-      }, 3000)
-    }
-  } catch (e) {
-    console.error('업데이트 확인 실패:', e)
-    btn.textContent = '확인 실패'
-    btn.classList.add('is-error')
-    setTimeout(() => {
-      btn.classList.remove('is-error')
-      btn.textContent = '업데이트 확인'
-      btn.disabled = false
-    }, 3000)
-  }
-}
-
-// 시작 시 1회 자동 업데이트 확인 — 있으면 설치 모달, 없거나 실패면 조용히 무시(버튼 UI 없음).
-let autoUpdateChecked = false
-async function autoCheckUpdateOnce() {
-  if (autoUpdateChecked) return   // boot 재호출(재시도 등)에도 1회만
-  autoUpdateChecked = true
-  try {
-    const update = await checkUpdate()
-    if (update) showUpdateModal(update)
-  } catch (e) {
-    console.error('시작 시 자동 업데이트 확인 실패:', e)
-  }
-}
-
-// 업데이트 설치 확인 모달(위젯 본체 위 오버레이)
-function showUpdateModal(update) {
-  closeSettingsPanel()
-  const overlay = document.createElement('div')
-  overlay.className = 'update-overlay'
-  overlay.innerHTML = `
-    <div class="update-modal">
-      <div class="update-title">업데이트가 있습니다</div>
-      <div class="update-ver">v${escapeHtml(update.version)}${update.currentVersion ? ` <span class="dim">(현재 v${escapeHtml(update.currentVersion)})</span>` : ''}</div>
-      <div class="update-progress dim" id="update-progress"></div>
-      <div class="update-actions">
-        <button class="btn-sm" id="update-later">나중에</button>
-        <button class="btn-sm btn-primary" id="update-now">설치</button>
-      </div>
-    </div>`
-  document.body.appendChild(overlay)
-  overlay.querySelector('#update-later').onclick = () => overlay.remove()
-  overlay.querySelector('#update-now').onclick = async () => {
-    const now = overlay.querySelector('#update-now')
-    const later = overlay.querySelector('#update-later')
-    const prog = overlay.querySelector('#update-progress')
-    now.disabled = true; later.disabled = true; now.textContent = '설치 중…'
-    try {
-      let downloaded = 0, total = 0
-      await update.downloadAndInstall((e) => {
-        if (e.event === 'Started') { total = (e.data && e.data.contentLength) || 0; prog.textContent = '다운로드 중…' }
-        else if (e.event === 'Progress') { downloaded += (e.data && e.data.chunkLength) || 0; prog.textContent = total ? `다운로드 ${Math.round(downloaded / total * 100)}%` : '다운로드 중…' }
-        else if (e.event === 'Finished') { prog.textContent = '설치 후 재시작합니다…' }
-      })
-      await relaunch()
-    } catch (err) {
-      console.error('업데이트 설치 실패:', err)
-      prog.textContent = '설치 실패'
-      now.disabled = false; later.disabled = false; now.textContent = '설치'
-    }
-  }
+async function saveClickThrough(on) {
+  try { const s = await settingsStore(); await s.set('clickThrough', !!on); await s.save() }
+  catch (e) { console.error('클릭 통과 저장 실패:', e) }
 }
 
 function bindBody() {
@@ -615,7 +444,8 @@ function handleLogout() {
 // ===== 부트 =====
 async function boot() {
   state.phase = 'loading'; render()
-  loadOpacity()   // 저장된 투명도 복원(비동기, 적용은 준비되는 대로)
+  loadOpacity()          // 저장된 투명도 복원(비동기, 적용은 준비되는 대로)
+  restoreClickThrough()  // 마지막으로 켜둔 클릭 통과 상태 복원
   try {
     if (await isLoggedIn()) {
       await loadAll()
@@ -631,6 +461,24 @@ async function boot() {
 
 // 종료 다이얼로그가 세션을 제거하면 본체를 즉시 갱신
 listen('sessions-changed', () => { loadAll().catch(() => {}) })
+
+// 설정 창의 투명도 슬라이더 — 드래그 중 실시간 반영(저장은 설정 창이 담당)
+listen('widget-opacity', ({ payload }) => {
+  if (typeof payload !== 'number') return
+  opacity = payload
+  applyOpacity(payload)
+})
+
+// 클릭 통과 변경(설정 창 또는 트레이 메뉴) — 다음 실행에서 복원하도록 저장
+listen('click-through-changed', ({ payload }) => { saveClickThrough(!!payload) })
+
+// 트레이(더블클릭/메뉴)로 위젯이 다시 보일 때 — 숨김 중 건너뛴 폴링을 즉시 만회.
+// 클릭 통과 중에는 포커스를 받지 못해 onFocusChanged로 감지되지 않으므로 별도 신호를 쓴다.
+listen('widget-shown', () => {
+  if (!skippedWhileHidden) return
+  skippedWhileHidden = false
+  loadAll().catch(() => {})
+})
 
 // 숨김 중 폴링을 건너뛴 뒤 위젯이 다시 보이면 즉시 갱신.
 // 트레이 '위젯 보이기'와 단일 인스턴스 재실행 모두 show + set_focus를 호출하므로

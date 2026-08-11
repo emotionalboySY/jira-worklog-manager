@@ -13,11 +13,12 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     rollupOptions: {
-      // 위젯 본체(index.html) + 종료 다이얼로그(finish.html) 멀티 페이지
+      // 위젯 본체(index.html) + 다이얼로그/설정 창 멀티 페이지
       input: {
         main: 'index.html',
         finish: 'finish.html',
         swap: 'swap.html',
+        settings: 'settings.html',
       },
     },
   },

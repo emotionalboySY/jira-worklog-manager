@@ -218,20 +218,33 @@ html, body {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
 }
 
-/* 설정 패널(투명도 + 자동시작) — 설정 버튼 하단에 플로팅(위치는 JS가 계산) */
-.settings-panel {
-  position: absolute; top: 34px; left: 8px;
-  display: flex; flex-direction: column; gap: 8px; z-index: 20;
-  background: rgba(30, 33, 43, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px; padding: 8px 10px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+/* ===== 설정 창(별도 window, 불투명) ===== */
+#settings-app { height: 100%; }
+.set-dlg { gap: 6px; }
+.set-section {
+  font-size: 11px; font-weight: 700; color: var(--fg-dim);
+  letter-spacing: 0.04em; margin-top: 8px;
+  padding-bottom: 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
-.settings-panel .set-row { display: flex; align-items: center; gap: 8px; }
-.settings-panel .set-label { font-size: 11px; color: var(--fg-dim); white-space: nowrap; }
-.settings-panel input[type="range"] { width: 110px; accent-color: var(--accent); cursor: pointer; }
-.settings-panel .set-toggle { cursor: pointer; }
-.settings-panel .set-toggle input { accent-color: var(--accent); cursor: pointer; }
+.set-dlg .set-section:first-child { margin-top: 0; }
+.set-item {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; min-height: 26px;
+}
+.set-name { font-size: 12px; color: var(--fg); }
+.set-ctrl { display: flex; align-items: center; gap: 6px; }
+.set-val {
+  font-size: 11px; color: var(--fg-dim);
+  font-variant-numeric: tabular-nums; min-width: 34px; text-align: right;
+}
+.set-item input[type="range"] { width: 130px; accent-color: var(--accent); cursor: pointer; }
+/* 체크박스 행은 라벨 전체가 클릭 영역 — 좌측 정렬 */
+.set-check { cursor: pointer; justify-content: flex-start; gap: 8px; }
+.set-check input { accent-color: var(--accent); cursor: pointer; margin: 0; }
+.set-desc { font-size: 11px; color: var(--fg-dim); line-height: 1.45; margin: -2px 0 2px; }
+.set-desc b { color: var(--fg); font-weight: 600; }
+/* 닫기 버튼은 하단 고정 */
+.set-actions { margin-top: auto; padding-top: 10px; }
 
 /* ===== 종료 다이얼로그(별도 창, 불투명) ===== */
 .dialog-body { background: #1a1c24 !important; }
@@ -295,14 +308,12 @@ html, body {
 }
 .mini-btn:hover { background: rgba(255, 255, 255, 0.12); }
 
-/* 설정 패널의 기본 점심시간 행 — 한 줄로 표시(위젯 높이가 고정이라 줄바꿈 금지) */
-.settings-panel .set-lunch { flex-wrap: nowrap; gap: 5px; }
-.settings-panel .set-lunch .set-label { flex: none; }
-.settings-panel .set-time {
+/* 설정 창의 시간 입력(기본 점심시간) */
+.set-time {
   border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.05);
-  color: var(--fg); border-radius: 6px; padding: 3px 3px; font-size: 11px;
+  color: var(--fg); border-radius: 6px; padding: 3px 4px; font-size: 11px;
   font-family: inherit; color-scheme: dark;
-  width: 66px; flex: none;
+  width: 70px; flex: none;
 }
-.settings-panel .set-time:focus { outline: none; border-color: var(--accent); }
-.settings-panel .set-tilde { color: var(--fg-dim); font-size: 11px; }
+.set-time:focus { outline: none; border-color: var(--accent); }
+.set-tilde { color: var(--fg-dim); font-size: 11px; }

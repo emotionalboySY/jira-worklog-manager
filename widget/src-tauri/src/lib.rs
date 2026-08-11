@@ -1,14 +1,94 @@
 // Jira 업무 기록 위젯 — Rust 엔트리.
-// - 시스템 트레이(보이기/숨기기/종료)
+// - 시스템 트레이(더블클릭으로 보이기·전면화 / 메뉴: 보이기·숨기기·설정·클릭 통과·종료)
+// - 설정 창(별도 window) 생성
+// - 클릭 통과(Rainmeter식 마우스 이벤트 무시) 토글
 // - 로컬 루프백 OAuth 콜백 서버(데스크톱 3LO 로그인)
 // - http / store 플러그인(외부 API 호출 CORS 우회 + 토큰 영속)
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
-    menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
-    Emitter, Manager,
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
+    tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
+    Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
 };
+
+// 클릭 통과 상태 — 트레이 메뉴와 설정 창 양쪽에서 토글되므로 Rust가 단일 소유한다.
+static CLICK_THROUGH: AtomicBool = AtomicBool::new(false);
+
+// 트레이 메뉴의 '클릭 통과' 체크 항목 — 설정 창에서 바뀔 때 체크 표시를 맞추기 위해 보관.
+struct TrayState {
+    click_through_item: CheckMenuItem<tauri::Wry>,
+}
+
+// 위젯 본체를 화면에 띄우고 최상위로 끌어올린다(숨겨져 있으면 보이기 포함).
+fn show_main_window(app: &tauri::AppHandle) {
+    let Some(w) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = w.show();
+    let _ = w.unminimize();
+    let _ = w.set_focus();
+    // '항상 위 고정'이 꺼져 있으면 다른 창에 가려져 있을 수 있다.
+    // 최상위로 잠깐 올렸다 되돌리면 Z순서 맨 앞으로 이동한다(상태는 원복).
+    if !w.is_always_on_top().unwrap_or(true) {
+        let _ = w.set_always_on_top(true);
+        let _ = w.set_always_on_top(false);
+    }
+    // 숨김 중엔 폴링을 건너뛰므로, 다시 보일 때 프론트가 즉시 갱신하도록 알린다.
+    // (클릭 통과 중에는 포커스를 받지 못해 onFocusChanged로는 감지되지 않는다)
+    let _ = app.emit("widget-shown", ());
+}
+
+// 설정 창(별도 window)을 연다. 이미 떠 있으면 포커스만 준다.
+fn open_settings_window(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("settings") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return;
+    }
+    let res = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
+        .title("위젯 설정")
+        .inner_size(360.0, 430.0)
+        .min_inner_size(320.0, 360.0)
+        .resizable(true)
+        .center()
+        .always_on_top(true)
+        .decorations(true)
+        .skip_taskbar(true)
+        .build();
+    if let Err(e) = res {
+        eprintln!("설정 창 생성 실패: {e}");
+    }
+}
+
+// 클릭 통과 적용 — 본체 창에 반영하고 트레이 체크 표시·프론트 상태를 동기화한다.
+fn apply_click_through(app: &tauri::AppHandle, enabled: bool) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.set_ignore_cursor_events(enabled);
+    }
+    CLICK_THROUGH.store(enabled, Ordering::Relaxed);
+    if let Some(state) = app.try_state::<TrayState>() {
+        let _ = state.click_through_item.set_checked(enabled);
+    }
+    let _ = app.emit("click-through-changed", enabled);
+}
+
+#[tauri::command]
+fn open_settings(app: tauri::AppHandle) {
+    open_settings_window(&app);
+}
+
+#[tauri::command]
+fn set_click_through(app: tauri::AppHandle, enabled: bool) {
+    apply_click_through(&app, enabled);
+}
+
+#[tauri::command]
+fn get_click_through() -> bool {
+    CLICK_THROUGH.load(Ordering::Relaxed)
+}
 
 // 고정 포트(43117)로 로컬 루프백 서버를 띄워 OAuth 콜백(code/state)을 받는다.
 // Atlassian 개발자 콘솔에 redirect_uri = http://localhost:43117/callback 등록 필요.
@@ -119,19 +199,17 @@ pub fn run() {
         // 중복 실행 방지 — 두 번째 실행 시 새 프로세스를 띄우지 않고 기존 창을 보여준다.
         // (자동 시작 + 수동 실행으로 위젯이 2개 떠 트레이/폴링이 중복되는 것 방지)
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.show();
-                let _ = w.set_focus();
-            }
+            show_main_window(app);
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        // 창 위치/크기 자동 저장·복원(main만 — 다이얼로그(finish/swap)는 중앙 유지 위해 제외)
+        // 창 위치/크기 자동 저장·복원(main만 — 다이얼로그(finish/swap/settings)는 중앙 유지 위해 제외)
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .skip_initial_state("finish")
                 .skip_initial_state("swap")
+                .skip_initial_state("settings")
                 .build(),
         )
         // Windows 로그인 시 자동 실행(레지스트리 Run 키). 토글은 JS API로 on/off.
@@ -142,7 +220,13 @@ pub fn run() {
         // 자동 업데이트(서명 검증) + 설치 후 재시작.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![start_oauth_listener, open_in_chrome])
+        .invoke_handler(tauri::generate_handler![
+            start_oauth_listener,
+            open_in_chrome,
+            open_settings,
+            set_click_through,
+            get_click_through
+        ])
         // 메인 창의 닫기(✕/Alt+F4)는 종료가 아니라 트레이로 숨김 — 상주 위젯.
         // 완전 종료는 트레이 메뉴 '종료'에서만.
         .on_window_event(|window, event| {
@@ -156,24 +240,68 @@ pub fn run() {
         .setup(|app| {
             let show_i = MenuItem::with_id(app, "show", "위젯 보이기", true, None::<&str>)?;
             let hide_i = MenuItem::with_id(app, "hide", "숨기기", true, None::<&str>)?;
+            let settings_i = MenuItem::with_id(app, "settings", "설정", true, None::<&str>)?;
+            // 클릭 통과 — 위젯이 마우스를 무시해 아래 창이 클릭을 받는다.
+            // 켜면 위젯 자체를 클릭할 수 없으므로 해제 경로를 트레이 메뉴에 항상 둔다.
+            let click_through_i = CheckMenuItem::with_id(
+                app,
+                "click-through",
+                "클릭 통과",
+                true,
+                false,
+                None::<&str>,
+            )?;
             let quit_i = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_i, &hide_i, &quit_i])?;
+            let sep1 = PredefinedMenuItem::separator(app)?;
+            let sep2 = PredefinedMenuItem::separator(app)?;
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &show_i,
+                    &hide_i,
+                    &sep1,
+                    &settings_i,
+                    &click_through_i,
+                    &sep2,
+                    &quit_i,
+                ],
+            )?;
+            app.manage(TrayState {
+                click_through_item: click_through_i.clone(),
+            });
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Jira 업무 기록 위젯")
                 .menu(&menu)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
+                // 좌클릭은 메뉴 대신 클릭 이벤트로 받는다(더블클릭 감지용).
+                .show_menu_on_left_click(false)
+                // 트레이 아이콘 더블클릭 — 위젯을 전면으로, 숨겨져 있으면 보이기.
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::DoubleClick {
+                        button: MouseButton::Left,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle());
                     }
+                })
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => show_main_window(app),
                     "hide" => {
                         if let Some(w) = app.get_webview_window("main") {
                             let _ = w.hide();
                         }
+                    }
+                    "settings" => open_settings_window(app),
+                    "click-through" => {
+                        // CheckMenuItem은 클릭 시 체크 상태가 이미 토글돼 있다 —
+                        // 그 값을 그대로 읽어 적용(실패 시 내부 상태 기준으로 반전).
+                        let next = app
+                            .try_state::<TrayState>()
+                            .and_then(|s| s.click_through_item.is_checked().ok())
+                            .unwrap_or(!CLICK_THROUGH.load(Ordering::Relaxed));
+                        apply_click_through(app, next);
                     }
                     "quit" => app.exit(0),
                     _ => {}
