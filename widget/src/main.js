@@ -168,10 +168,7 @@ function bindCommon() {
     try { await invoke('open_in_chrome', { url: CONFIG.apiBase }) }
     catch (e) { console.error('웹 열기 실패:', e); showNotice('Chrome으로 열지 못했습니다.') }
   })
-  // 설정은 별도 창(settings.html) — 생성/포커스는 Rust가 담당(트레이 메뉴와 같은 경로)
-  document.getElementById('btn-settings')?.addEventListener('click', () => {
-    invoke('open_settings').catch(e => console.error('설정 창 열기 실패:', e))
-  })
+  document.getElementById('btn-settings')?.addEventListener('click', openSettingsWindow)
   document.getElementById('btn-pin')?.addEventListener('click', async () => {
     alwaysOnTop = !alwaysOnTop
     try { await appWindow.setAlwaysOnTop(alwaysOnTop) } catch (e) { console.error(e) }
@@ -318,6 +315,33 @@ async function openDialogWindow(label, key, options) {
   w.once('tauri://error', (e) => console.error(`${label} 창 생성 오류:`, e))
 }
 
+// 설정 창(별도 window) 열기 — 이미 떠 있으면 포커스만 준다.
+// 트레이 메뉴 '설정'도 Rust는 'open-settings' 이벤트만 보내고 생성은 여기서 한다:
+// Windows에서 WebviewWindowBuilder를 Rust 이벤트 핸들러/동기 커맨드에서 호출하면
+// WebView2가 데드락한다(창은 뜨지만 흰 화면으로 멈춤). JS 생성은 코어가 IPC로 처리해 안전.
+async function openSettingsWindow() {
+  try {
+    const existing = await WebviewWindow.getByLabel('settings')
+    if (existing) { await existing.setFocus(); return }
+  } catch {}
+  const w = new WebviewWindow('settings', {
+    url: 'settings.html',
+    title: '위젯 설정',
+    width: 400,   // 시간 입력이 '오전 11:30'까지 잘리지 않고 한 줄에 들어가는 최소 폭
+    height: 430,
+    minWidth: 380,
+    minHeight: 360,
+    resizable: true,
+    center: true,
+    alwaysOnTop: true,
+    decorations: true,
+    skipTaskbar: true,
+    minimizable: false,   // 최소화하면 트레이·작업표시줄 어디에도 없어 되찾기 어렵다
+    maximizable: false,
+  })
+  w.once('tauri://error', (e) => console.error('설정 창 생성 오류:', e))
+}
+
 // 종료 다이얼로그(별도 작은 창) 열기.
 function openFinishDialog(key) {
   return openDialogWindow('finish', key, {
@@ -461,6 +485,9 @@ async function boot() {
 
 // 종료 다이얼로그가 세션을 제거하면 본체를 즉시 갱신
 listen('sessions-changed', () => { loadAll().catch(() => {}) })
+
+// 트레이 메뉴 '설정' — 창 생성은 본체가 맡는다(위 openSettingsWindow 주석 참고)
+listen('open-settings', () => { openSettingsWindow().catch(e => console.error('설정 창 열기 실패:', e)) })
 
 // 설정 창의 투명도 슬라이더 — 드래그 중 실시간 반영(저장은 설정 창이 담당)
 listen('widget-opacity', ({ payload }) => {

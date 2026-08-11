@@ -15,7 +15,12 @@ Tauri v2 + Vite Vanilla JS.
 - `src/auth.js` — 데스크톱 OAuth(3LO, loopback 43117), 토큰은 plugin-store(`auth.json`)
 - `src/shared.js` — 창 공통 헬퍼 (escapeHtml/fmtMinutes/NO_ISSUE_KEY)
 - `../../lib/worklogLogic.js` — **웹앱과 공유**하는 점심(기본 11:30~12:30, 인자로 재정의 가능)·자정 분할 worklog 로직
-- `src-tauri/src/lib.rs` — 트레이, 설정 창 생성, 클릭 통과 토글, OAuth 루프백 리스너(상주), 마그넷 스냅(Windows 창 후킹), single-instance
+- `src-tauri/src/lib.rs` — 트레이, 클릭 통과 토글, OAuth 루프백 리스너(상주), 마그넷 스냅(Windows 창 후킹), single-instance
+
+> 창 **생성**은 모두 프론트엔드(JS `WebviewWindow`)에서 한다. Windows에서 Rust의
+> `WebviewWindowBuilder`를 동기 커맨드나 이벤트 핸들러(트레이 메뉴 등)에서 호출하면
+> WebView2가 데드락한다(창은 뜨지만 흰 화면으로 멈춤 — v0.4.0에서 실제로 발생).
+> 트레이 '설정'은 Rust가 `open-settings` 이벤트만 emit하고 본체가 창을 만든다.
 
 ## 트레이 아이콘
 

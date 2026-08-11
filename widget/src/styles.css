@@ -309,11 +309,12 @@ html, body {
 .mini-btn:hover { background: rgba(255, 255, 255, 0.12); }
 
 /* 설정 창의 시간 입력(기본 점심시간) */
+/* 한국어 로케일은 '오전 11:30 🕐'로 표시돼 폭이 좁으면 분이 잘린다 */
 .set-time {
   border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.05);
   color: var(--fg); border-radius: 6px; padding: 3px 4px; font-size: 11px;
   font-family: inherit; color-scheme: dark;
-  width: 70px; flex: none;
+  width: 112px; flex: none;
 }
 .set-time:focus { outline: none; border-color: var(--accent); }
 .set-tilde { color: var(--fg-dim); font-size: 11px; }

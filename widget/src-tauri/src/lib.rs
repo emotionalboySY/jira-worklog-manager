@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
+    Emitter, Manager,
 };
 
 // 클릭 통과 상태 — 트레이 메뉴와 설정 창 양쪽에서 토글되므로 Rust가 단일 소유한다.
@@ -40,29 +40,6 @@ fn show_main_window(app: &tauri::AppHandle) {
     let _ = app.emit("widget-shown", ());
 }
 
-// 설정 창(별도 window)을 연다. 이미 떠 있으면 포커스만 준다.
-fn open_settings_window(app: &tauri::AppHandle) {
-    if let Some(w) = app.get_webview_window("settings") {
-        let _ = w.show();
-        let _ = w.unminimize();
-        let _ = w.set_focus();
-        return;
-    }
-    let res = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
-        .title("위젯 설정")
-        .inner_size(360.0, 430.0)
-        .min_inner_size(320.0, 360.0)
-        .resizable(true)
-        .center()
-        .always_on_top(true)
-        .decorations(true)
-        .skip_taskbar(true)
-        .build();
-    if let Err(e) = res {
-        eprintln!("설정 창 생성 실패: {e}");
-    }
-}
-
 // 클릭 통과 적용 — 본체 창에 반영하고 트레이 체크 표시·프론트 상태를 동기화한다.
 fn apply_click_through(app: &tauri::AppHandle, enabled: bool) {
     if let Some(w) = app.get_webview_window("main") {
@@ -73,11 +50,6 @@ fn apply_click_through(app: &tauri::AppHandle, enabled: bool) {
         let _ = state.click_through_item.set_checked(enabled);
     }
     let _ = app.emit("click-through-changed", enabled);
-}
-
-#[tauri::command]
-fn open_settings(app: tauri::AppHandle) {
-    open_settings_window(&app);
 }
 
 #[tauri::command]
@@ -223,7 +195,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_oauth_listener,
             open_in_chrome,
-            open_settings,
             set_click_through,
             get_click_through
         ])
@@ -293,7 +264,12 @@ pub fn run() {
                             let _ = w.hide();
                         }
                     }
-                    "settings" => open_settings_window(app),
+                    // 창 생성은 본체(JS)에 맡긴다 — Windows에서 WebviewWindowBuilder를
+                    // 이벤트 핸들러/동기 커맨드에서 호출하면 WebView2가 데드락한다.
+                    // (finish/swap 다이얼로그와 같은 경로: 코어가 IPC로 처리)
+                    "settings" => {
+                        let _ = app.emit("open-settings", ());
+                    }
                     "click-through" => {
                         // CheckMenuItem은 클릭 시 체크 상태가 이미 토글돼 있다 —
                         // 그 값을 그대로 읽어 적용(실패 시 내부 상태 기준으로 반전).
