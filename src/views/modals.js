@@ -22,6 +22,7 @@ import {
 } from '../utils.js'
 import { loadWorklogs } from '../actions.js'
 import { renderAdf, isVideoAttachment, renderVideoPlayer } from '../adf.js'
+import { renderInlineDiffHtml, renderLineDiffHtml } from '../textDiff.js'
 import { getCachedMyself } from '../jira.js'
 import { computeMinutesFromTimes } from '../../lib/worklogLogic.js'
 
@@ -1747,7 +1748,8 @@ function renderDetailHistoryBody(m) {
     const tb = b.created ? new Date(b.created).getTime() : 0
     return tb - ta
   })
-  const itemsHtml = sorted.map(renderHistoryEntry).join('')
+  const expanded = h.expanded || {}
+  const itemsHtml = sorted.map(e => renderHistoryEntry(e, expanded)).join('')
   const loadMore = !h.isLast
     ? `
       <div class="detail-history-more">
@@ -1768,13 +1770,17 @@ function renderDetailHistoryBody(m) {
 }
 
 // 단일 changelog 엔트리 — 한 사람이 한 시점에 한 번에 변경한 묶음.
-function renderHistoryEntry(entry) {
+// expanded: 긴 값의 전/후 비교를 펼쳐 둔 항목들 ({ '엔트리id:항목index': true })
+function renderHistoryEntry(entry, expanded = {}) {
   const avatar = entry.author?.avatarUrl
     ? `<img class="detail-history-avatar" src="${escapeHtml(entry.author.avatarUrl)}" alt="${escapeHtml(entry.author.displayName)}" onerror="this.classList.add('broken')" />`
     : `<span class="detail-history-avatar detail-history-avatar-empty"></span>`
   const author = escapeHtml(entry.author?.displayName || '알 수 없는 사용자')
   const time = escapeHtml(formatCommentTime(entry.created))
-  const itemsHtml = (entry.items || []).map(renderHistoryItem).filter(Boolean).join('')
+  const itemsHtml = (entry.items || [])
+    .map((it, i) => renderHistoryItem(it, `${entry.id}:${i}`, expanded))
+    .filter(Boolean)
+    .join('')
   return `
     <div class="detail-history-entry">
       ${avatar}
@@ -1823,12 +1829,42 @@ const HISTORY_FIELD_LABELS = {
   'Fix Version': '수정 버전',
 }
 
-// 본문 비교를 보여주지 않는 필드 — 값이 너무 길거나 의미가 없음
-const HISTORY_BODY_HIDDEN_FIELDS = new Set([
-  'description', 'summary', 'Rank', 'Workflow', 'WorklogId',
+// 값 자체가 내부 식별자·정렬키라 전후 비교가 의미 없는 필드 — 변경 사실만 알린다
+const HISTORY_BODY_HIDDEN_FIELDS = new Set(['Rank', 'Workflow'])
+
+// 전/후 본문을 diff로 비교해 보여주는 긴 텍스트 필드
+const HISTORY_DIFF_FIELDS = new Set([
+  'description', 'Description', 'summary', 'Summary', 'environment', 'Environment',
 ])
 
-function renderHistoryItem(it) {
+// 값이 초 단위로 기록되는 시간 필드 — 한글 시간 단위로 변환해 표시
+const HISTORY_SECONDS_FIELDS = new Set([
+  'timespent', 'Time Spent', 'timeestimate', 'Time Estimate',
+  'timeoriginalestimate', 'Original Estimate', 'WorklogTimeSpent',
+])
+
+// 전·후 합계가 이보다 길거나 줄이 많으면 기본으로 접어 둔다
+const DIFF_COLLAPSE_CHARS = 160
+const DIFF_COLLAPSE_LINES = 3
+
+const EMPTY_VALUE_HTML = '<span class="detail-history-empty-value">(없음)</span>'
+
+function countLines(s) {
+  return String(s || '').split('\n').length
+}
+
+// 초 문자열 → '3시간 30분'. 값이 없거나 0이면 빈 문자열.
+function historySecondsLabel(v) {
+  const sec = Number(v)
+  if (!Number.isFinite(sec) || sec <= 0) return ''
+  return formatMinutes(Math.round(sec / 60))
+}
+
+function historyValueHtml(text) {
+  return text ? `<i>${escapeHtml(text)}</i>` : EMPTY_VALUE_HTML
+}
+
+function renderHistoryItem(it, diffKey, expanded = {}) {
   if (!it || !it.field) return ''
   const label = HISTORY_FIELD_LABELS[it.field] || it.field
   const from = it.fromString
@@ -1844,16 +1880,76 @@ function renderHistoryItem(it) {
     if (!from && to) return `<div class="detail-history-item"><b>연결</b>을 추가했습니다: ${escapeHtml(to)}</div>`
     if (from && !to) return `<div class="detail-history-item"><b>연결</b>을 해제했습니다: ${escapeHtml(from)}</div>`
   }
-  // 본문이 너무 긴 필드는 변경 사실만
+  // 워크로그: Jira 이력에는 워크로그 id만 남아 개별 시간·코멘트의 전후 값은 알 수 없다.
+  // (총 진행 시간의 변화는 같은 엔트리의 timespent 항목이 보여준다.)
+  if (it.field === 'WorklogId') {
+    const had = !!(it.from ?? from)
+    const has = !!(it.to ?? to)
+    const verb = !had && has ? '추가' : (had && !has ? '삭제' : '수정')
+    return `<div class="detail-history-item"><b>워크로그</b>를 ${verb}했습니다.</div>`
+  }
+  // 초 단위로 오는 시간 필드는 한글 단위로 환산
+  if (HISTORY_SECONDS_FIELDS.has(it.field)) {
+    const fromHtml = historyValueHtml(historySecondsLabel(it.from ?? from))
+    const toHtml = historyValueHtml(historySecondsLabel(it.to ?? to))
+    return `
+      <div class="detail-history-item">
+        <b>${escapeHtml(label)}</b>: ${fromHtml} <span class="detail-history-arrow">→</span> ${toHtml}
+      </div>
+    `
+  }
+  // 요약·설명 등 본문이 긴 필드는 변경 전/후를 비교해서 보여준다
+  if (HISTORY_DIFF_FIELDS.has(it.field)) {
+    return renderHistoryDiffItem(it, label, diffKey, expanded)
+  }
+  // 값이 내부 식별자인 필드는 변경 사실만
   if (HISTORY_BODY_HIDDEN_FIELDS.has(it.field)) {
     return `<div class="detail-history-item"><b>${escapeHtml(label)}</b>을(를) 변경했습니다.</div>`
   }
 
-  const fromHtml = from ? `<i>${escapeHtml(from)}</i>` : '<span class="detail-history-empty-value">(없음)</span>'
-  const toHtml = to ? `<i>${escapeHtml(to)}</i>` : '<span class="detail-history-empty-value">(없음)</span>'
   return `
     <div class="detail-history-item">
-      <b>${escapeHtml(label)}</b>: ${fromHtml} <span class="detail-history-arrow">→</span> ${toHtml}
+      <b>${escapeHtml(label)}</b>: ${historyValueHtml(from)} <span class="detail-history-arrow">→</span> ${historyValueHtml(to)}
+    </div>
+  `
+}
+
+// 요약·설명 등의 변경 전/후 비교.
+// 짧은 한 줄이면 그 자리에서 단어 단위로 강조하고, 길면 접어 두었다가 펼쳐서 줄 단위로 보여준다.
+// changelog의 본문은 ADF를 평문화한 값이라 표·이미지 등의 서식은 남지 않는다.
+function renderHistoryDiffItem(it, label, diffKey, expanded) {
+  const from = it.fromString || ''
+  const to = it.toString || ''
+  const labelHtml = escapeHtml(label)
+  // 보존 정책·권한 등으로 본문이 비어 오면 변경 사실만 알린다
+  if (!from && !to) {
+    return `<div class="detail-history-item"><b>${labelHtml}</b>을(를) 변경했습니다.</div>`
+  }
+
+  const long = (from.length + to.length) > DIFF_COLLAPSE_CHARS
+    || countLines(from) > DIFF_COLLAPSE_LINES
+    || countLines(to) > DIFF_COLLAPSE_LINES
+
+  if (!long) {
+    return `
+      <div class="detail-history-item">
+        <b>${labelHtml}</b>: <span class="detail-history-inline-diff">${renderInlineDiffHtml(from, to)}</span>
+      </div>
+    `
+  }
+
+  const verb = !from ? '추가' : (!to ? '삭제' : '변경')
+  const isOpen = !!expanded[diffKey]
+  const body = isOpen
+    ? `<div class="detail-history-diff">${renderLineDiffHtml(from, to)}</div>`
+    : ''
+  return `
+    <div class="detail-history-item">
+      <b>${labelHtml}</b>을(를) ${verb}했습니다.
+      <button type="button" class="detail-history-diff-toggle" data-history-diff="${escapeHtml(diffKey)}" aria-expanded="${isOpen}">
+        ${isOpen ? '변경 내용 접기' : '변경 내용 보기'}
+      </button>
+      ${body}
     </div>
   `
 }

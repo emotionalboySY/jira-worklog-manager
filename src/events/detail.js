@@ -910,7 +910,7 @@ function bindClickWithoutDrag(el, handler) {
 async function loadIssueHistory({ append = false } = {}) {
   const m = state.issueDetailModal
   if (!m || !m.key) return
-  if (!m.history) m.history = { entries: [], total: 0, startAt: 0, isLast: true, loading: false, loaded: false, error: null }
+  if (!m.history) m.history = { entries: [], total: 0, startAt: 0, isLast: true, loading: false, loaded: false, error: null, expanded: {} }
   if (m.history.loading) return
   const issueKey = m.key
   const startAt = append ? (m.history.entries.length) : 0
@@ -931,6 +931,8 @@ async function loadIssueHistory({ append = false } = {}) {
       loading: false,
       loaded: true,
       error: null,
+      // 더보기로 이어 붙일 때 펼쳐 둔 전/후 비교가 닫히지 않도록 유지
+      expanded: cur.history?.expanded || {},
     }
     render({ sections: ['modals'] })
   } catch (err) {
@@ -998,6 +1000,16 @@ function switchActivityTab(tab) {
   if (next === 'history' && !m.history?.loaded && !m.history?.loading) {
     loadIssueHistory({ append: false })
   }
+}
+
+// 활동 기록에서 긴 값(요약·설명 등)의 변경 전/후 비교 펼치기·접기
+function toggleHistoryDiff(diffKey) {
+  const m = state.issueDetailModal
+  if (!m || !diffKey || !m.history) return
+  if (!m.history.expanded) m.history.expanded = {}
+  if (m.history.expanded[diffKey]) delete m.history.expanded[diffKey]
+  else m.history.expanded[diffKey] = true
+  render({ sections: ['modals'] })
 }
 
 // 상세 모달의 버튼/클릭 바인딩 (modals 섹션 재렌더 시마다 호출)
@@ -1090,6 +1102,11 @@ export function bindDetailModalEvents() {
   // 활동 기록 '이전 기록 더보기'
   const historyMoreBtn = document.getElementById('detail-history-load-more')
   if (historyMoreBtn) on(historyMoreBtn, 'click', () => loadIssueHistory({ append: true }))
+
+  // 활동 기록 '변경 내용 보기/접기'
+  document.querySelectorAll('#issue-detail-overlay [data-history-diff]').forEach(btn => {
+    on(btn, 'click', () => toggleHistoryDiff(btn.dataset.historyDiff))
+  })
 
   // 연결 추가: 검색 input
   const linkAddSearch = document.getElementById('detail-link-add-search')
