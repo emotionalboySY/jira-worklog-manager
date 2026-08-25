@@ -8,7 +8,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { CONFIG } from './config.js'
 import { isLoggedIn, login } from './auth.js'
 import { getSessions, postSessionAction, getLatestWorklogEnd } from './api.js'
-import { escapeHtml, NO_ISSUE_KEY } from './shared.js'
+import { escapeHtml, projectOf, NO_ISSUE_KEY } from './shared.js'
 import { load } from '@tauri-apps/plugin-store'
 import { autoCheckUpdateOnce } from './update.js'
 
@@ -114,7 +114,7 @@ function renderBody() {
       <div class="session active">
         <div class="session-issue">
           <span class="dot live"></span>
-          <span class="issue-key">${isNoIssue ? '(일감 미지정)' : escapeHtml(act.issueKey)}</span>
+          <span class="issue-key" data-project="${isNoIssue ? '' : escapeHtml(projectOf(act.issueKey))}">${isNoIssue ? '(일감 미지정)' : escapeHtml(act.issueKey)}</span>
           <span class="issue-summary">${escapeHtml(act.summary)}</span>
         </div>
         <div class="session-row">
@@ -137,7 +137,7 @@ function renderBody() {
       <div class="session paused">
         <div class="session-issue">
           <span class="dot"></span>
-          <span class="issue-key">${isNoIssue ? '(일감 미지정)' : escapeHtml(p.issueKey)}</span>
+          <span class="issue-key" data-project="${isNoIssue ? '' : escapeHtml(projectOf(p.issueKey))}">${isNoIssue ? '(일감 미지정)' : escapeHtml(p.issueKey)}</span>
           <span class="issue-summary">${escapeHtml(p.summary)}</span>
         </div>
         <div class="session-row">

@@ -13,7 +13,7 @@ import { emit } from '@tauri-apps/api/event'
 import { load } from '@tauri-apps/plugin-store'
 import { getSessions, postSessionAction, postWorklogPieces } from './api.js'
 import { escapeHtml as esc, fmtMinutes, fmtHHMM, parseHHMM, NO_ISSUE_KEY } from './shared.js'
-import { buildWorklogPiecesFromTimes, DEFAULT_LUNCH } from '../../lib/worklogLogic.js'
+import { buildWorklogPiecesFromTimes, resolveTimeRange, DEFAULT_LUNCH } from '../../lib/worklogLogic.js'
 
 const win = getCurrentWindow()
 const key = new URLSearchParams(location.search).get('key')
@@ -52,13 +52,62 @@ function segInitial(s) {
   })
 }
 
-// 현재 DOM의 구간 입력값 읽기
+// 현재 DOM의 구간 입력값 읽기 ('다음 날' 토글 의도 포함)
+// nextDay: 사용자가 직접 토글했으면 그 값, 아니면 null(자동 판정 — 6시간 이내만 자정 넘김 인정)
 function readRows() {
-  return [...document.querySelectorAll('.fseg')].map(row => ({
-    dateStr: row.dataset.date,
-    start: row.querySelector('.fseg-start')?.value || '',
-    end: row.querySelector('.fseg-end')?.value || '',
-  }))
+  return [...document.querySelectorAll('.fseg')].map(row => {
+    const box = row.querySelector('.fseg-nextday')
+    return {
+      row,
+      dateStr: row.dataset.date,
+      start: row.querySelector('.fseg-start')?.value || '',
+      end: row.querySelector('.fseg-end')?.value || '',
+      nextDay: box && box.dataset.user === '1' ? box.checked : null,
+    }
+  })
+}
+
+// 무효 구간 안내 문구
+function rangeMessage(res) {
+  if (res.reason === 'reversed') return "종료 시간이 시작 시간보다 이릅니다. 자정을 넘겨 일한 게 맞다면 '다음 날'을 체크하세요."
+  return '종료 시간은 시작 시간보다 이후여야 합니다.'
+}
+
+// 구간 행의 '다음 날' 토글 노출/체크 상태를 판정 결과에 맞춘다.
+// 종료<시작일 때만 보이고, 사용자가 직접 만지기 전까지는 자동 판정값을 따른다.
+function syncNextDay(row, res) {
+  const wrap = row.querySelector('.next-day')
+  const box = row.querySelector('.fseg-nextday')
+  if (!wrap || !box) return
+  if (!res.overnightEligible) {
+    wrap.hidden = true
+    wrap.classList.remove('warn')
+    box.checked = false
+    delete box.dataset.user
+    return
+  }
+  wrap.hidden = false
+  if (box.dataset.user !== '1') box.checked = !!res.crossesMidnight
+  wrap.classList.toggle('warn', !box.checked)
+}
+
+// 구간별 판정 → { minutes, problems }. 시간이 비어 있는 행은 건너뛴다.
+function analyzeRows(rows, lunch) {
+  let minutes = 0
+  const problems = []
+  rows.forEach((r, i) => {
+    const res = resolveTimeRange(r.start, r.end, r.nextDay)
+    if (r.row) syncNextDay(r.row, res)
+    if (res.reason === 'empty') return
+    if (!res.valid) {
+      problems.push(rows.length > 1 ? `구간 ${i + 1}: ${rangeMessage(res)}` : rangeMessage(res))
+      return
+    }
+    const secs = buildWorklogPiecesFromTimes(r.dateStr, r.start, r.end, lunch, r.nextDay)
+      .reduce((a, p) => a + p.seconds, 0)
+    minutes += Math.round(secs / 60)
+  })
+  return { minutes, problems }
 }
 
 // 점심시간 입력 읽기 → { start, end }(분). '차감 안 함' 또는 무효/역전이면 차감 없음({0,0}).
@@ -75,14 +124,9 @@ function piecesFrom(rows, lunch) {
   const out = []
   for (const r of rows) {
     if (!r.start || !r.end) continue
-    out.push(...buildWorklogPiecesFromTimes(r.dateStr, r.start, r.end, lunch))
+    out.push(...buildWorklogPiecesFromTimes(r.dateStr, r.start, r.end, lunch, r.nextDay))
   }
   return out
-}
-
-function previewMins() {
-  const secs = piecesFrom(readRows(), readLunch()).reduce((a, p) => a + p.seconds, 0)
-  return Math.round(secs / 60)
 }
 
 function renderMessage(msg, isError) {
@@ -106,6 +150,7 @@ function renderForm() {
         <input type="time" class="fin-input fseg-end" value="${r.end}" aria-label="종료 시간" />
         ${i === rows.length - 1 ? `<button type="button" class="mini-btn" id="seg-now">지금</button>` : ''}
       </div>
+      <label class="next-day" hidden><input type="checkbox" class="fseg-nextday" /> 다음 날</label>
     </div>`).join('')
 
   app().innerHTML = `
@@ -121,7 +166,7 @@ function renderForm() {
         <input type="time" class="fin-input" id="lunch-end" value="${fmtHHMM(defaultLunch.end)}" aria-label="점심 종료" />
         <label class="lunch-skip"><input type="checkbox" id="lunch-skip" /> 차감 안 함</label>
       </div>
-      <div class="dlg-time">기록할 시간 <b id="prev-mins">${fmtMinutes(previewMins())}</b> <span class="dim" id="prev-note"></span></div>
+      <div class="dlg-time">기록할 시간 <b id="prev-mins">-</b> <span class="dim" id="prev-note"></span></div>
       <textarea id="cmt" rows="2" placeholder="코멘트(선택)"></textarea>
       <div class="dlg-actions">
         <button id="dlg-cancel">취소</button>
@@ -142,6 +187,10 @@ function renderForm() {
   document.querySelectorAll('.fseg-start, .fseg-end, #lunch-start, #lunch-end').forEach(el => {
     el.addEventListener('input', refreshPreview)
   })
+  // '다음 날'(자정 넘김) 토글 — 직접 만졌다는 표시를 남겨 자동 판정이 덮어쓰지 않게 한다
+  document.querySelectorAll('.fseg-nextday').forEach(box => {
+    box.addEventListener('change', () => { box.dataset.user = '1'; refreshPreview() })
+  })
   const skip = document.getElementById('lunch-skip')
   skip.addEventListener('change', () => {
     document.getElementById('lunch-start').disabled = skip.checked
@@ -153,13 +202,18 @@ function renderForm() {
 }
 
 function refreshPreview() {
+  const lunch = readLunch()
+  const { minutes, problems } = analyzeRows(readRows(), lunch)
   const el = document.getElementById('prev-mins')
-  if (el) el.textContent = fmtMinutes(previewMins())
+  if (el) el.textContent = problems.length ? '-' : fmtMinutes(minutes)
   const note = document.getElementById('prev-note')
-  if (note) {
-    const l = readLunch()
-    note.textContent = l.end > l.start ? '· 점심 제외' : '· 점심 차감 안 함'
-  }
+  if (note) note.textContent = lunch.end > lunch.start ? '· 점심 제외' : '· 점심 차감 안 함'
+  // 무효 구간이 있으면 사유를 보여주고 기록을 막는다.
+  // (한 번이라도 기록이 시작된 뒤엔 조각이 고정되므로 버튼 상태를 건드리지 않는다)
+  const errEl = document.getElementById('dlg-err')
+  if (errEl && !frozenPieces) errEl.textContent = problems.join('\n')
+  const ok = document.getElementById('dlg-ok')
+  if (ok && !busy && !frozenPieces) ok.disabled = problems.length > 0
 }
 
 async function submit() {
@@ -180,7 +234,11 @@ async function submit() {
         const cur = (fresh.sessions || []).find(s => s.issueKey === key)
         if (!cur) throw new Error('세션이 이미 종료되었거나 다른 일감으로 변경되었습니다. 창을 닫고 다시 확인해주세요.')
         session = cur
-        frozenPieces = piecesFrom(readRows(), readLunch())
+        const lunch = readLunch()
+        const rows = readRows()
+        const { problems } = analyzeRows(rows, lunch)
+        if (problems.length) throw new Error(problems.join('\n'))
+        frozenPieces = piecesFrom(rows, lunch)
         frozenComment = document.getElementById('cmt')?.value || ''
         if (!frozenPieces.length) throw new Error('기록할 시간이 없습니다(점심 제외 후 0분).')
       }

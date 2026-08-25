@@ -13,7 +13,9 @@ import {
   updateEditDurationReadout,
   computeDurationFromTimes,
   readModalLunch,
+  readNextDay,
   bindLunchFieldEvents,
+  bindNextDayToggleEvents,
 } from '../views/modals.js'
 import { render } from '../render.js'
 import { on } from './_dom.js'
@@ -46,6 +48,8 @@ export function bindEditWorklogEvents() {
   if (editEndInput) on(editEndInput, 'input', updateEditDurationReadout)
   // 점심시간(시작/종료/차감 안 함) 변경 → 소요 시간 실시간 갱신
   bindLunchFieldEvents(document.getElementById('edit-worklog-overlay'), updateEditDurationReadout)
+  // '다음 날'(자정 넘김) 토글 변경 → 소요 시간 실시간 갱신
+  bindNextDayToggleEvents(document.getElementById('edit-worklog-overlay'), updateEditDurationReadout)
   if (editStartInput || editEndInput) updateEditDurationReadout()
 
   // 제출
@@ -59,12 +63,15 @@ export function bindEditWorklogEvents() {
       const comment = document.getElementById('edit-comment').value
 
       // 이 모달에서 지정/덮어쓴 점심시간 ('차감 안 함'이면 차감 없음)
-      const lunch = readModalLunch(document.getElementById('edit-worklog-overlay'))
-      const dur = computeDurationFromTimes(startTime, endTime, lunch)
+      const overlay = document.getElementById('edit-worklog-overlay')
+      const lunch = readModalLunch(overlay)
+      // 자정 넘김 의도 — 사용자가 '다음 날'을 직접 만졌으면 그 값, 아니면 자동 판정(null)
+      const nextDay = readNextDay(overlay?.querySelector('.next-day-check'))
+      const dur = computeDurationFromTimes(startTime, endTime, lunch, nextDay)
       if (!dur.valid) { alert(dur.message); return }
 
       // 점심시간이 겹치면 기존 worklog는 첫 구간으로 수정하고 뒤 구간은 별도 생성
-      const segments = buildWorklogSegments(state.editingWorklog.date, startTime, endTime, lunch)
+      const segments = buildWorklogSegments(state.editingWorklog.date, startTime, endTime, lunch, nextDay)
       if (segments.length === 0) { alert('유효한 작업 구간이 없습니다.'); return }
 
       const originalLabel = editSubmit.innerHTML

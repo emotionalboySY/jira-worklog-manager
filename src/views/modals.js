@@ -15,6 +15,7 @@ import {
   getStatusCss,
   getShortStatusLabel,
   getProjectKeysOrFallback,
+  getProjectFromKey,
   getDefaultLunch,
   formatHHMM,
   parseHHMM,
@@ -24,13 +25,62 @@ import { loadWorklogs } from '../actions.js'
 import { renderAdf, isVideoAttachment, renderVideoPlayer } from '../adf.js'
 import { renderInlineDiffHtml, renderLineDiffHtml } from '../textDiff.js'
 import { getCachedMyself } from '../jira.js'
-import { computeMinutesFromTimes } from '../../lib/worklogLogic.js'
+import { computeMinutesFromTimes, resolveTimeRange } from '../../lib/worklogLogic.js'
 
 // 이슈 키 형식 검사 (예: DKT-123) — ISSUE_KEY_PATTERN도 여기에서 재노출
 export { ISSUE_KEY_PATTERN }
 
 export function isValidIssueKeyFormat(key) {
   return ISSUE_KEY_PATTERN.test(key)
+}
+
+// ========== '다음 날' 토글 (자정 넘김 명시) ==========
+// 종료 시간이 시작 시간보다 이른 구간에서만 나타나는 체크박스.
+// - 6시간 이내(짧은 야간 작업)면 자동으로 체크된 상태로 노출
+// - 그보다 길면(13:00~09:00 등 오입력 의심) 해제 상태 + 오류 문구 → 사용자가 직접 체크해야 기록
+// 사용자가 한 번이라도 직접 토글하면 data-user="1"이 붙어 자동 판정이 그 값을 덮어쓰지 않는다.
+export function renderNextDayToggle(extraClass = '', dataAttrs = '') {
+  return `
+    <label class="next-day-toggle ${extraClass}" ${dataAttrs} hidden>
+      <input type="checkbox" class="next-day-check" ${dataAttrs} /> 다음 날
+    </label>
+  `
+}
+
+// 토글의 현재 의도 읽기 — 사용자가 직접 만졌으면 그 값, 아니면 null(자동 판정)
+export function readNextDay(box) {
+  if (!box) return null
+  return box.dataset.user === '1' ? box.checked : null
+}
+
+// 계산 결과(dur)에 맞춰 토글 노출/체크 상태 동기화
+function syncNextDayToggle(wrap, box, dur) {
+  if (!wrap || !box) return
+  if (!dur?.overnightEligible) {
+    wrap.hidden = true
+    wrap.classList.remove('warn')
+    box.checked = false
+    delete box.dataset.user
+    return
+  }
+  wrap.hidden = false
+  if (box.dataset.user !== '1') box.checked = !!dur.crossesMidnight
+  // 넘김을 인정하지 않은 상태(=오류)면 토글을 강조해 눈에 띄게 한다
+  wrap.classList.toggle('warn', !box.checked)
+}
+
+// '다음 날' 체크박스 변경 리스너 연결 (scopeEl 안의 모든 토글 — 종료 모달은 구간마다 하나씩).
+// 사용자가 직접 만졌다는 표시(data-user)를 남겨 이후 자동 판정이 값을 덮어쓰지 않게 한다.
+export function bindNextDayToggleEvents(scopeEl, onChange) {
+  if (!scopeEl) return
+  scopeEl.querySelectorAll('.next-day-check').forEach(box => {
+    if (box.__bound_change) return
+    box.__bound_change = true
+    box.addEventListener('change', () => {
+      box.dataset.user = '1'
+      onChange()
+    })
+  })
 }
 
 // ========== 점심시간 입력 필드 (수동 기록 / 종료 / 수정 모달 공용) ==========
@@ -159,7 +209,7 @@ export function renderModal() {
   } else {
     issueBlockHtml = `
       <div class="modal-issue-info">
-        <span class="issue-key">${session.issueKey}</span>
+        <span class="issue-key" data-project="${escapeHtml(getProjectFromKey(session.issueKey))}">${session.issueKey}</span>
         <span class="modal-issue-summary">${escapeHtml(session.summary || '')}</span>
         <button type="button" class="btn-link modal-issue-swap" data-action="swap-issue" data-key="${escapeHtml(session.issueKey)}" data-summary="${escapeHtml(session.summary || '')}">일감 교체</button>
       </div>
@@ -191,6 +241,7 @@ export function renderModal() {
           <input type="time" class="modal-input finish-seg-end" data-seg-idx="${i}" value="${endTime}" aria-label="종료 시간" />
           ${showNowBtn ? `<button type="button" class="btn btn-sm finish-seg-now" data-seg-idx="${i}">지금</button>` : ''}
         </div>
+        ${renderNextDayToggle('finish-seg-nextday', `data-seg-idx="${i}"`)}
         <div class="duration-readout finish-seg-duration" data-seg-idx="${i}">-</div>
       </div>
     `
@@ -241,7 +292,11 @@ export function updateFinishDurationReadouts() {
     const readout = row.querySelector('.finish-seg-duration')
     const startTime = startInput?.value || ''
     const endTime = endInput?.value || ''
-    const dur = computeDurationFromTimes(startTime, endTime, lunch)
+    const nextDayWrap = row.querySelector('.next-day-toggle')
+    const nextDayBox = row.querySelector('.next-day-check')
+    const nextDay = readNextDay(nextDayBox)
+    const dur = computeDurationFromTimes(startTime, endTime, lunch, nextDay)
+    syncNextDayToggle(nextDayWrap, nextDayBox, dur)
     if (!dur.valid) {
       anyInvalid = true
       readout.textContent = dur.message || '-'
@@ -252,7 +307,15 @@ export function updateFinishDurationReadouts() {
     readout.classList.remove('error')
     readout.textContent = formatDurationReadout(dur)
     totalActual += dur.actualMinutes
-    perSegment[i] = { valid: true, actualMinutes: dur.actualMinutes, startTime, endTime, date, crossesMidnight: !!dur.crossesMidnight }
+    perSegment[i] = {
+      valid: true,
+      actualMinutes: dur.actualMinutes,
+      startTime,
+      endTime,
+      date,
+      crossesMidnight: !!dur.crossesMidnight,
+      nextDay: nextDayBox ? nextDayBox.checked : null,
+    }
   })
   const totalEl = document.getElementById('finish-total-readout')
   if (totalEl) {
@@ -579,7 +642,7 @@ export function renderSwapIssueModal() {
   const isIssueless = ctx.oldKey === NO_ISSUE_KEY
   const currentLabel = isIssueless
     ? `<span class="issue-key issue-key-noissue">${escapeHtml(NO_ISSUE_SUMMARY)}</span>`
-    : `<span class="issue-key">${escapeHtml(ctx.oldKey)}</span><span class="modal-issue-summary">${escapeHtml(ctx.summary || '')}</span>`
+    : `<span class="issue-key" data-project="${escapeHtml(getProjectFromKey(ctx.oldKey))}">${escapeHtml(ctx.oldKey)}</span><span class="modal-issue-summary">${escapeHtml(ctx.summary || '')}</span>`
 
   let keyStatusHtml = ''
   if (state.swapIssueCheck) {
@@ -801,7 +864,7 @@ export function renderLinkSuggestionsHtml(idx, link) {
   const activeIdx = link?.activeSuggestionIdx ?? -1
   const itemsHtml = candidates.map((c, i) => `
     <div class="autocomplete-item ${i === activeIdx ? 'active' : ''}" data-action="pick-link-target" data-link-idx="${idx}" data-key="${escapeHtml(c.key)}" data-suggest-idx="${i}">
-      <span class="autocomplete-key">${escapeHtml(c.key)}</span>
+      <span class="autocomplete-key" data-project="${escapeHtml(getProjectFromKey(c.key))}">${escapeHtml(c.key)}</span>
       <span class="autocomplete-summary">${escapeHtml(c.summary || '')}</span>
     </div>
   `).join('')
@@ -912,7 +975,7 @@ export function renderEditWorklogModal() {
       <div class="modal">
         <div class="modal-title">작업 로그 수정</div>
         <div class="modal-issue-info">
-          <span class="issue-key">${w.issueKey}</span>
+          <span class="issue-key" data-project="${escapeHtml(getProjectFromKey(w.issueKey))}">${w.issueKey}</span>
           <span class="modal-issue-summary">${escapeHtml(w.summary || '')}</span>
         </div>
         <div class="modal-field">
@@ -924,6 +987,7 @@ export function renderEditWorklogModal() {
           <div class="time-with-btn">
             <input type="time" class="modal-input" id="edit-end-time" value="${endTime}" />
             <button type="button" class="btn btn-sm" id="edit-end-now">지금</button>
+            ${renderNextDayToggle()}
           </div>
         </div>
         ${renderLunchField()}
@@ -1013,6 +1077,7 @@ export function renderManualLogModal() {
           <div class="time-with-btn">
             <input type="time" class="modal-input" id="manual-end-time" value="${nowTime}" />
             <button type="button" class="btn btn-sm" id="manual-end-now">지금</button>
+            ${renderNextDayToggle()}
           </div>
         </div>
         ${renderLunchField()}
@@ -1094,7 +1159,7 @@ export function renderKeyDropdown(ctx, candidates, loading = false) {
   dropdown.style.display = 'block'
   const itemsHtml = candidates.map((c, idx) => `
     <div class="autocomplete-item ${idx === activeIdx ? 'active' : ''}" data-key="${c.key}" data-summary="${escapeHtml(c.summary || '')}" data-idx="${idx}">
-      <span class="autocomplete-key">${c.key}</span>
+      <span class="autocomplete-key" data-project="${escapeHtml(getProjectFromKey(c.key))}">${c.key}</span>
       <span class="autocomplete-summary">${escapeHtml(c.summary || '')}</span>
     </div>
   `).join('')
@@ -1230,8 +1295,11 @@ export function updateManualDurationReadout() {
   const endEl = document.getElementById('manual-end-time')
   const readout = document.getElementById('manual-duration-readout')
   if (!startEl || !endEl || !readout) return
-  const lunch = readModalLunch(document.getElementById('manual-log-overlay'))
-  const dur = computeDurationFromTimes(startEl.value, endEl.value, lunch)
+  const overlay = document.getElementById('manual-log-overlay')
+  const lunch = readModalLunch(overlay)
+  const box = overlay?.querySelector('.next-day-check')
+  const dur = computeDurationFromTimes(startEl.value, endEl.value, lunch, readNextDay(box))
+  syncNextDayToggle(overlay?.querySelector('.next-day-toggle'), box, dur)
   if (!dur.valid) {
     readout.textContent = dur.message || '-'
     readout.classList.add('error')
@@ -1247,8 +1315,11 @@ export function updateEditDurationReadout() {
   const endEl = document.getElementById('edit-end-time')
   const readout = document.getElementById('edit-duration-readout')
   if (!startEl || !endEl || !readout) return
-  const lunch = readModalLunch(document.getElementById('edit-worklog-overlay'))
-  const dur = computeDurationFromTimes(startEl.value, endEl.value, lunch)
+  const overlay = document.getElementById('edit-worklog-overlay')
+  const lunch = readModalLunch(overlay)
+  const box = overlay?.querySelector('.next-day-check')
+  const dur = computeDurationFromTimes(startEl.value, endEl.value, lunch, readNextDay(box))
+  syncNextDayToggle(overlay?.querySelector('.next-day-toggle'), box, dur)
   if (!dur.valid) {
     readout.textContent = dur.message || '-'
     readout.classList.add('error')
@@ -1261,14 +1332,23 @@ export function updateEditDurationReadout() {
 // 시작/종료 시간(HH:MM)으로부터 점심시간 차감된 실제 소요(분) 계산
 // lunch 미지정 시 사용자 설정의 기본 점심시간 사용.
 // 반환: { totalMinutes, lunchMinutes, actualMinutes, valid, message }
-export function computeDurationFromTimes(startTime, endTime, lunch = getDefaultLunch()) {
+export function computeDurationFromTimes(startTime, endTime, lunch = getDefaultLunch(), nextDay = null) {
   if (!startTime || !endTime) return { valid: false, message: '시간을 입력해주세요.' }
-  // 종료 < 시작이면 자정을 넘긴 것으로 간주 (crossesMidnight) — 기록 시 날짜 경계로 분할됨.
+  // 종료 < 시작인 구간은 nextDay 판정에 따라 자정 넘김으로 인정하거나 오류 처리한다.
   // 종료 == 시작은 0분으로 무효 처리 (24시간 worklog로 오인 방지).
-  const { totalMinutes, lunchMinutes, actualMinutes, crossesMidnight } = computeMinutesFromTimes(startTime, endTime, lunch)
-  if (totalMinutes <= 0) return { valid: false, message: '종료 시간은 시작 시간보다 이후여야 합니다.' }
-  if (actualMinutes <= 0) return { valid: false, message: '점심시간을 제외하면 실제 작업 시간이 없습니다.' }
-  return { valid: true, totalMinutes, lunchMinutes, actualMinutes, crossesMidnight }
+  const m = computeMinutesFromTimes(startTime, endTime, lunch, nextDay)
+  const flags = {
+    crossesMidnight: !!m.crossesMidnight,
+    overnightEligible: !!m.overnightEligible,
+    autoOvernight: !!m.autoOvernight,
+    spanMinutes: m.spanMinutes || 0,
+  }
+  if (m.reason === 'reversed') {
+    return { valid: false, message: `종료 시간이 시작 시간보다 이릅니다. 자정을 넘겨 일한 게 맞다면 '다음 날'을 체크하세요.`, ...flags }
+  }
+  if (m.totalMinutes <= 0) return { valid: false, message: '종료 시간은 시작 시간보다 이후여야 합니다.', ...flags }
+  if (m.actualMinutes <= 0) return { valid: false, message: '점심시간을 제외하면 실제 작업 시간이 없습니다.', ...flags }
+  return { valid: true, totalMinutes: m.totalMinutes, lunchMinutes: m.lunchMinutes, actualMinutes: m.actualMinutes, ...flags }
 }
 
 // readout 공통 포맷 — 점심 제외/자정 넘김 주석 포함
@@ -1644,7 +1724,7 @@ export function renderAddLinkSuggestionsHtml(add) {
   }
   const itemsHtml = candidates.map((c) => `
     <div class="autocomplete-item" data-action="pick-add-link-target" data-key="${escapeHtml(c.key)}">
-      <span class="autocomplete-key">${escapeHtml(c.key)}</span>
+      <span class="autocomplete-key" data-project="${escapeHtml(getProjectFromKey(c.key))}">${escapeHtml(c.key)}</span>
       <span class="autocomplete-summary">${escapeHtml(c.summary || '')}</span>
     </div>
   `).join('')

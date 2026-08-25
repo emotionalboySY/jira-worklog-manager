@@ -19,6 +19,7 @@ import {
   updateKeyDropdown,
   FINISH_KEY_CTX,
   bindLunchFieldEvents,
+  bindNextDayToggleEvents,
 } from '../views/modals.js'
 import { render } from '../render.js'
 import { on } from './_dom.js'
@@ -97,6 +98,8 @@ export function bindFinishModalEvents() {
 
   // 점심시간(시작/종료/차감 안 함) 변경 → 구간별/합계 readout 갱신
   bindLunchFieldEvents(document.getElementById('modal-overlay'), updateFinishDurationReadouts)
+  // 구간별 '다음 날'(자정 넘김) 토글 변경 → 구간별/합계 readout 갱신
+  bindNextDayToggleEvents(document.getElementById('modal-overlay'), updateFinishDurationReadouts)
 
   // 마지막 구간의 '지금' 버튼
   document.querySelectorAll('.finish-seg-now').forEach(btn => {
@@ -140,7 +143,12 @@ export function bindFinishModalEvents() {
       // 편집된 구간 값 기반으로 검증 + 합계 계산
       const result = updateFinishDurationReadouts()
       if (!result.valid) {
-        alert('유효하지 않은 구간이 있습니다.\n\n종료 시간은 시작 시간보다 이후여야 하며, 점심시간 제외 후 실 작업 시간이 1분 이상이어야 합니다.')
+        // 구간별 오류 문구를 그대로 보여준다 (자정 넘김 안내 등 사유가 구간마다 다름)
+        const detail = result.perSegment
+          .map((seg, i) => (seg && !seg.valid ? `구간 ${i + 1}: ${seg.message || '유효하지 않은 시간'}` : null))
+          .filter(Boolean)
+          .join('\n')
+        alert(`유효하지 않은 구간이 있습니다.\n\n${detail}`)
         return
       }
       if (result.totalActual <= 0) {
@@ -171,7 +179,7 @@ export function bindFinishModalEvents() {
         for (const seg of result.perSegment) {
           if (!seg || !seg.valid || seg.actualMinutes <= 0) continue
           // 종료 모달에서 지정/덮어쓴 점심시간 사용 (readout 계산과 동일 값)
-          const subSegments = buildWorklogSegments(seg.date, seg.startTime, seg.endTime, result.lunch)
+          const subSegments = buildWorklogSegments(seg.date, seg.startTime, seg.endTime, result.lunch, seg.nextDay)
           for (const ss of subSegments) {
             await createWorklog(targetIssueKey, {
               started: ss.started,

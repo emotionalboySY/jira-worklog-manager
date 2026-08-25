@@ -2,6 +2,11 @@
 
 export const NO_ISSUE_KEY = '__NO_ISSUE__'
 
+// 이슈 키 → 프로젝트 키 (DKT-123 → DKT). 프로젝트별 칩 색상(data-project)에 사용.
+export function projectOf(issueKey) {
+  return String(issueKey || '').split('-')[0]
+}
+
 // HTML 이스케이프 (속성 값 포함 — 따옴표까지 처리)
 export function escapeHtml(str) {
   return String(str || '')

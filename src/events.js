@@ -845,9 +845,12 @@ export function installDelegatedHandlers() {
     document.querySelectorAll('#modal-overlay .finish-segment').forEach(row => {
       const i = parseInt(row.dataset.segIdx, 10)
       if (!Number.isFinite(i) || i === segIdx) return
+      const ndBox = row.querySelector('.next-day-check')
       savedTimes.set(i > segIdx ? i - 1 : i, {
         start: row.querySelector('.finish-seg-start')?.value || '',
         end: row.querySelector('.finish-seg-end')?.value || '',
+        // 사용자가 직접 체크한 '다음 날'만 복원 (자동 판정값은 재계산에 맡김)
+        nextDay: ndBox?.dataset.user === '1' ? ndBox.checked : null,
       })
     })
     const savedComment = document.getElementById('finish-comment')?.value ?? ''
@@ -868,6 +871,11 @@ export function installDelegatedHandlers() {
       const en = row.querySelector('.finish-seg-end')
       if (s && saved.start) s.value = saved.start
       if (en && saved.end) en.value = saved.end
+      const ndBox = row.querySelector('.next-day-check')
+      if (ndBox && saved.nextDay != null) {
+        ndBox.checked = saved.nextDay
+        ndBox.dataset.user = '1'
+      }
     })
     const cmt = document.getElementById('finish-comment')
     if (cmt && savedComment) cmt.value = savedComment

@@ -4,7 +4,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { emit } from '@tauri-apps/api/event'
 import { getSessions, postSessionAction, fetchMyIssues } from './api.js'
-import { escapeHtml as esc, NO_ISSUE_KEY } from './shared.js'
+import { escapeHtml as esc, projectOf, NO_ISSUE_KEY } from './shared.js'
 
 const win = getCurrentWindow()
 const oldKey = new URLSearchParams(location.search).get('key')
@@ -29,7 +29,7 @@ function rowHtml(i) {
   return `
     <button class="swap-item" data-key="${esc(i.key)}" data-summary="${esc(i.summary)}">
       ${icon}
-      <span class="swap-key">${esc(i.key)}</span>
+      <span class="swap-key" data-project="${esc(projectOf(i.key))}">${esc(i.key)}</span>
       <span class="swap-summary">${esc(i.summary)}</span>
       <span class="swap-status ${statusClass(i.statusCategory)}">${esc(i.status)}</span>
     </button>`

@@ -19,7 +19,9 @@ import {
   updateManualKeyDropdown,
   MANUAL_KEY_CTX,
   readModalLunch,
+  readNextDay,
   bindLunchFieldEvents,
+  bindNextDayToggleEvents,
 } from '../views/modals.js'
 import { ensureMonthWorklogsLoaded } from '../actions.js'
 import { render } from '../render.js'
@@ -148,6 +150,8 @@ export function bindManualModalEvents() {
   if (manualEndInput) on(manualEndInput, 'input', updateManualDurationReadout)
   // 점심시간(시작/종료/차감 안 함) 변경 → 소요 시간 실시간 갱신
   bindLunchFieldEvents(document.getElementById('manual-log-overlay'), updateManualDurationReadout)
+  // '다음 날'(자정 넘김) 토글 변경 → 소요 시간 실시간 갱신
+  bindNextDayToggleEvents(document.getElementById('manual-log-overlay'), updateManualDurationReadout)
   if (manualStartInput || manualEndInput) updateManualDurationReadout()
 
   // 제출
@@ -168,12 +172,15 @@ export function bindManualModalEvents() {
       if (!date) { alert('날짜를 입력해주세요.'); return }
 
       // 이 모달에서 지정/덮어쓴 점심시간 ('차감 안 함'이면 차감 없음)
-      const lunch = readModalLunch(document.getElementById('manual-log-overlay'))
-      const dur = computeDurationFromTimes(startTime, endTime, lunch)
+      const overlay = document.getElementById('manual-log-overlay')
+      const lunch = readModalLunch(overlay)
+      // 자정 넘김 의도 — 사용자가 '다음 날'을 직접 만졌으면 그 값, 아니면 자동 판정(null)
+      const nextDay = readNextDay(overlay?.querySelector('.next-day-check'))
+      const dur = computeDurationFromTimes(startTime, endTime, lunch, nextDay)
       if (!dur.valid) { alert(dur.message); return }
 
       // 점심시간이 겹치면 두 개 구간으로 쪼개서 기록 (종료 시간 유지를 위해)
-      const segments = buildWorklogSegments(date, startTime, endTime, lunch)
+      const segments = buildWorklogSegments(date, startTime, endTime, lunch, nextDay)
       if (segments.length === 0) { alert('유효한 작업 구간이 없습니다.'); return }
 
       // 제출 중: 버튼을 스피너로 전환 + 중복 클릭 방지

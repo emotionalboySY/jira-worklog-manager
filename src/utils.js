@@ -129,10 +129,11 @@ export function getDefaultLunch() {
 }
 
 // 점심시간(기본 11:30~12:30, lunch로 재정의 가능)을 피해 worklog 구간을 분리 생성.
-// 종료 시간이 시작보다 이르면 자정을 넘긴 것으로 간주해 날짜 경계로도 분할 — lib/worklogLogic.js 위임(위젯과 공유).
+// 종료 시간이 시작보다 이른 구간은 nextDay 판정에 따라 다음 날로 이어붙인다 — lib/worklogLogic.js 위임(위젯과 공유).
+// nextDay: true(다음 날 강제) | false(같은 날 강제 → 무효) | null(자동: 6시간 이내면 자정 넘김 인정)
 // 반환: [{ started, seconds }, ...]
-export function buildWorklogSegments(dateStr, startTime, endTime, lunch = getDefaultLunch()) {
-  return buildWorklogPiecesFromTimes(dateStr, startTime, endTime, lunch)
+export function buildWorklogSegments(dateStr, startTime, endTime, lunch = getDefaultLunch(), nextDay = null) {
+  return buildWorklogPiecesFromTimes(dateStr, startTime, endTime, lunch, nextDay)
 }
 
 // Jira API 에러 응답(JSON)에서 사람이 읽을 수 있는 메시지로 변환
