@@ -779,20 +779,86 @@ export function getCachedMyself() {
   return _myselfCache
 }
 
-// 이 이슈에 대해 변경 가능한 이슈 유형 목록 조회.
-// editmeta가 issuetype 필드의 allowedValues를 직접 알려준다.
-export async function fetchIssueTypes(issueKey, { signal } = {}) {
-  const data = await jiraFetch(
-    `/issue/${encodeURIComponent(issueKey)}/editmeta`,
-    { signal }
-  )
-  const allowed = data?.fields?.issuetype?.allowedValues || []
-  return allowed.map(t => ({
+// Jira가 내려준 이슈 유형 배열을 앱 내부 형태로 정규화.
+// hierarchyLevel(-1: 하위 작업, 0: 표준, 1: 에픽)은 응답에 없을 수 있어 subtask로 보정한다.
+function normalizeIssueTypes(list) {
+  return (list || []).map(t => ({
     id: String(t.id),
     name: t.name || '',
     iconUrl: t.iconUrl || '',
     subtask: !!t.subtask,
+    hierarchyLevel: typeof t.hierarchyLevel === 'number' ? t.hierarchyLevel : (t.subtask ? -1 : 0),
   }))
+}
+
+// 프로젝트에서 사용 가능한 이슈 유형 목록 (프로젝트 단위 캐시).
+// 팀 관리형(team-managed) 프로젝트나 편집 화면에 유형 필드가 없는 프로젝트는
+// editmeta가 issuetype을 안 내려주므로 이 목록을 대체 소스로 쓴다.
+const projectIssueTypesCache = new Map() // projectKey → types[]
+
+export async function fetchProjectIssueTypes(projectKey, { signal } = {}) {
+  if (!projectKey) return []
+  const cached = projectIssueTypesCache.get(projectKey)
+  if (cached) return cached
+
+  let list = []
+  try {
+    const data = await jiraFetch(
+      `/issue/createmeta/${encodeURIComponent(projectKey)}/issuetypes?maxResults=100`,
+      { signal }
+    )
+    list = data?.issueTypes || data?.values || []
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err
+    console.warn('프로젝트 이슈 유형(createmeta) 조회 실패:', err)
+  }
+
+  // 이슈 생성 권한이 없으면 createmeta가 비어 오므로 프로젝트 정보로 한 번 더 시도
+  if (list.length === 0) {
+    try {
+      const proj = await jiraFetch(`/project/${encodeURIComponent(projectKey)}`, { signal })
+      list = proj?.issueTypes || []
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err
+      console.warn('프로젝트 이슈 유형(project) 조회 실패:', err)
+    }
+  }
+
+  const types = normalizeIssueTypes(list)
+  if (types.length > 0) projectIssueTypesCache.set(projectKey, types)
+  return types
+}
+
+// 이 이슈에 대해 변경 가능한 이슈 유형 목록 조회.
+// 1차: editmeta의 issuetype allowedValues (company-managed 프로젝트에서 가장 정확)
+// 2차: 1차가 비었으면 프로젝트의 이슈 유형 목록에서 같은 계층(hierarchyLevel)만 추림.
+//      team-managed 프로젝트(예: DK)는 editmeta가 issuetype 자체를 안 내려주거나
+//      allowedValues가 비어 있어 1차만으로는 항상 "변경 가능한 유형 없음"이 된다.
+export async function fetchIssueTypes(issueKey, { signal, currentTypeName = '' } = {}) {
+  let types = []
+  try {
+    const data = await jiraFetch(
+      `/issue/${encodeURIComponent(issueKey)}/editmeta`,
+      { signal }
+    )
+    types = normalizeIssueTypes(data?.fields?.issuetype?.allowedValues || [])
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err
+    console.warn('editmeta 이슈 유형 조회 실패 — 프로젝트 메타로 대체:', err)
+  }
+
+  // 현재 유형 말고 고를 수 있는 게 하나라도 있으면 editmeta 결과를 그대로 사용
+  if (types.some(t => t.name !== currentTypeName)) return types
+
+  const projectKey = String(issueKey || '').replace(/-\d+$/, '')
+  const projectTypes = await fetchProjectIssueTypes(projectKey, { signal })
+  if (projectTypes.length === 0) return types
+
+  // 계층이 다른 유형(하위 작업 ↔ 표준 ↔ 에픽)은 단순 편집으로 바꿀 수 없어 제외
+  const current = projectTypes.find(t => t.name === currentTypeName)
+  const level = current ? current.hierarchyLevel : 0
+  const sameLevel = projectTypes.filter(t => t.hierarchyLevel === level)
+  return sameLevel.length > 0 ? sameLevel : types
 }
 
 // 이슈 유형 변경

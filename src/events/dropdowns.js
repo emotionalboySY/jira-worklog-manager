@@ -98,6 +98,8 @@ export async function performTypeChange(issueKey, typeInfo) {
   render({ sections: ['content', 'modals'] })
   try {
     await updateIssueType(issueKey, typeInfo.id)
+    // 유형이 바뀌면 워크플로우(가능한 전이)도 달라지므로 전이 캐시를 버린다
+    invalidateTransitionsCache(issueKey)
     // realIssues / 검색결과 / 백로그 갱신
     for (const arr of [state.realIssues, state.searchResults, state.backlogIssues]) {
       if (!Array.isArray(arr)) continue
@@ -115,11 +117,21 @@ export async function performTypeChange(issueKey, typeInfo) {
     showToast(`유형을 '${typeInfo.name}'(으)로 변경했습니다.`, '✓')
   } catch (err) {
     console.error('유형 변경 실패:', err)
-    showToast(`유형 변경 실패: ${formatJiraError(err)}`, '⚠')
+    showToast(`유형 변경 실패: ${describeTypeChangeError(err)}`, '⚠')
   } finally {
     state.typeUpdating.delete(issueKey)
     render({ sections: ['content', 'modals'] })
   }
+}
+
+// 유형 변경 실패 사유를 사람이 읽을 수 있게 다듬는다.
+// Jira 화면 설정에 유형 필드가 없으면 REST 편집으로는 못 바꾸고 Jira의 '이동'을 써야 한다.
+function describeTypeChangeError(err) {
+  const raw = `${err?.detail || ''} ${err?.message || ''}`
+  if (/not on the appropriate screen|cannot be set/i.test(raw)) {
+    return 'Jira 화면 설정에 유형 필드가 없어 앱에서 바꿀 수 없습니다. Jira에서 "이동"으로 변경하세요.'
+  }
+  return formatJiraError(err)
 }
 
 // ========== 상태 전이 실행 ==========

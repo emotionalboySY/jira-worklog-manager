@@ -602,10 +602,13 @@ export function installDelegatedHandlers() {
       return
     }
     const rect = btn.getBoundingClientRect()
-    const cached = getCachedIssueTypes(key)
+    const currentTypeName = btn.dataset.currentType || ''
+    // 비어 있는 캐시는 없는 것으로 취급 — 예전 조회가 빈 결과였어도 다시 물어본다
+    const cachedRaw = getCachedIssueTypes(key)
+    const cached = cachedRaw && cachedRaw.length > 0 ? cachedRaw : null
     state.typeDropdown = {
       issueKey: key,
-      currentTypeName: btn.dataset.currentType || '',
+      currentTypeName,
       rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
       types: cached,
       loading: !cached,
@@ -614,8 +617,8 @@ export function installDelegatedHandlers() {
     if (state.assigneeDropdown) closeAssigneeDropdown({ skipRender: true })
     render({ sections: ['dropdowns'] })
     try {
-      const types = await fetchIssueTypes(key)
-      setCachedIssueTypes(key, types)
+      const types = await fetchIssueTypes(key, { currentTypeName })
+      if (types.length > 0) setCachedIssueTypes(key, types)
       if (state.typeDropdown && state.typeDropdown.issueKey === key) {
         state.typeDropdown.types = types
         state.typeDropdown.loading = false
