@@ -18,7 +18,7 @@ export const FEEDBACK_STATUSES = [
 const TYPE_LABEL = Object.fromEntries(FEEDBACK_TYPES.map(t => [t.key, t.label]))
 const STATUS_LABEL = Object.fromEntries(FEEDBACK_STATUSES.map(s => [s.key, s.label]))
 
-const PLACEHOLDER = {
+export const FEEDBACK_PLACEHOLDER = {
   bug: '어떤 화면에서, 무엇을 했을 때, 어떤 문제가 생겼는지 적어 주세요.\n예) 작업 로그 기록 탭에서 수정 버튼을 눌렀는데 저장이 안 됩니다.',
   improve: '어떤 점이 불편했고, 어떻게 바뀌면 좋을지 적어 주세요.\n예) 요약 탭에서 월 단위 합계도 보고 싶어요.',
 }
@@ -151,7 +151,7 @@ function renderNewForm(m) {
     </div>
     <div class="modal-field">
       <label class="modal-label" for="feedback-body">내용 <span class="modal-label-required">*</span></label>
-      <textarea class="modal-textarea feedback-body-input" id="feedback-body" maxlength="4000" placeholder="${escapeHtml(PLACEHOLDER[d.type] || '')}" ${m.submitting ? 'disabled' : ''}>${escapeHtml(d.body)}</textarea>
+      <textarea class="modal-textarea feedback-body-input" id="feedback-body" maxlength="4000" placeholder="${escapeHtml(FEEDBACK_PLACEHOLDER[d.type] || '')}" ${m.submitting ? 'disabled' : ''}>${escapeHtml(d.body)}</textarea>
     </div>
     <div class="feedback-hint">
       현재 화면 · 브라우저 정보 · 로그인 계정 이름이 함께 전송됩니다. Jira에는 기록되지 않습니다.
@@ -164,37 +164,49 @@ function renderNewForm(m) {
   `
 }
 
-export function renderFeedbackModal() {
-  const m = state.showFeedback
-  if (!m) return ''
+// 탭 바 (문의 건수 표시) — 목록 로드 후 건수만 갱신할 때 단독으로도 쓴다
+export function renderFeedbackTabs(m) {
   const mineCount = m.items ? m.items.length : null
   const allCount = m.allItems ? m.allItems.length : null
   const tabs = [
-    { id: 'new', label: '새 문의' },
-    { id: 'mine', label: `내 문의${mineCount !== null ? ` (${mineCount})` : ''}` },
+    { id: "new", label: "새 문의" },
+    { id: "mine", label: `내 문의${mineCount !== null ? ` (${mineCount})` : ""}` },
   ]
-  if (m.isAdmin) tabs.push({ id: 'all', label: `전체 관리${allCount !== null ? ` (${allCount})` : ''}` })
+  if (m.isAdmin) tabs.push({ id: "all", label: `전체 관리${allCount !== null ? ` (${allCount})` : ""}` })
+  return tabs.map(t => `
+    <button type="button" class="feedback-tab ${m.tab === t.id ? "active" : ""}" role="tab" aria-selected="${m.tab === t.id}" data-fb-tab="${t.id}">${t.label}</button>
+  `).join("")
+}
 
+// 모달 카드 내부 (헤더 + 탭 + 본문). 상태 변화 시 카드 내부만 교체해
+// 오버레이/카드 진입 애니메이션이 다시 재생되지 않게 한다.
+export function renderFeedbackModalInner() {
+  const m = state.showFeedback
+  if (!m) return ""
   let bodyHtml
-  if (m.tab === 'new') bodyHtml = renderNewForm(m)
-  else if (m.tab === 'all') bodyHtml = renderList(m, { admin: true })
+  if (m.tab === "new") bodyHtml = renderNewForm(m)
+  else if (m.tab === "all") bodyHtml = renderList(m, { admin: true })
   else bodyHtml = renderList(m, { admin: false })
+  return `
+    <div class="feedback-head">
+      <div class="modal-title">오류 신고 · 개선 요청</div>
+      <button type="button" class="btn-icon feedback-close" id="feedback-close" title="닫기" aria-label="닫기">${closeIconSvg()}</button>
+    </div>
+    <div class="feedback-tabs" id="feedback-tabs" role="tablist">
+      ${renderFeedbackTabs(m)}
+    </div>
+    <div class="feedback-body">
+      ${bodyHtml}
+    </div>
+  `
+}
 
+export function renderFeedbackModal() {
+  if (!state.showFeedback) return ""
   return `
     <div class="modal-overlay" id="feedback-overlay">
-      <div class="modal modal-feedback">
-        <div class="feedback-head">
-          <div class="modal-title">오류 신고 · 개선 요청</div>
-          <button type="button" class="btn-icon feedback-close" id="feedback-close" title="닫기" aria-label="닫기">${closeIconSvg()}</button>
-        </div>
-        <div class="feedback-tabs" role="tablist">
-          ${tabs.map(t => `
-            <button type="button" class="feedback-tab ${m.tab === t.id ? 'active' : ''}" role="tab" aria-selected="${m.tab === t.id}" data-fb-tab="${t.id}">${t.label}</button>
-          `).join('')}
-        </div>
-        <div class="feedback-body">
-          ${bodyHtml}
-        </div>
+      <div class="modal modal-feedback" id="feedback-card">
+        ${renderFeedbackModalInner()}
       </div>
     </div>
   `

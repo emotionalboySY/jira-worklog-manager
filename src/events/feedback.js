@@ -4,9 +4,28 @@ import { getSavedUser } from '../auth.js'
 import { showToast } from '../ui.js'
 import { render } from '../render.js'
 import { fetchFeedback, submitFeedback, updateFeedback, deleteFeedback, getAppCommit } from '../feedback.js'
+import { renderFeedbackModalInner, renderFeedbackTabs, FEEDBACK_PLACEHOLDER } from '../views/feedback.js'
 import { on } from './_dom.js'
 
 const modalsOnly = { sections: ['modals'] }
+
+// 모달 카드 내부만 교체 — 오버레이/카드를 새로 만들지 않아 진입 애니메이션이
+// 다시 재생되지 않는다(열자마자 튕기는 것처럼 보이던 원인). 카드가 아직 없으면 전체 렌더.
+function refresh() {
+  const card = document.getElementById('feedback-card')
+  if (!state.showFeedback || !card) { render(modalsOnly); return }
+  card.innerHTML = renderFeedbackModalInner()
+  bindFeedbackEvents()
+}
+
+// 탭 바(문의 건수)만 갱신 — 작성 중인 폼을 건드리지 않는다
+function refreshTabs() {
+  const m = state.showFeedback
+  const bar = document.getElementById('feedback-tabs')
+  if (!m || !bar) return
+  bar.innerHTML = renderFeedbackTabs(m)
+  bindFeedbackEvents()
+}
 
 function emptyDraft() {
   return { type: 'bug', title: '', body: '' }
@@ -34,7 +53,7 @@ export function openFeedback(tab = 'new') {
     error: null,
     items: null,        // 내 문의 목록 (null: 아직 미조회)
     allItems: null,     // 전체 목록 (관리자, null: 아직 미조회)
-    loading: false,
+    loading: true,      // 열자마자 내 문의를 조회하므로 처음부터 로딩 상태
     listError: null,
     isAdmin: false,
     expanded: new Set(),
@@ -43,7 +62,7 @@ export function openFeedback(tab = 'new') {
   }
   render(modalsOnly)
   // 열자마자 내 문의를 조회 — 응답의 isAdmin 으로 '전체 관리' 탭 노출 여부 결정
-  loadList('mine')
+  loadList('mine', { initial: true })
 }
 
 export function closeFeedback() {
@@ -53,12 +72,12 @@ export function closeFeedback() {
   render(modalsOnly)
 }
 
-async function loadList(scope) {
+async function loadList(scope, { initial = false } = {}) {
   const m = state.showFeedback
   if (!m) return
   m.loading = true
   m.listError = null
-  render(modalsOnly)
+  if (!initial) refresh()
   try {
     const data = await fetchFeedback(scope)
     const cur = state.showFeedback
@@ -72,7 +91,11 @@ async function loadList(scope) {
     cur.listError = e?.message || '목록을 불러오지 못했습니다.'
   } finally {
     const cur = state.showFeedback
-    if (cur) { cur.loading = false; render(modalsOnly) }
+    if (!cur) return
+    cur.loading = false
+    // 작성 탭에 있으면 입력 중인 폼을 보존하기 위해 탭 바(건수·관리자 탭)만 갱신
+    if (cur.tab === 'new') refreshTabs()
+    else refresh()
   }
 }
 
@@ -82,7 +105,7 @@ function switchTab(tab) {
   captureAdminDrafts()
   m.tab = tab
   m.error = null
-  render(modalsOnly)
+  refresh()
   if (tab === 'mine' && m.items === null) loadList('mine')
   if (tab === 'all' && m.allItems === null) loadList('all')
 }
@@ -121,11 +144,11 @@ async function submit() {
   if (!m || m.submitting) return
   const title = m.draft.title.trim()
   const body = m.draft.body.trim()
-  if (!title) { m.error = '제목을 입력하세요.'; render(modalsOnly); return }
-  if (!body) { m.error = '내용을 입력하세요.'; render(modalsOnly); return }
+  if (!title) { m.error = '제목을 입력하세요.'; refresh(); return }
+  if (!body) { m.error = '내용을 입력하세요.'; refresh(); return }
   m.submitting = true
   m.error = null
-  render(modalsOnly)
+  refresh()
   try {
     const data = await submitFeedback({ type: m.draft.type, title, body, context: collectContext() })
     const cur = state.showFeedback
@@ -139,14 +162,14 @@ async function submit() {
       cur.expanded.add(data.item.id)
     }
     cur.tab = 'mine'
-    render(modalsOnly)
+    refresh()
     showToast('문의를 보냈습니다. 확인 후 답변을 남겨 드릴게요.', '✓')
   } catch (e) {
     const cur = state.showFeedback
     if (!cur) return
     cur.submitting = false
     cur.error = e?.message || '전송에 실패했습니다.'
-    render(modalsOnly)
+    refresh()
   }
 }
 
@@ -158,7 +181,7 @@ async function saveAdmin(id) {
   const patch = { status: sel ? sel.value : undefined, reply: ta ? ta.value : undefined }
   captureAdminDrafts()
   m.updating.add(id)
-  render(modalsOnly)
+  refresh()
   try {
     const data = await updateFeedback(id, patch)
     const cur = state.showFeedback
@@ -170,7 +193,7 @@ async function saveAdmin(id) {
     showToast(`저장 실패: ${e?.message || '알 수 없는 오류'}`, '⚠')
   } finally {
     const cur = state.showFeedback
-    if (cur) { cur.updating.delete(id); render(modalsOnly) }
+    if (cur) { cur.updating.delete(id); refresh() }
   }
 }
 
@@ -181,7 +204,7 @@ async function remove(id) {
   if (!window.confirm(label)) return
   captureAdminDrafts()
   m.updating.add(id)
-  render(modalsOnly)
+  refresh()
   try {
     await deleteFeedback(id)
     const cur = state.showFeedback
@@ -194,7 +217,7 @@ async function remove(id) {
     showToast(`삭제 실패: ${e?.message || '알 수 없는 오류'}`, '⚠')
   } finally {
     const cur = state.showFeedback
-    if (cur) { cur.updating.delete(id); render(modalsOnly) }
+    if (cur) { cur.updating.delete(id); refresh() }
   }
 }
 
@@ -222,7 +245,13 @@ export function bindFeedbackEvents() {
       const cur = state.showFeedback
       if (!cur || cur.submitting) return
       cur.draft.type = btn.dataset.fbType
-      render(modalsOnly)
+      overlay.querySelectorAll('[data-fb-type]').forEach(b => {
+        const active = b.dataset.fbType === cur.draft.type
+        b.classList.toggle('active', active)
+        b.setAttribute('aria-checked', String(active))
+      })
+      const ta = document.getElementById('feedback-body')
+      if (ta) ta.placeholder = FEEDBACK_PLACEHOLDER[cur.draft.type] || ''
     })
   })
   const titleInput = document.getElementById('feedback-title')
@@ -247,7 +276,7 @@ export function bindFeedbackEvents() {
       captureAdminDrafts()
       if (cur.expanded.has(id)) cur.expanded.delete(id)
       else cur.expanded.add(id)
-      render(modalsOnly)
+      refresh()
     })
   })
 
