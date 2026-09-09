@@ -78,6 +78,7 @@ import {
   performTransition,
 } from './events/dropdowns.js'
 import { bindSettingsEvents, closeSettings } from './events/settings.js'
+import { bindFeedbackEvents, closeFeedback } from './events/feedback.js'
 import { bindHeaderEvents } from './events/header.js'
 import { bindCalendarEvents } from './events/calendar.js'
 import { bindFinishModalEvents, bindCancelConfirmEvents } from './events/finish.js'
@@ -225,6 +226,7 @@ function handleGlobalKeydown(e) {
     return
   }
   if (state.showSettings) { closeSettings(); return }
+  if (state.showFeedback) { closeFeedback(); return }
   if (state.deletingWorklog) { state.deletingWorklog = null; render(modalsOnly); return }
   if (state.editingWorklog) { state.editingWorklog = null; render(modalsOnly); return }
   if (state.showManualLog) {
@@ -373,6 +375,7 @@ export function bindEvents() {
   // ===== 도메인별 sub-binder =====
   bindHeaderEvents()
   bindSettingsEvents()
+  bindFeedbackEvents()
   bindCalendarEvents()
   bindCreateIssueEvents()
   ensureCreateIssueEditor()

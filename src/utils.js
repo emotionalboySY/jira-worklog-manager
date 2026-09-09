@@ -38,6 +38,7 @@ export function isBusyUI() {
     state.showSettings ||
     state.showSwapIssue ||
     state.showCreateIssue ||
+    state.showFeedback ||
     state.statusDropdown ||
     state.assigneeDropdown ||
     state.typeDropdown ||

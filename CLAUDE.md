@@ -16,3 +16,4 @@
 - `ATLASSIAN_CLIENT_SECRET`: 서버 전용 클라이언트 시크릿 (절대 클라이언트 노출 금지)
 - `ATLASSIAN_CLIENT_ID` (선택): 서버 전용 별칭. 미설정 시 `VITE_ATLASSIAN_CLIENT_ID` 사용
 - `ALLOWED_ORIGINS` (선택, 권장): 쉼표 구분된 화이트리스트. 예: `https://your-app.vercel.app,http://localhost:5173`. 미설정 시 동일 호스트 origin만 허용
+- `FEEDBACK_ADMIN_ACCOUNT_IDS`: 오류 신고·개선 요청(`/api/feedback`) 전체 목록 열람·상태 변경·답변이 가능한 관리자 Atlassian accountId (쉼표 구분). 사용자 신고 데이터는 Jira가 아닌 Upstash Redis(`fb:*` 키)에 저장됨

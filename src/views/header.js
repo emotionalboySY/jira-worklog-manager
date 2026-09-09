@@ -5,6 +5,7 @@ import { getProjectFromKey, escapeHtml } from '../utils.js'
 import { renderIssuesTab } from './issues.js'
 import { renderLogsTab } from './logs.js'
 import { renderSummaryTab } from './summary.js'
+import { renderFeedbackButton } from './feedback.js'
 
 export function renderHeader() {
   return `
@@ -22,6 +23,7 @@ export function renderHeader() {
       </div>
       <div class="header-right">
         <span class="user-info">${escapeHtml(getSavedUser()?.displayName || '')}</span>
+        ${renderFeedbackButton()}
         <button class="theme-switch ${state.theme === 'dark' ? 'dark' : 'light'}" id="btn-theme" role="switch" aria-checked="${state.theme === 'dark'}" title="테마 전환 (라이트 ↔ 다크)">
           <span class="theme-switch-icon icon-light" aria-hidden="true">☀︎</span>
           <span class="theme-switch-icon icon-dark" aria-hidden="true">☾</span>

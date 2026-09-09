@@ -208,6 +208,11 @@ export const state = {
   //   _descMount, _descAdf } | null
   showCreateIssue: null,
 
+  // 오류 신고 / 개선 요청 모달 (서비스 자체 문의 — Jira와 무관, /api/feedback 저장)
+  // { tab: 'new'|'mine'|'all', draft: { type, title, body }, submitting, error,
+  //   items, allItems, loading, listError, isAdmin, expanded: Set, updating: Set, adminDrafts } | null
+  showFeedback: null,
+
   // ----- 테마/패널 -----
   theme: localStorage.getItem('theme') || 'dark',
   favoritesPanelCollapsed: (localStorage.getItem('favorites_collapsed') === '1'),

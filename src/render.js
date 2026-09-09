@@ -25,6 +25,7 @@ import {
 } from './views/modals.js'
 import { renderSettingsFab, renderSettingsModal } from './views/settings.js'
 import { renderChangeLogFab } from './views/changelog.js'
+import { renderFeedbackModal } from './views/feedback.js'
 
 // 모듈 그래프에서 render.js → events.js 직접 import를 제거하기 위한 post-render hook.
 // 외부(main.js)가 init 단계에서 bindEvents / startTimerUpdate 등을 등록해두면 매 render 끝에 호출됨.
@@ -48,6 +49,7 @@ function renderModalsHtml() {
     ${state.transitionFieldsModal ? renderTransitionFieldsModal() : ''}
     ${state.showCreateIssue ? renderCreateIssueModal() : ''}
     ${state.issueDetailModal ? renderIssueDetailModal() : ''}
+    ${state.showFeedback ? renderFeedbackModal() : ''}
   `
 }
 
